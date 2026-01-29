@@ -1,5 +1,7 @@
 #include "tt.h"
 
+#include <stddef.h>
+
 void tt_init(TTTable *tt, U64 mb) {
     (void)mb;
     tt->entries = NULL;
