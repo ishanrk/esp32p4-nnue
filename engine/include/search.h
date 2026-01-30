@@ -8,6 +8,8 @@
 typedef struct {
     I32 score;
     Move best_move;
+    Move pv[64];
+    U32 pv_len;
     U32 depth;
     U32 seldepth;
     U64 nodes;

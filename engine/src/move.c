@@ -19,3 +19,50 @@ U32 move_flags(Move m) {
 U32 move_promo(Move m) {
     return (U32)((m >> 20) & 0xF);
 }
+
+bool move_is_null(Move m) {
+    return m == 0;
+}
+
+bool square_from_str(const char *s, Square *sq) {
+    if (!s || !sq) {
+        return false;
+    }
+    if (s[0] < 'a' || s[0] > 'h' || s[1] < '1' || s[1] > '8') {
+        return false;
+    }
+    int file = s[0] - 'a';
+    int rank = s[1] - '1';
+    *sq = (Square)(rank * 8 + file);
+    return true;
+}
+
+void square_to_str(Square sq, char out[3]) {
+    int file = (int)sq % 8;
+    int rank = (int)sq / 8;
+    out[0] = (char)('a' + file);
+    out[1] = (char)('1' + rank);
+    out[2] = '\0';
+}
+
+void move_to_uci(Move m, char out[6]) {
+    char from[3];
+    char to[3];
+    square_to_str(move_from(m), from);
+    square_to_str(move_to(m), to);
+    out[0] = from[0];
+    out[1] = from[1];
+    out[2] = to[0];
+    out[3] = to[1];
+    if (move_flags(m) & MOVE_FLAG_PROMO) {
+        static const char promo_map[7] = {'q', 'n', 'b', 'r', 'q', 'k', 'q'};
+        U32 p = move_promo(m);
+        if (p > PIECE_KING) {
+            p = PIECE_QUEEN;
+        }
+        out[4] = promo_map[p];
+        out[5] = '\0';
+    } else {
+        out[4] = '\0';
+    }
+}
