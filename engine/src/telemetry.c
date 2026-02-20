@@ -2,6 +2,12 @@
 
 #include <stdio.h>
 
+static void append_move(Move m) {
+    char s[6];
+    move_to_uci(m, s);
+    printf(" %s", s);
+}
+
 void telemetry_reset(Telemetry *t) {
     if (!t) {
         return;
@@ -65,4 +71,19 @@ void telemetry_emit_root(const Telemetry *t) {
            (unsigned long long)t->nodes,
            (unsigned long long)t->nps,
            t->tthit_permille);
+    if (t->pv_len > 0) {
+        printf("info pv");
+        for (U32 i = 0; i < t->pv_len; i++) {
+            append_move(t->pv[i]);
+        }
+        printf("\n");
+    }
+    for (U32 i = 0; i < t->root_len; i++) {
+        char s[6];
+        move_to_uci(t->root[i].move, s);
+        printf("info currmove %s score cp %d nodes %llu\n",
+               s,
+               t->root[i].score,
+               (unsigned long long)t->root[i].nodes);
+    }
 }
