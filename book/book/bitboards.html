@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,13 +175,28 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="bitboards"><a class="header" href="#bitboards">Bitboards</a></h1>
-<p>bitboards provide compact 64-bit representations for piece sets and occupancy.
-the api is kept minimal while the implementation can evolve toward fast bit
-ops and precomputed attacks.</p>
+<h2 id="1-representation"><a class="header" href="#1-representation">1) representation</a></h2>
+<p>each bit in <code>U64</code> maps to a square and supports branch light occupancy checks.</p>
+<pre><code class="language-c">typedef uint64_t U64;
+U64 white_occ = pos-&gt;occupancy[COLOR_WHITE];
+U64 all_occ = pos-&gt;all;
+</code></pre>
+<h2 id="2-low-level-ops"><a class="header" href="#2-low-level-ops">2) low level ops</a></h2>
+<p>the core helpers are small and inline friendly.</p>
+<pre><code class="language-c">U32 bb_popcount(U64 bb);
+Square bb_lsb(U64 bb);
+U64 bb_pop_lsb(U64 *bb);
+</code></pre>
+<h2 id="3-practical-usage"><a class="header" href="#3-practical-usage">3) practical usage</a></h2>
+<p>bitboards are rebuilt from mailbox state for correctness now, and can later be
+updated incrementally for speed.</p>
+<pre><code class="language-c">pos_rebuild_bitboards(pos);
+if (pos-&gt;pieces[COLOR_WHITE][PIECE_KNIGHT] &amp; (1ULL &lt;&lt; SQUARE_F3)) {
+    // square has a white knight
+}
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Bitboards">https://www.chessprogramming.org/Bitboards</a></p>
 
                     </main>
 

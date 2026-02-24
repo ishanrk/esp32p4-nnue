@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,13 +175,22 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="eval-classic"><a class="header" href="#eval-classic">Eval Classic</a></h1>
-<p>the classic evaluation will combine material, piece-square tables, mobility,
-and structure terms into a fast scalar. it serves as a baseline and a fallback
-when nnue is disabled or unavailable.</p>
+<h2 id="1-current-terms"><a class="header" href="#1-current-terms">1) current terms</a></h2>
+<p>classic eval currently uses material only, signed by side to move.</p>
+<pre><code class="language-c">static const I32 piece_value[7] = {0, 100, 320, 330, 500, 900, 0};
+</code></pre>
+<h2 id="2-fallback-behavior"><a class="header" href="#2-fallback-behavior">2) fallback behavior</a></h2>
+<p>when nnue weights are missing, classic eval is the active path.</p>
+<pre><code class="language-c">if (nnue_is_loaded()) return eval_nnue(pos);
+return eval_classic(pos);
+</code></pre>
+<h2 id="3-next-terms"><a class="header" href="#3-next-terms">3) next terms</a></h2>
+<p>piece square tables and structure terms can be appended without api changes.</p>
+<pre><code class="language-c">score += pst[piece][square];
+score += king_safety_term;
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Evaluation">https://www.chessprogramming.org/Evaluation</a></p>
 
                     </main>
 

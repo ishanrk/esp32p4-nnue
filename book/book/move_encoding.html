@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,12 +175,27 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="move-encoding"><a class="header" href="#move-encoding">Move Encoding</a></h1>
-<p>moves are encoded in a compact 32-bit format with fields for from, to, flags,
-and promotion. this layout keeps hot path decoding cheap and cache friendly.</p>
+<h2 id="1-packed-layout"><a class="header" href="#1-packed-layout">1) packed layout</a></h2>
+<p>all move info fits in a single <code>U32</code>.</p>
+<pre><code class="language-text">bits 0..5    from square
+bits 6..11   to square
+bits 12..19  flags
+bits 20..23  promotion piece
+</code></pre>
+<h2 id="2-api-calls"><a class="header" href="#2-api-calls">2) api calls</a></h2>
+<p>encode once and decode with cheap masking.</p>
+<pre><code class="language-c">Move m = move_make(SQUARE_E2, SQUARE_E4, MOVE_FLAG_DOUBLE_PAWN, 0);
+Square from = move_from(m);
+Square to = move_to(m);
+U32 flags = move_flags(m);
+</code></pre>
+<h2 id="3-uci-conversion"><a class="header" href="#3-uci-conversion">3) uci conversion</a></h2>
+<p>human and protocol form stays in <code>e2e4</code> notation.</p>
+<pre><code class="language-c">char out[6];
+move_to_uci(m, out);  // "e2e4"
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Encoding_Moves">https://www.chessprogramming.org/Encoding_Moves</a></p>
 
                     </main>
 

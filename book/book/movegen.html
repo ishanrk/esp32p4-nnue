@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,13 +175,33 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="movegen"><a class="header" href="#movegen">Movegen</a></h1>
-<p>move generation will produce pseudo-legal and legal move lists using bitboard
-attacks and targeted filters. the initial scaffolding exposes a clean api that
-allows later micro-optimizations without changing call sites.</p>
+<h2 id="1-two-stage-generation"><a class="header" href="#1-two-stage-generation">1) two stage generation</a></h2>
+<p>the engine first emits pseudo legal moves, then filters to legal moves.</p>
+<pre><code class="language-c">MoveList pseudo;
+MoveList legal;
+movegen_pseudo_legal(&amp;pos, &amp;pseudo);
+movegen_legal(&amp;pos, &amp;legal);
+</code></pre>
+<h2 id="2-legal-filter-path"><a class="header" href="#2-legal-filter-path">2) legal filter path</a></h2>
+<p>every candidate is validated by make and unmake plus king safety.</p>
+<pre><code class="language-c">for (U32 i = 0; i &lt; pseudo.count; i++) {
+    Position tmp = pos;
+    Undo u;
+    if (make_move(&amp;tmp, pseudo.moves[i], &amp;u)) {
+        legal.moves[legal.count++] = pseudo.moves[i];
+    }
+}
+</code></pre>
+<h2 id="3-supported-move-classes"><a class="header" href="#3-supported-move-classes">3) supported move classes</a></h2>
+<p>normal, capture, promotion, en passant, castling, and double pawn push are encoded.</p>
+<pre><code class="language-c">MOVE_FLAG_CAPTURE
+MOVE_FLAG_PROMO
+MOVE_FLAG_ENPASSANT
+MOVE_FLAG_CASTLE
+MOVE_FLAG_DOUBLE_PAWN
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Move_Generation">https://www.chessprogramming.org/Move_Generation</a></p>
 
                     </main>
 

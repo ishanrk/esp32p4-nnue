@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,13 +175,30 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="position"><a class="header" href="#position">Position</a></h1>
-<p>the position structure is explicit and cache friendly, tracking per-color
-piece bitboards, occupancy, side to move, and hashing keys. this enables fast
-move generation and consistent evaluation inputs.</p>
+<h2 id="1-state-layout"><a class="header" href="#1-state-layout">1) state layout</a></h2>
+<p>the engine keeps mailbox and bitboards in one explicit struct.</p>
+<pre><code class="language-c">typedef struct {
+    int8_t board[64];
+    U64 pieces[2][6];
+    U64 occupancy[2];
+    U64 all;
+    U16 castling;
+    Square ep_square;
+    Color side_to_move;
+} Position;
+</code></pre>
+<h2 id="2-fen-entry"><a class="header" href="#2-fen-entry">2) fen entry</a></h2>
+<p>positions are loaded from fen for testing, uci, and regression.</p>
+<pre><code class="language-c">Position pos;
+pos_from_fen(&amp;pos, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+</code></pre>
+<h2 id="3-attack-checks"><a class="header" href="#3-attack-checks">3) attack checks</a></h2>
+<p>legality and check status are direct queries on position.</p>
+<pre><code class="language-c">bool in_check = pos_in_check(&amp;pos, pos.side_to_move);
+bool attacked = pos_square_attacked(&amp;pos, SQUARE_E4, COLOR_BLACK);
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Board_Representation">https://www.chessprogramming.org/Board_Representation</a></p>
 
                     </main>
 

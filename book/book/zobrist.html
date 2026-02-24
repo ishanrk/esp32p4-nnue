@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,13 +175,25 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="zobrist"><a class="header" href="#zobrist">Zobrist</a></h1>
-<p>zobrist hashing provides fast incremental keys for transposition table lookups
-and repetition detection. the api will grow to include separate pawn keys for
-specialized evaluation caches.</p>
+<h2 id="1-current-status"><a class="header" href="#1-current-status">1) current status</a></h2>
+<p>hash api exists and is called through the position subsystem.</p>
+<pre><code class="language-c">void zobrist_init(void);
+U64 zobrist_hash(const Position *pos);
+</code></pre>
+<h2 id="2-incremental-target"><a class="header" href="#2-incremental-target">2) incremental target</a></h2>
+<p>the end goal is to update keys inside make and unmake without full recompute.</p>
+<pre><code class="language-c">undo-&gt;zobrist = pos-&gt;zobrist;
+pos-&gt;zobrist ^= piece_square_key;
+</code></pre>
+<h2 id="3-usage-with-tt"><a class="header" href="#3-usage-with-tt">3) usage with tt</a></h2>
+<p>transposition table entries depend on stable position keys.</p>
+<pre><code class="language-c">TTEntry e;
+if (tt_probe(&amp;tt, pos.zobrist, &amp;e)) {
+    // reuse cached search info
+}
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Zobrist_Hashing">https://www.chessprogramming.org/Zobrist_Hashing</a></p>
 
                     </main>
 

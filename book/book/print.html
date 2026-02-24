@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -176,154 +176,364 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="overview"><a class="header" href="#overview">Overview</a></h1>
-<p>This project targets a high performance chess engine in c with a dedicated
-python training pipeline for a factorized halfkp nnue. the early focus is clean
-interfaces, stable data flow, and buildable scaffolding so later optimization
-work has a clear landing zone.</p>
+<h2 id="1-product-shape"><a class="header" href="#1-product-shape">1) product shape</a></h2>
+<p>the repo has three execution layers that are wired end to end.</p>
+<pre><code class="language-text">engine/    c runtime with uci and cli play mode
+train/     python data, labeling, training, export
+book/      mdbook docs with implementation notes
+</code></pre>
+<h2 id="2-execution-entry-points"><a class="header" href="#2-execution-entry-points">2) execution entry points</a></h2>
+<p>the engine speaks uci and can also run a local human playable cli.</p>
+<pre><code class="language-c">int main(int argc, char **argv) {
+    if (argc &gt; 1 &amp;&amp; strcmp(argv[1], "--cli") == 0) {
+        cli_loop();
+        return 0;
+    }
+    uci_loop();
+    return 0;
+}
+</code></pre>
+<h2 id="3-neural-net-flow"><a class="header" href="#3-neural-net-flow">3) neural net flow</a></h2>
+<p>weights are trained in python and exported to a flat binary consumed by c.</p>
+<pre><code class="language-python">model = FactorizedHalfKP(input_dim=768, hidden_dim=64, output_dim=1)
+export_nnue_weights(model, "train/nnue_weights.bin")
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/">https://www.chessprogramming.org/</a>
+<a href="https://www.chessprogramming.org/NNUE">https://www.chessprogramming.org/NNUE</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="build"><a class="header" href="#build">Build</a></h1>
-<p>the engine uses a cmake build that produces the uci binary, tests, and benches.
-the goal is to keep the build simple and reproducible for later performance
-work and profiling.</p>
+<h2 id="1-configure-and-compile"><a class="header" href="#1-configure-and-compile">1) configure and compile</a></h2>
+<p>use cmake to build all binaries from the <code>engine</code> directory.</p>
+<pre><code class="language-powershell">cmake -S engine -B build
+cmake --build build
+</code></pre>
+<h2 id="2-run-test-suite"><a class="header" href="#2-run-test-suite">2) run test suite</a></h2>
+<p>all c tests run through ctest.</p>
+<pre><code class="language-powershell">ctest --test-dir build
+</code></pre>
+<h2 id="3-build-docs"><a class="header" href="#3-build-docs">3) build docs</a></h2>
+<p>mdbook emits static docs into <code>book/book</code>.</p>
+<pre><code class="language-powershell">mdbook build book
+</code></pre>
 <h2 id="references-1"><a class="header" href="#references-1">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://cmake.org/documentation/">https://cmake.org/documentation/</a>
+<a href="https://rust-lang.github.io/mdBook/">https://rust-lang.github.io/mdBook/</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="bitboards"><a class="header" href="#bitboards">Bitboards</a></h1>
-<p>bitboards provide compact 64-bit representations for piece sets and occupancy.
-the api is kept minimal while the implementation can evolve toward fast bit
-ops and precomputed attacks.</p>
+<h2 id="1-representation"><a class="header" href="#1-representation">1) representation</a></h2>
+<p>each bit in <code>U64</code> maps to a square and supports branch light occupancy checks.</p>
+<pre><code class="language-c">typedef uint64_t U64;
+U64 white_occ = pos-&gt;occupancy[COLOR_WHITE];
+U64 all_occ = pos-&gt;all;
+</code></pre>
+<h2 id="2-low-level-ops"><a class="header" href="#2-low-level-ops">2) low level ops</a></h2>
+<p>the core helpers are small and inline friendly.</p>
+<pre><code class="language-c">U32 bb_popcount(U64 bb);
+Square bb_lsb(U64 bb);
+U64 bb_pop_lsb(U64 *bb);
+</code></pre>
+<h2 id="3-practical-usage"><a class="header" href="#3-practical-usage">3) practical usage</a></h2>
+<p>bitboards are rebuilt from mailbox state for correctness now, and can later be
+updated incrementally for speed.</p>
+<pre><code class="language-c">pos_rebuild_bitboards(pos);
+if (pos-&gt;pieces[COLOR_WHITE][PIECE_KNIGHT] &amp; (1ULL &lt;&lt; SQUARE_F3)) {
+    // square has a white knight
+}
+</code></pre>
 <h2 id="references-2"><a class="header" href="#references-2">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Bitboards">https://www.chessprogramming.org/Bitboards</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="move-encoding"><a class="header" href="#move-encoding">Move Encoding</a></h1>
-<p>moves are encoded in a compact 32-bit format with fields for from, to, flags,
-and promotion. this layout keeps hot path decoding cheap and cache friendly.</p>
+<h2 id="1-packed-layout"><a class="header" href="#1-packed-layout">1) packed layout</a></h2>
+<p>all move info fits in a single <code>U32</code>.</p>
+<pre><code class="language-text">bits 0..5    from square
+bits 6..11   to square
+bits 12..19  flags
+bits 20..23  promotion piece
+</code></pre>
+<h2 id="2-api-calls"><a class="header" href="#2-api-calls">2) api calls</a></h2>
+<p>encode once and decode with cheap masking.</p>
+<pre><code class="language-c">Move m = move_make(SQUARE_E2, SQUARE_E4, MOVE_FLAG_DOUBLE_PAWN, 0);
+Square from = move_from(m);
+Square to = move_to(m);
+U32 flags = move_flags(m);
+</code></pre>
+<h2 id="3-uci-conversion"><a class="header" href="#3-uci-conversion">3) uci conversion</a></h2>
+<p>human and protocol form stays in <code>e2e4</code> notation.</p>
+<pre><code class="language-c">char out[6];
+move_to_uci(m, out);  // "e2e4"
+</code></pre>
 <h2 id="references-3"><a class="header" href="#references-3">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Encoding_Moves">https://www.chessprogramming.org/Encoding_Moves</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="position"><a class="header" href="#position">Position</a></h1>
-<p>the position structure is explicit and cache friendly, tracking per-color
-piece bitboards, occupancy, side to move, and hashing keys. this enables fast
-move generation and consistent evaluation inputs.</p>
+<h2 id="1-state-layout"><a class="header" href="#1-state-layout">1) state layout</a></h2>
+<p>the engine keeps mailbox and bitboards in one explicit struct.</p>
+<pre><code class="language-c">typedef struct {
+    int8_t board[64];
+    U64 pieces[2][6];
+    U64 occupancy[2];
+    U64 all;
+    U16 castling;
+    Square ep_square;
+    Color side_to_move;
+} Position;
+</code></pre>
+<h2 id="2-fen-entry"><a class="header" href="#2-fen-entry">2) fen entry</a></h2>
+<p>positions are loaded from fen for testing, uci, and regression.</p>
+<pre><code class="language-c">Position pos;
+pos_from_fen(&amp;pos, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+</code></pre>
+<h2 id="3-attack-checks"><a class="header" href="#3-attack-checks">3) attack checks</a></h2>
+<p>legality and check status are direct queries on position.</p>
+<pre><code class="language-c">bool in_check = pos_in_check(&amp;pos, pos.side_to_move);
+bool attacked = pos_square_attacked(&amp;pos, SQUARE_E4, COLOR_BLACK);
+</code></pre>
 <h2 id="references-4"><a class="header" href="#references-4">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Board_Representation">https://www.chessprogramming.org/Board_Representation</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="movegen"><a class="header" href="#movegen">Movegen</a></h1>
-<p>move generation will produce pseudo-legal and legal move lists using bitboard
-attacks and targeted filters. the initial scaffolding exposes a clean api that
-allows later micro-optimizations without changing call sites.</p>
+<h2 id="1-two-stage-generation"><a class="header" href="#1-two-stage-generation">1) two stage generation</a></h2>
+<p>the engine first emits pseudo legal moves, then filters to legal moves.</p>
+<pre><code class="language-c">MoveList pseudo;
+MoveList legal;
+movegen_pseudo_legal(&amp;pos, &amp;pseudo);
+movegen_legal(&amp;pos, &amp;legal);
+</code></pre>
+<h2 id="2-legal-filter-path"><a class="header" href="#2-legal-filter-path">2) legal filter path</a></h2>
+<p>every candidate is validated by make and unmake plus king safety.</p>
+<pre><code class="language-c">for (U32 i = 0; i &lt; pseudo.count; i++) {
+    Position tmp = pos;
+    Undo u;
+    if (make_move(&amp;tmp, pseudo.moves[i], &amp;u)) {
+        legal.moves[legal.count++] = pseudo.moves[i];
+    }
+}
+</code></pre>
+<h2 id="3-supported-move-classes"><a class="header" href="#3-supported-move-classes">3) supported move classes</a></h2>
+<p>normal, capture, promotion, en passant, castling, and double pawn push are encoded.</p>
+<pre><code class="language-c">MOVE_FLAG_CAPTURE
+MOVE_FLAG_PROMO
+MOVE_FLAG_ENPASSANT
+MOVE_FLAG_CASTLE
+MOVE_FLAG_DOUBLE_PAWN
+</code></pre>
 <h2 id="references-5"><a class="header" href="#references-5">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Move_Generation">https://www.chessprogramming.org/Move_Generation</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="makemove"><a class="header" href="#makemove">Makemove</a></h1>
-<p>make and unmake operations will update position state and reversible metadata
-with minimal overhead. undo records are sized for stack allocation in search.</p>
+<h2 id="1-make-path"><a class="header" href="#1-make-path">1) make path</a></h2>
+<p>make updates board, castling, en passant, clocks, and side to move.</p>
+<pre><code class="language-c">Undo u;
+if (make_move(&amp;pos, m, &amp;u)) {
+    // search deeper
+}
+</code></pre>
+<h2 id="2-unmake-path"><a class="header" href="#2-unmake-path">2) unmake path</a></h2>
+<p>undo restores exact reversible state from stack data.</p>
+<pre><code class="language-c">unmake_move(&amp;pos, m, &amp;u);
+</code></pre>
+<h2 id="3-legality-gate"><a class="header" href="#3-legality-gate">3) legality gate</a></h2>
+<p>moves that leave own king in check are rejected at make time.</p>
+<pre><code class="language-c">Color moved_side = pos-&gt;side_to_move;
+pos-&gt;side_to_move = moved_side == COLOR_WHITE ? COLOR_BLACK : COLOR_WHITE;
+if (pos_in_check(pos, moved_side)) {
+    unmake_move(pos, m, undo);
+    return false;
+}
+</code></pre>
 <h2 id="references-6"><a class="header" href="#references-6">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Make_Move">https://www.chessprogramming.org/Make_Move</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="zobrist"><a class="header" href="#zobrist">Zobrist</a></h1>
-<p>zobrist hashing provides fast incremental keys for transposition table lookups
-and repetition detection. the api will grow to include separate pawn keys for
-specialized evaluation caches.</p>
+<h2 id="1-current-status"><a class="header" href="#1-current-status">1) current status</a></h2>
+<p>hash api exists and is called through the position subsystem.</p>
+<pre><code class="language-c">void zobrist_init(void);
+U64 zobrist_hash(const Position *pos);
+</code></pre>
+<h2 id="2-incremental-target"><a class="header" href="#2-incremental-target">2) incremental target</a></h2>
+<p>the end goal is to update keys inside make and unmake without full recompute.</p>
+<pre><code class="language-c">undo-&gt;zobrist = pos-&gt;zobrist;
+pos-&gt;zobrist ^= piece_square_key;
+</code></pre>
+<h2 id="3-usage-with-tt"><a class="header" href="#3-usage-with-tt">3) usage with tt</a></h2>
+<p>transposition table entries depend on stable position keys.</p>
+<pre><code class="language-c">TTEntry e;
+if (tt_probe(&amp;tt, pos.zobrist, &amp;e)) {
+    // reuse cached search info
+}
+</code></pre>
 <h2 id="references-7"><a class="header" href="#references-7">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Zobrist_Hashing">https://www.chessprogramming.org/Zobrist_Hashing</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="perft"><a class="header" href="#perft">Perft</a></h1>
-<p>perft is used to validate move generation by counting nodes at fixed depths.
-the harness will load known positions and compare node totals as a guard rail
-before deeper search work begins.</p>
+<h2 id="1-purpose"><a class="header" href="#1-purpose">1) purpose</a></h2>
+<p>perft verifies legal move generation by counting leaf nodes at fixed depth.</p>
+<pre><code class="language-text">fen | depth | expected_nodes
+</code></pre>
+<h2 id="2-suite-input"><a class="header" href="#2-suite-input">2) suite input</a></h2>
+<p>the test runner reads <code>engine/tests/perft_suite.txt</code>.</p>
+<pre><code class="language-text">startpos | 1 | 20
+</code></pre>
+<h2 id="3-test-command"><a class="header" href="#3-test-command">3) test command</a></h2>
+<p>run perft stub through ctest target.</p>
+<pre><code class="language-powershell">ctest --test-dir build -R test_perft
+</code></pre>
 <h2 id="references-8"><a class="header" href="#references-8">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Perft">https://www.chessprogramming.org/Perft</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="search"><a class="header" href="#search">Search</a></h1>
-<p>the search module will implement alpha-beta with iterative deepening and a
-quiescence extension. the api is scoped to keep integration points simple while
-allowing later tuning of heuristics and pruning.</p>
+<h2 id="1-baseline-algorithm"><a class="header" href="#1-baseline-algorithm">1) baseline algorithm</a></h2>
+<p>the engine runs negamax alpha beta with legal move expansion.</p>
+<pre><code class="language-c">I32 score = negamax(pos, -30000, 30000, depth, 0, &amp;ctx, pv, &amp;pv_len);
+</code></pre>
+<h2 id="2-root-output"><a class="header" href="#2-root-output">2) root output</a></h2>
+<p>search result reports best move, score, nodes, and principal variation.</p>
+<pre><code class="language-c">SearchResult r = search_position(&amp;pos, &amp;tt, 5);
+</code></pre>
+<h2 id="3-uci-integration"><a class="header" href="#3-uci-integration">3) uci integration</a></h2>
+<p>the <code>go</code> command triggers root search and prints best move.</p>
+<pre><code class="language-text">go depth 5
+bestmove e2e4
+</code></pre>
 <h2 id="references-9"><a class="header" href="#references-9">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Alpha-Beta">https://www.chessprogramming.org/Alpha-Beta</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="quiescence"><a class="header" href="#quiescence">Quiescence</a></h1>
-<p>quiescence search extends leaf evaluation by resolving tactical captures and
-checks, reducing horizon artifacts. the interface is included early so the
-alpha-beta core can call it consistently.</p>
+<h2 id="1-stand-pat"><a class="header" href="#1-stand-pat">1) stand pat</a></h2>
+<p>qsearch starts from static eval and updates alpha immediately.</p>
+<pre><code class="language-c">I32 stand_pat = eval_position(pos);
+if (stand_pat &gt; alpha) alpha = stand_pat;
+</code></pre>
+<h2 id="2-capture-only-expansion"><a class="header" href="#2-capture-only-expansion">2) capture only expansion</a></h2>
+<p>the current path searches captures only at q nodes.</p>
+<pre><code class="language-c">if ((move_flags(m) &amp; MOVE_FLAG_CAPTURE) == 0) {
+    continue;
+}
+</code></pre>
+<h2 id="3-tactical-stability"><a class="header" href="#3-tactical-stability">3) tactical stability</a></h2>
+<p>this removes many horizon artifacts at leaf depth.</p>
+<pre><code class="language-c">I32 score = -search_qsearch(pos, -beta, -alpha, depth - 1);
+</code></pre>
 <h2 id="references-10"><a class="header" href="#references-10">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Quiescence_Search">https://www.chessprogramming.org/Quiescence_Search</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="eval-classic"><a class="header" href="#eval-classic">Eval Classic</a></h1>
-<p>the classic evaluation will combine material, piece-square tables, mobility,
-and structure terms into a fast scalar. it serves as a baseline and a fallback
-when nnue is disabled or unavailable.</p>
+<h2 id="1-current-terms"><a class="header" href="#1-current-terms">1) current terms</a></h2>
+<p>classic eval currently uses material only, signed by side to move.</p>
+<pre><code class="language-c">static const I32 piece_value[7] = {0, 100, 320, 330, 500, 900, 0};
+</code></pre>
+<h2 id="2-fallback-behavior"><a class="header" href="#2-fallback-behavior">2) fallback behavior</a></h2>
+<p>when nnue weights are missing, classic eval is the active path.</p>
+<pre><code class="language-c">if (nnue_is_loaded()) return eval_nnue(pos);
+return eval_classic(pos);
+</code></pre>
+<h2 id="3-next-terms"><a class="header" href="#3-next-terms">3) next terms</a></h2>
+<p>piece square tables and structure terms can be appended without api changes.</p>
+<pre><code class="language-c">score += pst[piece][square];
+score += king_safety_term;
+</code></pre>
 <h2 id="references-11"><a class="header" href="#references-11">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Evaluation">https://www.chessprogramming.org/Evaluation</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="nnue-inference"><a class="header" href="#nnue-inference">NNUE Inference</a></h1>
-<p>nnue inference will load exported weights and evaluate positions using a
-compact feature set. the goal is to keep the runtime cache friendly and
-incrementally updateable from make and unmake.</p>
+<h2 id="1-binary-weight-format"><a class="header" href="#1-binary-weight-format">1) binary weight format</a></h2>
+<p>the c runtime loads a compact binary generated by python export.</p>
+<pre><code class="language-text">magic "UBNNUE1\0"
+uint32 input_dim
+uint32 hidden_dim
+float w1[hidden][input]
+float b1[hidden]
+float w2[hidden]
+float b2[1]
+</code></pre>
+<h2 id="2-feature-map"><a class="header" href="#2-feature-map">2) feature map</a></h2>
+<p>input uses a 12 by 64 one hot plane and flattens to 768.</p>
+<pre><code class="language-c">int channel = color_offset + (piece_type - 1);
+int feature = channel * 64 + square;
+</code></pre>
+<h2 id="3-forward-path"><a class="header" href="#3-forward-path">3) forward path</a></h2>
+<p>runtime eval is a tiny relu mlp.</p>
+<pre><code class="language-c">hidden[i] = relu(b1[i] + sum_j(w1[i][j] * x[j]));
+out = b2 + sum_i(hidden[i] * w2[i]);
+</code></pre>
 <h2 id="references-12"><a class="header" href="#references-12">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/NNUE">https://www.chessprogramming.org/NNUE</a>
+<a href="https://arxiv.org/abs/2402.05087">https://arxiv.org/abs/2402.05087</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="factorized-halfkp"><a class="header" href="#factorized-halfkp">Factorized HalfKP</a></h1>
-<p>the factorized halfkp feature set splits king and piece features to reduce
-model size while preserving expressive power. this chapter will outline the
-feature indexing, normalization, and export format used by the engine.</p>
+<h2 id="1-factorization-goal"><a class="header" href="#1-factorization-goal">1) factorization goal</a></h2>
+<p>factorized halfkp style modeling separates piece features from deeper dense
+blocks so runtime updates stay cheap and the model stays small.</p>
+<pre><code class="language-text">input planes -&gt; compact hidden layer -&gt; scalar score
+</code></pre>
+<h2 id="2-practical-baseline-here"><a class="header" href="#2-practical-baseline-here">2) practical baseline here</a></h2>
+<p>this engine currently uses a minimal nnue style 12x64 encoding and a small relu
+network as the stable baseline while feature factorization evolves.</p>
+<pre><code class="language-python">self.fc1 = torch.nn.Linear(768, 64)
+self.fc2 = torch.nn.Linear(64, 1)
+</code></pre>
+<h2 id="3-migration-path"><a class="header" href="#3-migration-path">3) migration path</a></h2>
+<p>the training and export format already isolate the model shape so factorized
+halfkp indexing can be introduced without changing uci behavior.</p>
+<pre><code class="language-python">export_nnue_weights(model, "train/nnue_weights.bin")
+</code></pre>
 <h2 id="references-13"><a class="header" href="#references-13">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/NNUE">https://www.chessprogramming.org/NNUE</a>
+<a href="https://www.chessprogramming.org/HalfKP">https://www.chessprogramming.org/HalfKP</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="training-pipeline"><a class="header" href="#training-pipeline">Training Pipeline</a></h1>
-<p>the training pipeline consumes pgn data, labels positions using a teacher, and
-optimizes the nnue network. each stage is isolated to keep experiments focused
-and reproducible.</p>
+<h2 id="1-data-sources"><a class="header" href="#1-data-sources">1) data sources</a></h2>
+<p>training accepts pgn input or random legal position sampling.</p>
+<pre><code class="language-python">boards = sample_pgn(args.pgn, max_positions=args.samples)
+boards = random_legal_positions(count=args.samples)
+</code></pre>
+<h2 id="2-labels"><a class="header" href="#2-labels">2) labels</a></h2>
+<p>the default labeler uses heuristic centipawn values. you can replace this with
+stockfish or your own teacher output later.</p>
+<pre><code class="language-python">def heuristic_cp(board: chess.Board) -&gt; int:
+    return material_white_minus_black(board)
+</code></pre>
+<h2 id="3-train-and-export"><a class="header" href="#3-train-and-export">3) train and export</a></h2>
+<p>model training and binary export are one command.</p>
+<pre><code class="language-powershell">python train/train.py --samples 50000 --epochs 8 --out train/nnue_weights.bin
+</code></pre>
 <h2 id="references-14"><a class="header" href="#references-14">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://pytorch.org/docs/stable/index.html">https://pytorch.org/docs/stable/index.html</a>
+<a href="https://python-chess.readthedocs.io/en/latest/">https://python-chess.readthedocs.io/en/latest/</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="testing"><a class="header" href="#testing">Testing</a></h1>
-<p>tests cover unit checks, perft validation, and search regressions. the early
-stubs keep the harness running so more detailed checks can be added later.</p>
+<h2 id="1-unit-target"><a class="header" href="#1-unit-target">1) unit target</a></h2>
+<p>the unit binary validates base harness and assertions.</p>
+<pre><code class="language-powershell">ctest --test-dir build -R test_unit
+</code></pre>
+<h2 id="2-perft-target"><a class="header" href="#2-perft-target">2) perft target</a></h2>
+<p>perft target verifies suite parsing and depth loop plumbing.</p>
+<pre><code class="language-powershell">ctest --test-dir build -R test_perft
+</code></pre>
+<h2 id="3-search-target"><a class="header" href="#3-search-target">3) search target</a></h2>
+<p>search test accepts fen and depth and runs engine search path.</p>
+<pre><code class="language-powershell">build/test_search "startpos" 4
+</code></pre>
 <h2 id="references-15"><a class="header" href="#references-15">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://cmake.org/cmake/help/latest/manual/ctest.1.html">https://cmake.org/cmake/help/latest/manual/ctest.1.html</a></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="benchmarks"><a class="header" href="#benchmarks">Benchmarks</a></h1>
-<p>benchmark binaries will report nodes per second, eval throughput, and tt
-hitrates. these numbers will track performance changes as the engine evolves.</p>
+<h2 id="1-nps-bench"><a class="header" href="#1-nps-bench">1) nps bench</a></h2>
+<p>this target is where search throughput reporting will live.</p>
+<pre><code class="language-powershell">build/bench_nps
+</code></pre>
+<h2 id="2-eval-bench"><a class="header" href="#2-eval-bench">2) eval bench</a></h2>
+<p>this target measures pure eval speed, with and without nnue weights loaded.</p>
+<pre><code class="language-powershell">build/bench_eval
+</code></pre>
+<h2 id="3-tt-bench"><a class="header" href="#3-tt-bench">3) tt bench</a></h2>
+<p>this target tracks table probe hit ratio behavior under repeated searches.</p>
+<pre><code class="language-powershell">build/bench_tt
+</code></pre>
 <h2 id="references-16"><a class="header" href="#references-16">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Nodes_per_Second">https://www.chessprogramming.org/Nodes_per_Second</a></p>
 
                     </main>
 

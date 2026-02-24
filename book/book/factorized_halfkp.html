@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,13 +175,25 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="factorized-halfkp"><a class="header" href="#factorized-halfkp">Factorized HalfKP</a></h1>
-<p>the factorized halfkp feature set splits king and piece features to reduce
-model size while preserving expressive power. this chapter will outline the
-feature indexing, normalization, and export format used by the engine.</p>
+<h2 id="1-factorization-goal"><a class="header" href="#1-factorization-goal">1) factorization goal</a></h2>
+<p>factorized halfkp style modeling separates piece features from deeper dense
+blocks so runtime updates stay cheap and the model stays small.</p>
+<pre><code class="language-text">input planes -&gt; compact hidden layer -&gt; scalar score
+</code></pre>
+<h2 id="2-practical-baseline-here"><a class="header" href="#2-practical-baseline-here">2) practical baseline here</a></h2>
+<p>this engine currently uses a minimal nnue style 12x64 encoding and a small relu
+network as the stable baseline while feature factorization evolves.</p>
+<pre><code class="language-python">self.fc1 = torch.nn.Linear(768, 64)
+self.fc2 = torch.nn.Linear(64, 1)
+</code></pre>
+<h2 id="3-migration-path"><a class="header" href="#3-migration-path">3) migration path</a></h2>
+<p>the training and export format already isolate the model shape so factorized
+halfkp indexing can be introduced without changing uci behavior.</p>
+<pre><code class="language-python">export_nnue_weights(model, "train/nnue_weights.bin")
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/NNUE">https://www.chessprogramming.org/NNUE</a>
+<a href="https://www.chessprogramming.org/HalfKP">https://www.chessprogramming.org/HalfKP</a></p>
 
                     </main>
 

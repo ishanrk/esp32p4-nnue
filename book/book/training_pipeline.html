@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,13 +175,24 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="training-pipeline"><a class="header" href="#training-pipeline">Training Pipeline</a></h1>
-<p>the training pipeline consumes pgn data, labels positions using a teacher, and
-optimizes the nnue network. each stage is isolated to keep experiments focused
-and reproducible.</p>
+<h2 id="1-data-sources"><a class="header" href="#1-data-sources">1) data sources</a></h2>
+<p>training accepts pgn input or random legal position sampling.</p>
+<pre><code class="language-python">boards = sample_pgn(args.pgn, max_positions=args.samples)
+boards = random_legal_positions(count=args.samples)
+</code></pre>
+<h2 id="2-labels"><a class="header" href="#2-labels">2) labels</a></h2>
+<p>the default labeler uses heuristic centipawn values. you can replace this with
+stockfish or your own teacher output later.</p>
+<pre><code class="language-python">def heuristic_cp(board: chess.Board) -&gt; int:
+    return material_white_minus_black(board)
+</code></pre>
+<h2 id="3-train-and-export"><a class="header" href="#3-train-and-export">3) train and export</a></h2>
+<p>model training and binary export are one command.</p>
+<pre><code class="language-powershell">python train/train.py --samples 50000 --epochs 8 --out train/nnue_weights.bin
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://pytorch.org/docs/stable/index.html">https://pytorch.org/docs/stable/index.html</a>
+<a href="https://python-chess.readthedocs.io/en/latest/">https://python-chess.readthedocs.io/en/latest/</a></p>
 
                     </main>
 

@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,13 +175,20 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="perft"><a class="header" href="#perft">Perft</a></h1>
-<p>perft is used to validate move generation by counting nodes at fixed depths.
-the harness will load known positions and compare node totals as a guard rail
-before deeper search work begins.</p>
+<h2 id="1-purpose"><a class="header" href="#1-purpose">1) purpose</a></h2>
+<p>perft verifies legal move generation by counting leaf nodes at fixed depth.</p>
+<pre><code class="language-text">fen | depth | expected_nodes
+</code></pre>
+<h2 id="2-suite-input"><a class="header" href="#2-suite-input">2) suite input</a></h2>
+<p>the test runner reads <code>engine/tests/perft_suite.txt</code>.</p>
+<pre><code class="language-text">startpos | 1 | 20
+</code></pre>
+<h2 id="3-test-command"><a class="header" href="#3-test-command">3) test command</a></h2>
+<p>run perft stub through ctest target.</p>
+<pre><code class="language-powershell">ctest --test-dir build -R test_perft
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Perft">https://www.chessprogramming.org/Perft</a></p>
 
                     </main>
 

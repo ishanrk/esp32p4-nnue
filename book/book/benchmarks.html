@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,12 +175,20 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="benchmarks"><a class="header" href="#benchmarks">Benchmarks</a></h1>
-<p>benchmark binaries will report nodes per second, eval throughput, and tt
-hitrates. these numbers will track performance changes as the engine evolves.</p>
+<h2 id="1-nps-bench"><a class="header" href="#1-nps-bench">1) nps bench</a></h2>
+<p>this target is where search throughput reporting will live.</p>
+<pre><code class="language-powershell">build/bench_nps
+</code></pre>
+<h2 id="2-eval-bench"><a class="header" href="#2-eval-bench">2) eval bench</a></h2>
+<p>this target measures pure eval speed, with and without nnue weights loaded.</p>
+<pre><code class="language-powershell">build/bench_eval
+</code></pre>
+<h2 id="3-tt-bench"><a class="header" href="#3-tt-bench">3) tt bench</a></h2>
+<p>this target tracks table probe hit ratio behavior under repeated searches.</p>
+<pre><code class="language-powershell">build/bench_tt
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Nodes_per_Second">https://www.chessprogramming.org/Nodes_per_Second</a></p>
 
                     </main>
 

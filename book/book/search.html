@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,13 +175,21 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="search"><a class="header" href="#search">Search</a></h1>
-<p>the search module will implement alpha-beta with iterative deepening and a
-quiescence extension. the api is scoped to keep integration points simple while
-allowing later tuning of heuristics and pruning.</p>
+<h2 id="1-baseline-algorithm"><a class="header" href="#1-baseline-algorithm">1) baseline algorithm</a></h2>
+<p>the engine runs negamax alpha beta with legal move expansion.</p>
+<pre><code class="language-c">I32 score = negamax(pos, -30000, 30000, depth, 0, &amp;ctx, pv, &amp;pv_len);
+</code></pre>
+<h2 id="2-root-output"><a class="header" href="#2-root-output">2) root output</a></h2>
+<p>search result reports best move, score, nodes, and principal variation.</p>
+<pre><code class="language-c">SearchResult r = search_position(&amp;pos, &amp;tt, 5);
+</code></pre>
+<h2 id="3-uci-integration"><a class="header" href="#3-uci-integration">3) uci integration</a></h2>
+<p>the <code>go</code> command triggers root search and prints best move.</p>
+<pre><code class="language-text">go depth 5
+bestmove e2e4
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Alpha-Beta">https://www.chessprogramming.org/Alpha-Beta</a></p>
 
                     </main>
 

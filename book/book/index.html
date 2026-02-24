@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,14 +175,31 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="overview"><a class="header" href="#overview">Overview</a></h1>
-<p>This project targets a high performance chess engine in c with a dedicated
-python training pipeline for a factorized halfkp nnue. the early focus is clean
-interfaces, stable data flow, and buildable scaffolding so later optimization
-work has a clear landing zone.</p>
+<h2 id="1-product-shape"><a class="header" href="#1-product-shape">1) product shape</a></h2>
+<p>the repo has three execution layers that are wired end to end.</p>
+<pre><code class="language-text">engine/    c runtime with uci and cli play mode
+train/     python data, labeling, training, export
+book/      mdbook docs with implementation notes
+</code></pre>
+<h2 id="2-execution-entry-points"><a class="header" href="#2-execution-entry-points">2) execution entry points</a></h2>
+<p>the engine speaks uci and can also run a local human playable cli.</p>
+<pre><code class="language-c">int main(int argc, char **argv) {
+    if (argc &gt; 1 &amp;&amp; strcmp(argv[1], "--cli") == 0) {
+        cli_loop();
+        return 0;
+    }
+    uci_loop();
+    return 0;
+}
+</code></pre>
+<h2 id="3-neural-net-flow"><a class="header" href="#3-neural-net-flow">3) neural net flow</a></h2>
+<p>weights are trained in python and exported to a flat binary consumed by c.</p>
+<pre><code class="language-python">model = FactorizedHalfKP(input_dim=768, hidden_dim=64, output_dim=1)
+export_nnue_weights(model, "train/nnue_weights.bin")
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/">https://www.chessprogramming.org/</a>
+<a href="https://www.chessprogramming.org/NNUE">https://www.chessprogramming.org/NNUE</a></p>
 
                     </main>
 

@@ -1,9 +1,25 @@
 # Perft
 
-perft is used to validate move generation by counting nodes at fixed depths.
-the harness will load known positions and compare node totals as a guard rail
-before deeper search work begins.
+## 1) purpose
+perft verifies legal move generation by counting leaf nodes at fixed depth.
+
+```text
+fen | depth | expected_nodes
+```
+
+## 2) suite input
+the test runner reads `engine/tests/perft_suite.txt`.
+
+```text
+startpos | 1 | 20
+```
+
+## 3) test command
+run perft stub through ctest target.
+
+```powershell
+ctest --test-dir build -R test_perft
+```
 
 ## references
-
-- <https://example.com>
+<https://www.chessprogramming.org/Perft>

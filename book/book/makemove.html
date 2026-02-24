@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,12 +175,28 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="makemove"><a class="header" href="#makemove">Makemove</a></h1>
-<p>make and unmake operations will update position state and reversible metadata
-with minimal overhead. undo records are sized for stack allocation in search.</p>
+<h2 id="1-make-path"><a class="header" href="#1-make-path">1) make path</a></h2>
+<p>make updates board, castling, en passant, clocks, and side to move.</p>
+<pre><code class="language-c">Undo u;
+if (make_move(&amp;pos, m, &amp;u)) {
+    // search deeper
+}
+</code></pre>
+<h2 id="2-unmake-path"><a class="header" href="#2-unmake-path">2) unmake path</a></h2>
+<p>undo restores exact reversible state from stack data.</p>
+<pre><code class="language-c">unmake_move(&amp;pos, m, &amp;u);
+</code></pre>
+<h2 id="3-legality-gate"><a class="header" href="#3-legality-gate">3) legality gate</a></h2>
+<p>moves that leave own king in check are rejected at make time.</p>
+<pre><code class="language-c">Color moved_side = pos-&gt;side_to_move;
+pos-&gt;side_to_move = moved_side == COLOR_WHITE ? COLOR_BLACK : COLOR_WHITE;
+if (pos_in_check(pos, moved_side)) {
+    unmake_move(pos, m, undo);
+    return false;
+}
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Make_Move">https://www.chessprogramming.org/Make_Move</a></p>
 
                     </main>
 

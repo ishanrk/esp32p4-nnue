@@ -1,6 +1,5 @@
 #include "nnue.h"
 
-#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -109,6 +108,6 @@ I32 nnue_evaluate(const NNUEState *state, const Position *pos) {
         float h = hidden[i] > 0.0f ? hidden[i] : 0.0f;
         out += h * w2[i];
     }
-    I32 score = (I32)lrintf(out);
+    I32 score = (I32)(out >= 0.0f ? out + 0.5f : out - 0.5f);
     return pos->side_to_move == COLOR_WHITE ? score : -score;
 }

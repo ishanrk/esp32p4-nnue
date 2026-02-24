@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5d2656c.js";
+            window.path_to_searchindex_js = "searchindex-131d7bfa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-eec0f32e.js"></script>
@@ -175,13 +175,23 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="quiescence"><a class="header" href="#quiescence">Quiescence</a></h1>
-<p>quiescence search extends leaf evaluation by resolving tactical captures and
-checks, reducing horizon artifacts. the interface is included early so the
-alpha-beta core can call it consistently.</p>
+<h2 id="1-stand-pat"><a class="header" href="#1-stand-pat">1) stand pat</a></h2>
+<p>qsearch starts from static eval and updates alpha immediately.</p>
+<pre><code class="language-c">I32 stand_pat = eval_position(pos);
+if (stand_pat &gt; alpha) alpha = stand_pat;
+</code></pre>
+<h2 id="2-capture-only-expansion"><a class="header" href="#2-capture-only-expansion">2) capture only expansion</a></h2>
+<p>the current path searches captures only at q nodes.</p>
+<pre><code class="language-c">if ((move_flags(m) &amp; MOVE_FLAG_CAPTURE) == 0) {
+    continue;
+}
+</code></pre>
+<h2 id="3-tactical-stability"><a class="header" href="#3-tactical-stability">3) tactical stability</a></h2>
+<p>this removes many horizon artifacts at leaf depth.</p>
+<pre><code class="language-c">I32 score = -search_qsearch(pos, -beta, -alpha, depth - 1);
+</code></pre>
 <h2 id="references"><a class="header" href="#references">references</a></h2>
-<ul>
-<li><a href="https://example.com">https://example.com</a></li>
-</ul>
+<p><a href="https://www.chessprogramming.org/Quiescence_Search">https://www.chessprogramming.org/Quiescence_Search</a></p>
 
                     </main>
 
