@@ -1,0 +1,8 @@
+build
+esp/build
+__pycache__
+*.pyc
+*.bin
+*.npz
+*.csv
+.vscode

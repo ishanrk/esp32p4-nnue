@@ -1,0 +1,17 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build --parallel
+      - run: ctest --test-dir build --output-on-failure
+      - run: cmake -S . -B build-san -DP4_SAN=ON -DCMAKE_BUILD_TYPE=Debug
+      - run: cmake --build build-san --parallel
+      - run: ctest --test-dir build-san --output-on-failure
