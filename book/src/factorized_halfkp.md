@@ -1,30 +1,24 @@
-# Factorized HalfKP
+# King Conditioned Features
 
-## 1) factorization goal
-factorized halfkp style modeling separates piece features from deeper dense
-blocks so runtime updates stay cheap and the model stays small.
+The baseline is inspired by HalfKP but does not use an exact king-square index.
+Instead, each perspective conditions its nonking piece-square features on one
+of eight mirrored king buckets.
 
-```text
-input planes -> compact hidden layer -> scalar score
-```
+For a perspective, pieces of that color use five pawn-through-queen classes and
+opposing pieces use another five. Kings are excluded. The feature index inside
+a bucket is:
 
-## 2) practical baseline here
-this engine currently uses a minimal nnue style 12x64 encoding and a small relu
-network as the stable baseline while feature factorization evolves.
+    piece class times 64 plus perspective oriented square
 
-```python
-self.fc1 = torch.nn.Linear(768, 64)
-self.fc2 = torch.nn.Linear(64, 1)
-```
+The bucket offset adds bucket times 640. Black's perspective rank-mirrors every
+square so the same weights describe both board orientations.
 
-## 3) migration path
-the training and export format already isolate the model shape so factorized
-halfkp indexing can be introduced without changing uci behavior.
+This factorization gives incremental updates their useful property: moving a
+nonking piece changes one feature vector in each perspective. A king move only
+requires a perspective rebuild if its bucket changes in principle; the current
+make path conservatively refreshes that king's perspective after every king
+move while preserving the same bucketed architecture.
 
-```python
-export_nnue_weights(model, "train/nnue_weights.bin")
-```
-
-## references
-<https://www.chessprogramming.org/NNUE>
-<https://www.chessprogramming.org/HalfKP>
+The hidden width remains 64 and activation remains clipped ReLU. Experiments
+with 16 buckets, width 128, intermediate sub-1-MB designs, and SCReLU are
+deliberately outside the current baseline.

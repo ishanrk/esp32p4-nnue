@@ -3,214 +3,286 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define INF 32000
-#define MATE 30000
+#define SCORE_INFINITY 32000
+#define SCORE_MATE 30000
 
 typedef struct {
-    tt_t *tt;
-    mv_t killer[MAX_PLY][2];
-    mv_t pv[MAX_PLY][MAX_PLY];
-    u8 pn[MAX_PLY];
-    int hist[PC_N][64];
-    u64 nodes;
-    u64 start;
-    u64 end;
+    transposition_table_t *table;
+    move_t killer_moves[MAX_PLY][2];
+    move_t pv[MAX_PLY][MAX_PLY];
+    uint8_t pv_count[MAX_PLY];
+    int history_scores[PIECE_COUNT][64];
+    uint64_t nodes;
+    uint64_t start_ms;
+    uint64_t deadline_ms;
     bool stop;
-} sc_t;
+} search_context_t;
 
-bool tt_new(tt_t *t, size_t mb) {
-    tt_free(t);
-    if (!mb) return true;
-    size_t n = (mb << 20) / sizeof(tt_e);
-    size_t p = 1;
-    while ((p << 1) <= n) p <<= 1;
-    t->e = calloc(p, sizeof(*t->e));
-    if (!t->e) return false;
-    t->n = p;
+bool resize_transposition_table(transposition_table_t *table, size_t megabytes) {
+    free_transposition_table(table);
+    if (!megabytes) return true;
+    size_t requested = (megabytes << 20) / sizeof(tt_entry_t);
+    size_t count = 1;
+    while ((count << 1) <= requested) count <<= 1;
+    table->entries = calloc(count, sizeof(*table->entries));
+    if (!table->entries) return false;
+    table->count = count;
     return true;
 }
 
-void tt_free(tt_t *t) {
-    free(t->e);
-    t->e = NULL;
-    t->n = 0;
+void free_transposition_table(transposition_table_t *table) {
+    free(table->entries);
+    table->entries = NULL;
+    table->count = 0;
 }
 
-void tt_clear(tt_t *t) {
-    if (t->e) memset(t->e, 0, t->n * sizeof(*t->e));
+void clear_transposition_table(transposition_table_t *table) {
+    if (table->entries) {
+        memset(table->entries, 0, table->count * sizeof(*table->entries));
+    }
 }
 
-static bool rep(const pos_t *p) {
-    if (p->hm >= 100) return true;
-    int end = (int)p->hp - 1 - p->hm;
+static bool position_is_draw(const position_t *position) {
+    if (position->halfmove_clock >= 100) return true;
+    int end = (int)position->history_count - 1 - position->halfmove_clock;
     if (end < 0) end = 0;
-    for (int i = (int)p->hp - 3; i >= end; i -= 2) {
-        if (p->hist[i] == p->key) return true;
+    for (int i = (int)position->history_count - 3; i >= end; i -= 2) {
+        if (position->history[i] == position->key) return true;
     }
     return false;
 }
 
-static int tt_get(sc_t *s, u64 key, int depth, int alpha, int beta, int ply, mv_t *mv) {
-    if (!s->tt || !s->tt->n) return INF;
-    tt_e *e = &s->tt->e[key & (s->tt->n - 1)];
-    if (e->key != key) return INF;
-    *mv = e->mv;
-    int v = e->score;
-    if (v > MATE - MAX_PLY) v -= ply;
-    else if (v < -MATE + MAX_PLY) v += ply;
-    if (e->depth < depth) return INF;
-    if (e->flag == TT_EXACT) return v;
-    if (e->flag == TT_LO && v >= beta) return v;
-    if (e->flag == TT_HI && v <= alpha) return v;
-    return INF;
+static int probe_transposition_table(search_context_t *context,
+                                     uint64_t key,
+                                     int depth,
+                                     int alpha,
+                                     int beta,
+                                     int ply,
+                                     move_t *table_move) {
+    if (!context->table || !context->table->count) return SCORE_INFINITY;
+    tt_entry_t *entry =
+        &context->table->entries[key & (context->table->count - 1)];
+    if (entry->key != key) return SCORE_INFINITY;
+    *table_move = entry->move;
+    int score = entry->score;
+    // keep mate score relative to ply
+    if (score > SCORE_MATE - MAX_PLY) score -= ply;
+    else if (score < -SCORE_MATE + MAX_PLY) score += ply;
+    if (entry->depth < depth) return SCORE_INFINITY;
+    if (entry->flag == TT_EXACT) return score;
+    if (entry->flag == TT_LOWER_BOUND && score >= beta) return score;
+    if (entry->flag == TT_UPPER_BOUND && score <= alpha) return score;
+    return SCORE_INFINITY;
 }
 
-static void tt_put(sc_t *s, u64 key, int depth, int score, int flag, mv_t mv, int ply) {
-    if (!s->tt || !s->tt->n) return;
-    tt_e *e = &s->tt->e[key & (s->tt->n - 1)];
-    if (e->key == key && e->depth > depth && flag != TT_EXACT) return;
-    int v = score;
-    if (v > MATE - MAX_PLY) v += ply;
-    else if (v < -MATE + MAX_PLY) v -= ply;
-    e->key = key;
-    e->mv = mv;
-    e->score = (i16)v;
-    e->depth = (i8)depth;
-    e->flag = (u8)flag;
+static void store_transposition_entry(search_context_t *context,
+                                      uint64_t key,
+                                      int depth,
+                                      int score,
+                                      int flag,
+                                      move_t move,
+                                      int ply) {
+    if (!context->table || !context->table->count) return;
+    tt_entry_t *entry =
+        &context->table->entries[key & (context->table->count - 1)];
+    if (entry->key == key && entry->depth > depth && flag != TT_EXACT) return;
+    int stored_score = score;
+    // keep mate score relative to ply
+    if (stored_score > SCORE_MATE - MAX_PLY) stored_score += ply;
+    else if (stored_score < -SCORE_MATE + MAX_PLY) stored_score -= ply;
+    entry->key = key;
+    entry->move = move;
+    entry->score = (int16_t)stored_score;
+    entry->depth = (int8_t)depth;
+    entry->flag = (uint8_t)flag;
 }
 
-static void tick(sc_t *s) {
-    ++s->nodes;
-    if ((s->nodes & 2047u) == 0 && s->end && sys_ms() >= s->end) s->stop = true;
-}
-
-static int mscore(sc_t *s, const pos_t *p, mv_t m, mv_t tt, int ply) {
-    if (m == tt) return 2000000000;
-    int fl = MV_FL(m);
-    int pr = MV_PR(m);
-    if (fl & MF_CAP) {
-        int cap = (fl & MF_EP) ? (p->side == W ? BP : WP) : p->sq[MV_TO(m)];
-        int pc = p->sq[MV_FR(m)];
-        return 1000000 + pc_typ(cap) * 32 - pc_typ(pc) + pr * 128;
+static void count_node(search_context_t *context) {
+    ++context->nodes;
+    if ((context->nodes & 2047u) == 0 &&
+        context->deadline_ms &&
+        current_time_ms() >= context->deadline_ms) {
+        context->stop = true;
     }
-    if (pr) return 900000 + pr * 128;
-    if (s->killer[ply][0] == m) return 800000;
-    if (s->killer[ply][1] == m) return 700000;
-    int pc = p->sq[MV_FR(m)];
-    return s->hist[pc][MV_TO(m)];
 }
 
-static void pick(sc_t *s, const pos_t *p, ml_t *l, int i, mv_t tt, int ply) {
-    int bi = i;
-    int bs = mscore(s, p, l->v[i], tt, ply);
-    for (int j = i + 1; j < l->n; ++j) {
-        int x = mscore(s, p, l->v[j], tt, ply);
-        if (x > bs) {
-            bs = x;
-            bi = j;
+static int score_move(search_context_t *context,
+                      const position_t *position,
+                      move_t move,
+                      move_t table_move,
+                      int ply) {
+    if (move == table_move) return 2000000000;
+    int flags = MOVE_FLAGS(move);
+    int promotion = MOVE_PROMOTION(move);
+    if (flags & MOVE_CAPTURE) {
+        int captured = (flags & MOVE_EN_PASSANT)
+                           ? (position->side_to_move == WHITE
+                                  ? BLACK_PAWN
+                                  : WHITE_PAWN)
+                           : position->board[MOVE_TO(move)];
+        int piece = position->board[MOVE_FROM(move)];
+        return 1000000 + piece_type(captured) * 32 - piece_type(piece) +
+               promotion * 128;
+    }
+    if (promotion) return 900000 + promotion * 128;
+    if (context->killer_moves[ply][0] == move) return 800000;
+    if (context->killer_moves[ply][1] == move) return 700000;
+    int piece = position->board[MOVE_FROM(move)];
+    return context->history_scores[piece][MOVE_TO(move)];
+}
+
+static void select_next_move(search_context_t *context,
+                             const position_t *position,
+                             move_list_t *list,
+                             int index,
+                             move_t table_move,
+                             int ply) {
+    int best_index = index;
+    int best_score =
+        score_move(context, position, list->moves[index], table_move, ply);
+    for (int i = index + 1; i < list->count; ++i) {
+        int score = score_move(context, position, list->moves[i],
+                               table_move, ply);
+        if (score > best_score) {
+            best_score = score;
+            best_index = i;
         }
     }
-    mv_t m = l->v[i];
-    l->v[i] = l->v[bi];
-    l->v[bi] = m;
+    move_t move = list->moves[index];
+    list->moves[index] = list->moves[best_index];
+    list->moves[best_index] = move;
 }
 
-static int qsearch(sc_t *s, pos_t *p, int alpha, int beta, int ply) {
-    tick(s);
-    if (s->stop) return 0;
-    if (ply >= MAX_PLY - 1) return eval(p);
-    bool chk = pos_chk(p, p->side);
-    if (!chk) {
-        int v = eval(p);
-        if (v >= beta) return v;
-        if (v > alpha) alpha = v;
+static int quiescence_search(search_context_t *context,
+                             position_t *position,
+                             int alpha,
+                             int beta,
+                             int ply) {
+    count_node(context);
+    if (context->stop) return 0;
+    if (ply >= MAX_PLY - 1) return evaluate(position);
+    bool in_check = side_in_check(position, position->side_to_move);
+    if (!in_check) {
+        int score = evaluate(position);
+        if (score >= beta) return score;
+        if (score > alpha) alpha = score;
     }
 
-    ml_t l;
-    gen(p, &l, !chk);
-    int legal = 0;
-    for (int i = 0; i < l.n; ++i) {
-        pick(s, p, &l, i, 0, ply);
-        undo_t u;
-        if (!mv_do(p, l.v[i], &u)) continue;
-        ++legal;
-        int v = -qsearch(s, p, -beta, -alpha, ply + 1);
-        mv_undo(p, l.v[i], &u);
-        if (s->stop) return 0;
-        if (v >= beta) return v;
-        if (v > alpha) alpha = v;
+    move_list_t list;
+    generate_moves(position, &list, !in_check);
+    int legal_moves = 0;
+    for (int i = 0; i < list.count; ++i) {
+        select_next_move(context, position, &list, i, 0, ply);
+        undo_t undo;
+        if (!make_move(position, list.moves[i], &undo)) continue;
+        ++legal_moves;
+        int score =
+            -quiescence_search(context, position, -beta, -alpha, ply + 1);
+        undo_move(position, list.moves[i], &undo);
+        if (context->stop) return 0;
+        if (score >= beta) return score;
+        if (score > alpha) alpha = score;
     }
-    if (chk && !legal) return -MATE + ply;
+    if (in_check && !legal_moves) return -SCORE_MATE + ply;
     return alpha;
 }
 
-static int neg(sc_t *s, pos_t *p, int depth, int alpha, int beta, int ply) {
-    tick(s);
-    s->pn[ply] = 0;
-    if (s->stop) return 0;
-    if (ply >= MAX_PLY - 1) return eval(p);
-    if (ply && rep(p)) return 0;
+static int principal_variation_search(search_context_t *context,
+                                      position_t *position,
+                                      int depth,
+                                      int alpha,
+                                      int beta,
+                                      int ply) {
+    count_node(context);
+    context->pv_count[ply] = 0;
+    if (context->stop) return 0;
+    if (ply >= MAX_PLY - 1) return evaluate(position);
+    if (ply && position_is_draw(position)) return 0;
 
-    bool chk = pos_chk(p, p->side);
-    if (chk) ++depth;
-    if (depth <= 0) return qsearch(s, p, alpha, beta, ply);
+    bool in_check = side_in_check(position, position->side_to_move);
+    if (in_check) ++depth;
+    if (depth <= 0) {
+        return quiescence_search(context, position, alpha, beta, ply);
+    }
 
-    int olda = alpha;
-    mv_t ttm = 0;
-    int tv = tt_get(s, p->key, depth, alpha, beta, ply, &ttm);
-    if (tv != INF && ply) return tv;
+    int original_alpha = alpha;
+    move_t table_move = 0;
+    int table_score = probe_transposition_table(
+        context, position->key, depth, alpha, beta, ply, &table_move);
+    if (table_score != SCORE_INFINITY && ply) return table_score;
 
-    ml_t l;
-    gen(p, &l, false);
-    mv_t best = 0;
-    int bestv = -INF;
-    int legal = 0;
+    move_list_t list;
+    generate_moves(position, &list, false);
+    move_t best_move = 0;
+    int best_score = -SCORE_INFINITY;
+    int legal_moves = 0;
 
-    for (int i = 0; i < l.n; ++i) {
-        pick(s, p, &l, i, ttm, ply);
-        mv_t m = l.v[i];
-        int quiet = !(MV_FL(m) & MF_CAP) && !MV_PR(m);
-        undo_t u;
-        if (!mv_do(p, m, &u)) continue;
-        bool gives = pos_chk(p, p->side);
-        int v;
-        if (!legal) {
-            v = -neg(s, p, depth - 1, -beta, -alpha, ply + 1);
+    for (int i = 0; i < list.count; ++i) {
+        select_next_move(context, position, &list, i, table_move, ply);
+        move_t move = list.moves[i];
+        bool quiet = !(MOVE_FLAGS(move) & MOVE_CAPTURE) &&
+                     !MOVE_PROMOTION(move);
+        undo_t undo;
+        if (!make_move(position, move, &undo)) continue;
+        bool gives_check = side_in_check(position, position->side_to_move);
+        int score;
+        if (!legal_moves) {
+            score = -principal_variation_search(
+                context, position, depth - 1, -beta, -alpha, ply + 1);
         } else {
             // reduce late quiet moves
-            int red = depth >= 3 && legal >= 4 && quiet && !chk && !gives;
-            v = -neg(s, p, depth - 1 - red, -alpha - 1, -alpha, ply + 1);
-            if (!s->stop && red && v > alpha) v = -neg(s, p, depth - 1, -alpha - 1, -alpha, ply + 1);
-            if (!s->stop && v > alpha && v < beta) v = -neg(s, p, depth - 1, -beta, -alpha, ply + 1);
+            int reduction = depth >= 3 && legal_moves >= 4 && quiet &&
+                            !in_check && !gives_check;
+            score = -principal_variation_search(
+                context, position, depth - 1 - reduction,
+                -alpha - 1, -alpha, ply + 1);
+            if (!context->stop && reduction && score > alpha) {
+                score = -principal_variation_search(
+                    context, position, depth - 1,
+                    -alpha - 1, -alpha, ply + 1);
+            }
+            if (!context->stop && score > alpha && score < beta) {
+                score = -principal_variation_search(
+                    context, position, depth - 1, -beta, -alpha, ply + 1);
+            }
         }
-        mv_undo(p, m, &u);
-        if (s->stop) return 0;
-        ++legal;
+        undo_move(position, move, &undo);
+        if (context->stop) return 0;
+        ++legal_moves;
 
-        if (v > bestv) {
-            bestv = v;
-            best = m;
+        if (score > best_score) {
+            best_score = score;
+            best_move = move;
         }
-        if (v > alpha) {
-            alpha = v;
-            s->pv[ply][0] = m;
-            int n = s->pn[ply + 1];
-            if (n > MAX_PLY - ply - 1) n = MAX_PLY - ply - 1;
-            memcpy(&s->pv[ply][1], s->pv[ply + 1], (size_t)n * sizeof(mv_t));
-            s->pn[ply] = (u8)(n + 1);
+        if (score > alpha) {
+            alpha = score;
+            context->pv[ply][0] = move;
+            int child_count = context->pv_count[ply + 1];
+            if (child_count > MAX_PLY - ply - 1) {
+                child_count = MAX_PLY - ply - 1;
+            }
+            memcpy(&context->pv[ply][1], context->pv[ply + 1],
+                   (size_t)child_count * sizeof(move_t));
+            context->pv_count[ply] = (uint8_t)(child_count + 1);
         }
         if (alpha >= beta) {
             if (quiet) {
-                if (s->killer[ply][0] != m) {
-                    s->killer[ply][1] = s->killer[ply][0];
-                    s->killer[ply][0] = m;
+                if (context->killer_moves[ply][0] != move) {
+                    context->killer_moves[ply][1] =
+                        context->killer_moves[ply][0];
+                    context->killer_moves[ply][0] = move;
                 }
-                int pc = p->sq[MV_FR(m)];
-                int *h = &s->hist[pc][MV_TO(m)];
-                *h += depth * depth;
-                if (*h > 1000000) {
-                    for (int a = 0; a < PC_N; ++a) {
-                        for (int b = 0; b < 64; ++b) s->hist[a][b] >>= 1;
+                int piece = position->board[MOVE_FROM(move)];
+                int *history_score =
+                    &context->history_scores[piece][MOVE_TO(move)];
+                *history_score += depth * depth;
+                if (*history_score > 1000000) {
+                    for (int history_piece = 0;
+                         history_piece < PIECE_COUNT;
+                         ++history_piece) {
+                        for (int square = 0; square < 64; ++square) {
+                            context->history_scores[history_piece][square] >>= 1;
+                        }
                     }
                 }
             }
@@ -218,51 +290,63 @@ static int neg(sc_t *s, pos_t *p, int depth, int alpha, int beta, int ply) {
         }
     }
 
-    if (!legal) return chk ? -MATE + ply : 0;
-    int flag = bestv <= olda ? TT_HI : bestv >= beta ? TT_LO : TT_EXACT;
-    tt_put(s, p->key, depth, bestv, flag, best, ply);
-    return bestv;
+    if (!legal_moves) return in_check ? -SCORE_MATE + ply : 0;
+    int flag = best_score <= original_alpha
+                   ? TT_UPPER_BOUND
+                   : best_score >= beta ? TT_LOWER_BOUND : TT_EXACT;
+    store_transposition_entry(context, position->key, depth, best_score,
+                              flag, best_move, ply);
+    return best_score;
 }
 
-sr_t search(pos_t *p, tt_t *t, lim_t lim, info_fn fn, void *arg) {
-    sr_t out;
-    memset(&out, 0, sizeof(out));
-    sc_t *s = calloc(1, sizeof(*s));
-    if (!s) return out;
-    s->tt = t;
-    s->start = sys_ms();
-    s->end = lim.ms ? s->start + lim.ms : 0;
-    int maxd = lim.depth > 0 ? lim.depth : 64;
-    if (maxd >= MAX_PLY) maxd = MAX_PLY - 1;
+search_result_t search_position(position_t *position,
+                                transposition_table_t *table,
+                                search_limits_t limits,
+                                search_info_fn info,
+                                void *context_argument) {
+    search_result_t result;
+    memset(&result, 0, sizeof(result));
+    search_context_t *context = calloc(1, sizeof(*context));
+    if (!context) return result;
+    context->table = table;
+    context->start_ms = current_time_ms();
+    context->deadline_ms = limits.move_time_ms
+                               ? context->start_ms + limits.move_time_ms
+                               : 0;
+    int max_depth = limits.depth > 0 ? limits.depth : 64;
+    if (max_depth >= MAX_PLY) max_depth = MAX_PLY - 1;
 
-    for (int d = 1; d <= maxd; ++d) {
-        s->pn[0] = 0;
-        int v = neg(s, p, d, -INF, INF, 0);
-        if (s->stop) break;
-        out.score = v;
-        out.depth = d;
-        out.nodes = s->nodes;
-        out.ms = sys_ms() - s->start;
-        out.pn = s->pn[0];
-        memcpy(out.pv, s->pv[0], (size_t)out.pn * sizeof(mv_t));
-        out.best = out.pn ? out.pv[0] : 0;
-        if (fn) fn(&out, arg);
-        if (v > MATE - MAX_PLY || v < -MATE + MAX_PLY) break;
+    for (int depth = 1; depth <= max_depth; ++depth) {
+        context->pv_count[0] = 0;
+        int score = principal_variation_search(
+            context, position, depth, -SCORE_INFINITY, SCORE_INFINITY, 0);
+        if (context->stop) break;
+        result.score = score;
+        result.depth = depth;
+        result.nodes = context->nodes;
+        result.elapsed_ms = current_time_ms() - context->start_ms;
+        result.pv_count = context->pv_count[0];
+        memcpy(result.pv, context->pv[0],
+               (size_t)result.pv_count * sizeof(move_t));
+        result.best_move = result.pv_count ? result.pv[0] : 0;
+        if (info) info(&result, context_argument);
+        if (score > SCORE_MATE - MAX_PLY ||
+            score < -SCORE_MATE + MAX_PLY) break;
     }
 
-    if (!out.best) {
-        ml_t l;
-        gen(p, &l, false);
-        for (int i = 0; i < l.n; ++i) {
-            undo_t u;
-            if (!mv_do(p, l.v[i], &u)) continue;
-            mv_undo(p, l.v[i], &u);
-            out.best = l.v[i];
+    if (!result.best_move) {
+        move_list_t list;
+        generate_moves(position, &list, false);
+        for (int i = 0; i < list.count; ++i) {
+            undo_t undo;
+            if (!make_move(position, list.moves[i], &undo)) continue;
+            undo_move(position, list.moves[i], &undo);
+            result.best_move = list.moves[i];
             break;
         }
     }
-    out.nodes = s->nodes;
-    out.ms = sys_ms() - s->start;
-    free(s);
-    return out;
+    result.nodes = context->nodes;
+    result.elapsed_ms = current_time_ms() - context->start_ms;
+    free(context);
+    return result;
 }

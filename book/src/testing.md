@@ -1,25 +1,34 @@
 # Testing
 
-## 1) unit target
-the unit binary validates base harness and assertions.
+The project intentionally has one focused C regression binary registered as
+p4test. Running it directly prints ok on success; CTest supplies failure
+reporting for normal builds and continuous integration.
 
-```powershell
-ctest --test-dir build -R test_unit
-```
+The binary checks:
 
-## 2) perft target
-perft target verifies suite parsing and depth loop plumbing.
+- the fixed 32-byte NNUE header
+- six canonical perft positions at their recorded depths
+- position validity after every perft depth
+- incremental NNUE accumulators against full refresh after every legal root move
+- NNUE make and undo restoration for normal, castling-rich, en passant, and promotion positions
+- a depth-three search smoke test with a one-megabyte transposition table
 
-```powershell
-ctest --test-dir build -R test_perft
-```
+The generated mock network has deterministic nonzero biases and weights, so
+incremental tests compare meaningful accumulator changes without checking in a
+binary model.
 
-## 3) search target
-search test accepts fen and depth and runs engine search path.
+Release test:
 
-```powershell
-build/test_search "startpos" 4
-```
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    cmake --build build --parallel
+    ctest --test-dir build --output-on-failure
 
-## references
-<https://cmake.org/cmake/help/latest/manual/ctest.1.html>
+Sanitizer test:
+
+    cmake -S . -B build-san -DP4_SAN=ON -DCMAKE_BUILD_TYPE=Debug
+    cmake --build build-san --parallel
+    ctest --test-dir build-san --output-on-failure
+
+Clang uses the same commands in a separate directory with
+CMAKE_C_COMPILER=clang. The CI workflow runs the GCC release and sanitizer
+configurations.

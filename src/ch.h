@@ -5,180 +5,210 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef uint8_t u8;
-typedef int8_t i8;
-typedef uint16_t u16;
-typedef int16_t i16;
-typedef uint32_t u32;
-typedef int32_t i32;
-typedef uint64_t u64;
-typedef int64_t i64;
-typedef u64 bb_t;
-typedef u32 mv_t;
+typedef uint64_t bitboard_t;
+typedef uint32_t move_t;
 
-enum { W, B, C_N };
-enum { P, N, BI, R, Q, K, T_N };
+enum { WHITE, BLACK, COLOR_COUNT };
+enum { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, PIECE_TYPE_COUNT };
 enum {
-    WP, WN, WB, WR, WQ, WK,
-    BP, BN, BB, BR, BQ, BK,
-    PC_N,
-    NO_PC = 255
+    WHITE_PAWN,
+    WHITE_KNIGHT,
+    WHITE_BISHOP,
+    WHITE_ROOK,
+    WHITE_QUEEN,
+    WHITE_KING,
+    BLACK_PAWN,
+    BLACK_KNIGHT,
+    BLACK_BISHOP,
+    BLACK_ROOK,
+    BLACK_QUEEN,
+    BLACK_KING,
+    PIECE_COUNT,
+    NO_PIECE = 255
 };
-enum { O_W, O_B, O_A };
-enum { CA_WK = 1, CA_WQ = 2, CA_BK = 4, CA_BQ = 8 };
-enum { MF_CAP = 1, MF_EP = 2, MF_CA = 4, MF_DB = 8 };
-enum { TT_EXACT, TT_LO, TT_HI };
-enum { NO_SQ = 64, MAX_MV = 256, MAX_PLY = 128, POS_HIST = 256 };
-enum { NN_B = 8, NN_F = 640, NN_H = 64, NN_W = NN_B * NN_F * NN_H };
+enum { ALL_PIECES = 2 };
+enum {
+    CASTLE_WHITE_KING = 1,
+    CASTLE_WHITE_QUEEN = 2,
+    CASTLE_BLACK_KING = 4,
+    CASTLE_BLACK_QUEEN = 8
+};
+enum {
+    MOVE_CAPTURE = 1,
+    MOVE_EN_PASSANT = 2,
+    MOVE_CASTLE = 4,
+    MOVE_DOUBLE_PAWN = 8
+};
+enum { TT_EXACT, TT_LOWER_BOUND, TT_UPPER_BOUND };
+enum {
+    NO_SQUARE = 64,
+    MAX_MOVES = 256,
+    MAX_PLY = 128,
+    POSITION_HISTORY_SIZE = 256
+};
+enum {
+    NNUE_BUCKET_COUNT = 8,
+    NNUE_FEATURES_PER_BUCKET = 640,
+    NNUE_HIDDEN_SIZE = 64,
+    NNUE_FEATURE_WEIGHT_COUNT =
+        NNUE_BUCKET_COUNT * NNUE_FEATURES_PER_BUCKET * NNUE_HIDDEN_SIZE
+};
 
-#define BIT(s) (UINT64_C(1) << (s))
-#define SQ(f, r) ((r) * 8 + (f))
-#define MV(fr, to, pr, fl) ((mv_t)((fr) | ((to) << 6) | ((pr) << 12) | ((fl) << 15)))
-#define MV_FR(m) ((int)((m) & 63u))
-#define MV_TO(m) ((int)(((m) >> 6) & 63u))
-#define MV_PR(m) ((int)(((m) >> 12) & 7u))
-#define MV_FL(m) ((int)(((m) >> 15) & 15u))
+#define SQUARE_BIT(square) (UINT64_C(1) << (square))
+#define MAKE_SQUARE(file, rank) ((rank) * 8 + (file))
+#define PACK_MOVE(from, to, promotion, flags) \
+    ((move_t)((from) | ((to) << 6) | ((promotion) << 12) | ((flags) << 15)))
+#define MOVE_FROM(move) ((int)((move) & 63u))
+#define MOVE_TO(move) ((int)(((move) >> 6) & 63u))
+#define MOVE_PROMOTION(move) ((int)(((move) >> 12) & 7u))
+#define MOVE_FLAGS(move) ((int)(((move) >> 15) & 15u))
 
-static inline int pc_col(int pc) { return pc >= BP; }
-static inline int pc_typ(int pc) { return pc % 6; }
-static inline int popn(bb_t x) { return __builtin_popcountll(x); }
-static inline int lsb(bb_t x) { return __builtin_ctzll(x); }
-static inline int poplsb(bb_t *x) {
-    int s = lsb(*x);
-    *x &= *x - 1;
-    return s;
+static inline int piece_color(int piece) { return piece >= BLACK_PAWN; }
+static inline int piece_type(int piece) { return piece % PIECE_TYPE_COUNT; }
+static inline int bit_count(bitboard_t bits) { return __builtin_popcountll(bits); }
+static inline int first_square(bitboard_t bits) { return __builtin_ctzll(bits); }
+static inline int pop_first_square(bitboard_t *bits) {
+    int square = first_square(*bits);
+    *bits &= *bits - 1;
+    return square;
 }
 
 typedef struct {
-    mv_t v[MAX_MV];
-    int n;
-} ml_t;
+    move_t moves[MAX_MOVES];
+    int count;
+} move_list_t;
 
 typedef struct {
     char magic[8];
-    u16 ver;
-    u16 b;
-    u16 f;
-    u16 h;
-    u16 clip;
-    u16 q1;
-    u16 q2;
-    u16 rsv;
-    u32 bytes;
-    i32 ob;
-} nn_hdr_t;
+    uint16_t version;
+    uint16_t bucket_count;
+    uint16_t features_per_bucket;
+    uint16_t hidden_size;
+    uint16_t activation_clip;
+    uint16_t feature_quantization;
+    uint16_t output_quantization;
+    uint16_t reserved;
+    uint32_t file_size;
+    int32_t output_bias;
+} nnue_header_t;
 
 enum {
-    NN_BYTES = sizeof(nn_hdr_t) + NN_H * (int)sizeof(i16) +
-               2 * NN_H * (int)sizeof(i16) + NN_W
+    NNUE_FILE_SIZE = sizeof(nnue_header_t) +
+                     NNUE_HIDDEN_SIZE * (int)sizeof(int16_t) +
+                     2 * NNUE_HIDDEN_SIZE * (int)sizeof(int16_t) +
+                     NNUE_FEATURE_WEIGHT_COUNT
 };
 
 typedef struct {
-    bb_t bb[PC_N];
-    bb_t occ[3];
-    u64 key;
-    u64 hist[POS_HIST];
-    i16 acc[2][NN_H];
-    u8 sq[64];
-    u16 hm;
-    u16 fm;
-    u16 hp;
-    u8 nb[2];
-    u8 side;
-    u8 ca;
-    u8 ep;
-} pos_t;
+    bitboard_t pieces[PIECE_COUNT];
+    bitboard_t occupancy[3];
+    uint64_t key;
+    uint64_t history[POSITION_HISTORY_SIZE];
+    int16_t accumulator[COLOR_COUNT][NNUE_HIDDEN_SIZE];
+    uint8_t board[64];
+    uint16_t halfmove_clock;
+    uint16_t fullmove_number;
+    uint16_t history_count;
+    uint8_t king_bucket[COLOR_COUNT];
+    uint8_t side_to_move;
+    uint8_t castling;
+    uint8_t en_passant;
+} position_t;
 
 typedef struct {
-    u64 key;
-    i16 acc[2][NN_H];
-    u16 hm;
-    u16 fm;
-    u16 hp;
-    u8 ca;
-    u8 ep;
-    u8 nb[2];
-    u8 pc;
-    u8 cap;
+    uint64_t key;
+    int16_t accumulator[COLOR_COUNT][NNUE_HIDDEN_SIZE];
+    uint16_t halfmove_clock;
+    uint16_t fullmove_number;
+    uint16_t history_count;
+    uint8_t castling;
+    uint8_t en_passant;
+    uint8_t king_bucket[COLOR_COUNT];
+    uint8_t moved_piece;
+    uint8_t captured_piece;
 } undo_t;
 
 typedef struct {
-    u64 key;
-    mv_t mv;
-    i16 score;
-    i8 depth;
-    u8 flag;
-} tt_e;
+    uint64_t key;
+    move_t move;
+    int16_t score;
+    int8_t depth;
+    uint8_t flag;
+} tt_entry_t;
 
 typedef struct {
-    tt_e *e;
-    size_t n;
-} tt_t;
+    tt_entry_t *entries;
+    size_t count;
+} transposition_table_t;
 
 typedef struct {
     int depth;
-    u64 ms;
-} lim_t;
+    uint64_t move_time_ms;
+} search_limits_t;
 
 typedef struct {
-    mv_t best;
-    mv_t pv[MAX_PLY];
-    int pn;
+    move_t best_move;
+    move_t pv[MAX_PLY];
+    int pv_count;
     int score;
     int depth;
-    u64 nodes;
-    u64 ms;
-} sr_t;
+    uint64_t nodes;
+    uint64_t elapsed_ms;
+} search_result_t;
 
-typedef void (*info_fn)(const sr_t *r, void *arg);
+typedef void (*search_info_fn)(const search_result_t *result, void *context);
 
-extern bb_t g_kn[64];
-extern bb_t g_kg[64];
-extern bb_t g_pa[2][64];
-extern bb_t g_ray[8][64];
-extern u64 g_zpc[PC_N][64];
-extern u64 g_zca[16];
-extern u64 g_zep[8];
-extern u64 g_zside;
+extern bitboard_t knight_attacks[64];
+extern bitboard_t king_attacks[64];
+extern bitboard_t pawn_attacks[COLOR_COUNT][64];
+extern bitboard_t attack_rays[8][64];
+extern uint64_t zobrist_piece[PIECE_COUNT][64];
+extern uint64_t zobrist_castling[16];
+extern uint64_t zobrist_en_passant[8];
+extern uint64_t zobrist_side;
 
-void ch_init(void);
-bb_t bb_bi(int sq, bb_t occ);
-bb_t bb_ro(int sq, bb_t occ);
+void initialize_chess(void);
+bitboard_t generate_bishop_attacks(int square, bitboard_t occupancy);
+bitboard_t generate_rook_attacks(int square, bitboard_t occupancy);
 
-void pos_clear(pos_t *p);
-void pos_start(pos_t *p);
-bool pos_set(pos_t *p, const char *fen);
-bool pos_ok(const pos_t *p);
-int pos_king(const pos_t *p, int c);
-bool pos_att(const pos_t *p, int sq, int by);
-bool pos_chk(const pos_t *p, int c);
-u64 pos_hash(const pos_t *p);
+void clear_position(position_t *position);
+void set_start_position(position_t *position);
+bool set_position_fen(position_t *position, const char *fen);
+bool position_is_valid(const position_t *position);
+int find_king_square(const position_t *position, int color);
+bool square_is_attacked(const position_t *position, int square, int by_color);
+bool side_in_check(const position_t *position, int color);
+uint64_t calculate_position_hash(const position_t *position);
 
-void gen(const pos_t *p, ml_t *l, bool caps);
-bool mv_do(pos_t *p, mv_t m, undo_t *u);
-void mv_undo(pos_t *p, mv_t m, const undo_t *u);
-mv_t mv_parse(pos_t *p, const char *s);
-void mv_str(mv_t m, char out[6]);
-u64 perft(pos_t *p, int d);
+void generate_moves(const position_t *position, move_list_t *list, bool captures_only);
+bool make_move(position_t *position, move_t move, undo_t *undo);
+void undo_move(position_t *position, move_t move, const undo_t *undo);
+move_t parse_uci_move(position_t *position, const char *text);
+void move_to_uci(move_t move, char output[6]);
+uint64_t perft(position_t *position, int depth);
 
-bool nn_load(const char *path);
-bool nn_bind(const void *data, size_t n);
-void nn_drop(void);
-bool nn_on(void);
-void nn_ref(pos_t *p);
-void nn_ref_side(pos_t *p, int c);
-void nn_add(pos_t *p, int pc, int sq);
-void nn_del(pos_t *p, int pc, int sq);
-int nn_eval(const pos_t *p);
+bool load_nnue(const char *path);
+bool bind_nnue(const void *data, size_t size);
+void unload_nnue(void);
+bool nnue_is_loaded(void);
+void refresh_nnue(position_t *position);
+void refresh_nnue_perspective(position_t *position, int perspective);
+void add_nnue_feature(position_t *position, int piece, int square);
+void remove_nnue_feature(position_t *position, int piece, int square);
+int evaluate_nnue(const position_t *position);
 
-int eval(const pos_t *p);
+int evaluate(const position_t *position);
 
-bool tt_new(tt_t *t, size_t mb);
-void tt_free(tt_t *t);
-void tt_clear(tt_t *t);
-sr_t search(pos_t *p, tt_t *t, lim_t lim, info_fn fn, void *arg);
+bool resize_transposition_table(transposition_table_t *table, size_t megabytes);
+void free_transposition_table(transposition_table_t *table);
+void clear_transposition_table(transposition_table_t *table);
+search_result_t search_position(position_t *position,
+                                transposition_table_t *table,
+                                search_limits_t limits,
+                                search_info_fn info,
+                                void *context);
 
-u64 sys_ms(void);
-void uci(void);
+uint64_t current_time_ms(void);
+void run_uci_loop(void);
 
 #endif

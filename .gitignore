@@ -1,8 +1,10 @@
-build
-esp/build
-__pycache__
-*.pyc
+/build*/
+/esp/build/
+/book/book/
+__pycache__/
+*.py[cod]
 *.bin
 *.npz
 *.csv
-.vscode
+*.pt
+/.vscode/

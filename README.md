@@ -1,100 +1,92 @@
 # esp32p4 nnue
 
-A compact chess engine for the ESP32 P4 RISC V microcontroller
+A compact C11 chess engine for the ESP32 P4 RISC-V microcontroller. Training
+runs on a host; the desktop executable and ESP-IDF firmware compile the same
+chess core.
 
-The engine uses C11 bitboards a square board incremental make and undo alpha beta search and a quantized king bucket NNUE. Desktop and firmware builds share the same core code.
+## Current core
 
-## current core
+position_t combines twelve piece bitboards, color and total occupancy, and a
+64-square lookup array. make_move and undo_move update this state, clocks,
+castling, en passant, Zobrist history, and NNUE accumulators incrementally.
+generate_moves covers castling, promotion, and en passant, with make_move as the
+shared legality gate.
 
-The board keeps piece bitboards color occupancy and direct square lookup. Sliding attacks use precomputed rays with nearest blocker lookup. Move generation covers castling promotion and en passant. Every generated move passes through the same make and undo path used by search.
+The single-threaded search uses iterative deepening principal variation search,
+quiescence, a fixed-size transposition table, killer moves, history ordering,
+check extension, and late move reduction.
 
-Search uses iterative deepening principal variation search quiescence transposition tables killer moves history ordering and late move reduction.
+The integer NNUE uses two perspectives, eight mirrored king buckets, ten
+nonking piece classes, 640 piece-square features per bucket, and 64 hidden
+values. Feature weights are signed int8, accumulators and output weights use
+signed int16, and the exported network is 328096 bytes. The portable scalar C
+path is the correctness reference for later ESP32 P4 PIE work.
 
-The NNUE uses eight king buckets ten nonking piece classes and sixty four hidden values. Feature weights use int8. Accumulators use int16. The exported network occupies 328096 bytes. Move updates change only the affected feature vectors. King bucket changes rebuild one perspective.
+## Host build and test
 
-The current inference path uses portable scalar C. The scalar path remains the correctness reference when the ESP32 P4 PIE kernel lands.
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    cmake --build build --parallel
+    ctest --test-dir build --output-on-failure
 
-## build
+Run the UCI engine with:
 
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-ctest --test-dir build --output-on-failure
-```
+    ./build/p4nnue
 
-Run the UCI engine with
+Example input:
 
-```sh
-./build/p4nnue
-```
+    uci
+    isready
+    position startpos moves e2e4 e7e5 g1f3
+    go depth 6
+    quit
 
-Example input
+The test binary checks six standard perft positions, make and undo restoration,
+incremental NNUE against full refresh, and a search smoke test.
 
-```text
-uci
-isready
-position startpos moves e2e4 e7e5 g1f3
-go depth 6
-quit
-```
+For AddressSanitizer and UndefinedBehaviorSanitizer:
 
-The test binary checks standard perft positions make and undo state incremental NNUE refresh equivalence and a search smoke test. A sanitizer build can be run with
+    cmake -S . -B build-san -DP4_SAN=ON -DCMAKE_BUILD_TYPE=Debug
+    cmake --build build-san --parallel
+    ctest --test-dir build-san --output-on-failure
 
-```sh
-cmake -S . -B build-san -DP4_SAN=ON -DCMAKE_BUILD_TYPE=Debug
-cmake --build build-san
-ctest --test-dir build-san --output-on-failure
-```
+## Training
 
-## training
+Install the host dependencies:
 
-Install the training tools with
+    python -m pip install -r train/requirements.txt
 
-```sh
-python -m pip install -r train/requirements.txt
-```
+Generate fixed-node Stockfish teacher labels, prepare sparse features, train,
+and export:
 
-Create teacher labels from PGN games with a local Stockfish binary
+    python train/label.py games.pgn stockfish labels.csv --nodes 20000
+    python train/prep.py labels.csv data.npz
+    python train/train.py data.npz model.pt
+    python train/export.py model.pt nn.bin
 
-```sh
-python train/label.py games.pgn stockfish labels.csv --nodes 20000
-```
+Load the exported file through UCI:
 
-Prepare the sparse feature data train the network and export the integer file
+    setoption name EvalFile value nn.bin
 
-```sh
-python train/prep.py labels.csv data.npz
-python train/train.py data.npz model.pt
-python train/export.py model.pt nn.bin
-```
+## ESP32 P4
 
-Load the file through UCI
+Install ESP-IDF, then build from the firmware directory:
 
-```text
-setoption name EvalFile value nn.bin
-```
+    cd esp
+    idf.py set-target esp32p4
+    idf.py build
+    idf.py -p PORT flash monitor
 
-Training runs on the host. The exported weights run in the C engine.
+esp/components/core/CMakeLists.txt references the shared files in src directly.
+esp/main/app.c only configures serial I/O and starts the UCI loop.
 
-## esp32 p4
+## Repository layout
 
-Install ESP IDF then build from the firmware directory
+- .github contains continuous integration
+- book contains mdBook source and configuration
+- esp contains the thin ESP-IDF wrapper
+- src contains the shared core and desktop UCI entry point
+- test contains the host regression binary
+- train contains teacher labeling, data preparation, training, and export
 
-```sh
-cd esp
-idf.py set-target esp32p4
-idf.py build
-idf.py -p PORT flash monitor
-```
-
-The firmware starts the same UCI loop over the configured serial console. Real cycle counts memory use and PIE results will come from the physical board.
-
-## layout
-
-`src` contains the engine and NNUE runtime
-
-`test` contains host correctness tests
-
-`train` contains teacher labeling training and export
-
-`esp` contains the ESP IDF firmware wrapper
+Generated book output, build trees, datasets, checkpoints, caches, and exported
+networks are ignored.

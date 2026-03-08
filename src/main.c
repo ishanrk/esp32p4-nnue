@@ -1,7 +1,7 @@
 #include "ch.h"
 
 int main(void) {
-    ch_init();
-    uci();
+    initialize_chess();
+    run_uci_loop();
     return 0;
 }

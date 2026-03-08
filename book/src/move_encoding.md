@@ -1,32 +1,24 @@
 # Move Encoding
 
-## 1) packed layout
-all move info fits in a single `U32`.
+move_t is a packed 32-bit unsigned value. The current layout is:
 
-```text
-bits 0..5    from square
-bits 6..11   to square
-bits 12..19  flags
-bits 20..23  promotion piece
-```
+    bits 0..5    source square
+    bits 6..11   destination square
+    bits 12..14  promotion selector
+    bits 15..18  move flags
+    bits 19..31  unused
 
-## 2) api calls
-encode once and decode with cheap masking.
+PACK_MOVE constructs a value. MOVE_FROM, MOVE_TO, MOVE_PROMOTION, and
+MOVE_FLAGS decode it without memory access. Promotion selectors zero through
+four mean none, knight, bishop, rook, and queen. Flags identify capture, en
+passant, castling, and a double pawn move.
 
-```c
-Move m = move_make(SQUARE_E2, SQUARE_E4, MOVE_FLAG_DOUBLE_PAWN, 0);
-Square from = move_from(m);
-Square to = move_to(m);
-U32 flags = move_flags(m);
-```
+move_list_t stores up to MAX_MOVES packed values in moves and records the used
+length in count. Generation silently stops at that fixed capacity, so search
+never allocates a move list on the heap.
 
-## 3) uci conversion
-human and protocol form stays in `e2e4` notation.
-
-```c
-char out[6];
-move_to_uci(m, out);  // "e2e4"
-```
-
-## references
-<https://www.chessprogramming.org/Encoding_Moves>
+move_to_uci receives a packed move and a six-byte output buffer. It writes
+coordinate notation such as e2e4 or a7a8q and terminates the string.
+parse_uci_move receives a mutable position and UCI text. It generates
+candidates, uses make_move and undo_move to find the matching legal move, and
+returns zero when the text does not identify a legal move.

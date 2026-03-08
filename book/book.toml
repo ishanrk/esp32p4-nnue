@@ -1,6 +1,6 @@
 [book]
-title = "Uberchess NN"
-authors = ["cursor"]
+title = "ESP32 P4 NNUE"
+authors = ["ishan kumthekar"]
 
 [build]
 build-dir = "book"

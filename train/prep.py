@@ -8,13 +8,15 @@ from data import load_csv
 
 
 def main() -> None:
-    p = argparse.ArgumentParser()
-    p.add_argument("src")
-    p.add_argument("out")
-    a = p.parse_args()
-    x0, x1, y = load_csv(a.src)
-    np.savez_compressed(a.out, a=x0, b=x1, y=y)
-    print(len(y))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("src")
+    parser.add_argument("out")
+    args = parser.parse_args()
+    side_features, opponent_features, labels = load_csv(args.src)
+    np.savez_compressed(
+        args.out, a=side_features, b=opponent_features, y=labels
+    )
+    print(len(labels))
 
 
 if __name__ == "__main__":

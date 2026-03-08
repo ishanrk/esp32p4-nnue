@@ -1,36 +1,45 @@
 # Overview
 
-## 1) product shape
-the repo has three execution layers that are wired end to end.
+This repository contains one compact chess engine core for desktop hosts and the
+ESP32 P4. The core is C11 and has no Linux dependency. The desktop executable
+and ESP-IDF component compile the same files, so host testing exercises the code
+that firmware will run.
 
-```text
-engine/    c runtime with uci and cli play mode
-train/     python data, labeling, training, export
-book/      mdbook docs with implementation notes
-```
+## Repository layout
 
-## 2) execution entry points
-the engine speaks uci and can also run a local human playable cli.
+    .github/        continuous integration
+    book/           mdBook configuration and source
+    esp/            thin ESP-IDF wrapper
+    src/            shared chess core and desktop UCI entry point
+    test/           host regression test
+    train/          teacher labeling training and export
+    CMakeLists.txt  host build
+    README.md       project entry point
 
-```c
-int main(int argc, char **argv) {
-    if (argc > 1 && strcmp(argv[1], "--cli") == 0) {
-        cli_loop();
-        return 0;
-    }
-    uci_loop();
-    return 0;
-}
-```
+Generated mdBook output belongs in book/book but is ignored. Host build
+directories, Python caches, datasets, checkpoints, and exported networks are
+also ignored rather than stored as source.
 
-## 3) neural net flow
-weights are trained in python and exported to a flat binary consumed by c.
+## Runtime flow
 
-```python
-model = FactorizedHalfKP(input_dim=768, hidden_dim=64, output_dim=1)
-export_nnue_weights(model, "train/nnue_weights.bin")
-```
+initialize_chess prepares attack tables and deterministic Zobrist keys.
+set_start_position or set_position_fen creates a synchronized position_t.
+generate_moves emits pseudo-legal packed moves, and make_move rejects any move
+that exposes the moving king. search_position uses this same make and undo
+path. evaluate selects NNUE when a network is loaded and otherwise uses the
+classical fallback.
 
-## references
-<https://www.chessprogramming.org/>
-<https://www.chessprogramming.org/NNUE>
+The desktop main and ESP app_main both initialize the tables and enter
+run_uci_loop. Only their process and serial startup differ.
+
+## Chosen baseline
+
+The search is single threaded iterative deepening principal variation search
+with quiescence, a fixed-size transposition table, killer moves, history
+ordering, check extension, and late move reduction.
+
+The NNUE has two perspectives, eight mirrored king buckets, 640 nonking
+piece-square features per bucket, and 64 hidden values. Its 328096-byte integer
+network is shared by host inference and firmware. The current implementation is
+portable scalar C and remains the correctness reference for later ESP32 P4 PIE
+work.

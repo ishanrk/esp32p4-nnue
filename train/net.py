@@ -2,27 +2,33 @@ from __future__ import annotations
 
 import torch
 
-from data import B, F, H, PAD
+from data import FEATURE_COUNT, HIDDEN_SIZE
 
 Q1 = 64
 Q2 = 64
 CLIP = 127
 
 
-class Net(torch.nn.Module):
+class NnueNetwork(torch.nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        self.ft = torch.nn.Embedding(PAD + 1, H, padding_idx=PAD)
-        self.bias = torch.nn.Parameter(torch.zeros(H))
-        self.out = torch.nn.Linear(2 * H, 1)
-        torch.nn.init.normal_(self.ft.weight, std=0.02)
+        self.feature_transformer = torch.nn.Embedding(
+            FEATURE_COUNT + 1, HIDDEN_SIZE, padding_idx=FEATURE_COUNT
+        )
+        self.feature_bias = torch.nn.Parameter(torch.zeros(HIDDEN_SIZE))
+        self.output = torch.nn.Linear(2 * HIDDEN_SIZE, 1)
+        torch.nn.init.normal_(self.feature_transformer.weight, std=0.02)
         with torch.no_grad():
-            self.ft.weight[PAD].zero_()
+            self.feature_transformer.weight[FEATURE_COUNT].zero_()
 
-    def forward(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-        x = self.ft(a).sum(1) + self.bias
-        y = self.ft(b).sum(1) + self.bias
-        hi = CLIP / Q1
-        x = torch.clamp(x, 0.0, hi)
-        y = torch.clamp(y, 0.0, hi)
-        return self.out(torch.cat((x, y), 1)).squeeze(1)
+    def forward(
+        self, side_features: torch.Tensor, opponent_features: torch.Tensor
+    ) -> torch.Tensor:
+        side = self.feature_transformer(side_features).sum(1) + self.feature_bias
+        opponent = (
+            self.feature_transformer(opponent_features).sum(1) + self.feature_bias
+        )
+        clip = CLIP / Q1
+        side = torch.clamp(side, 0.0, clip)
+        opponent = torch.clamp(opponent, 0.0, clip)
+        return self.output(torch.cat((side, opponent), 1)).squeeze(1)

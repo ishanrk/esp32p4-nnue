@@ -1,25 +1,15 @@
 # Benchmarks
 
-## 1) nps bench
-this target is where search throughput reporting will live.
+There is no separate benchmark target in the current repository. This keeps
+the root build limited to the shared core, desktop UCI executable, and
+regression test.
 
-```powershell
-build/bench_nps
-```
+The UCI perft command reports legal-move node count and elapsed milliseconds.
+Normal go commands report depth, nodes, elapsed milliseconds, and nodes per
+second through print_search_info. These measurements are useful for local
+comparisons but are not a stable benchmark suite.
 
-## 2) eval bench
-this target measures pure eval speed, with and without nnue weights loaded.
-
-```powershell
-build/bench_eval
-```
-
-## 3) tt bench
-this target tracks table probe hit ratio behavior under repeated searches.
-
-```powershell
-build/bench_tt
-```
-
-## references
-<https://www.chessprogramming.org/Nodes_per_Second>
+Later focused work can add deterministic search, evaluation, and transposition
+table benchmarks when there is hardware or algorithm work to compare. ESP32 P4
+cycle counts, native 64-bit versus paired 32-bit bitboards, and portable scalar
+versus PIE kernels all remain future measurement tasks.

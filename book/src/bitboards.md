@@ -1,33 +1,31 @@
 # Bitboards
 
-## 1) representation
-each bit in `U64` maps to a square and supports branch light occupancy checks.
+bitboard_t is a 64-bit unsigned value with bit zero representing a1 and bit 63
+representing h8. SQUARE_BIT creates a one-square mask, while bit_count,
+first_square, and pop_first_square provide the operations used throughout move
+generation.
 
-```c
-typedef uint64_t U64;
-U64 white_occ = pos->occupancy[COLOR_WHITE];
-U64 all_occ = pos->all;
-```
+## Initialization
 
-## 2) low level ops
-the core helpers are small and inline friendly.
+initialize_chess takes no arguments and may be called repeatedly. On its first
+call it fills knight_attacks, king_attacks, pawn_attacks, and eight directional
+attack_rays. It also creates the deterministic Zobrist key tables. Later calls
+return immediately, which lets position initialization safely ensure the
+tables exist.
 
-```c
-U32 bb_popcount(U64 bb);
-Square bb_lsb(U64 bb);
-U64 bb_pop_lsb(U64 *bb);
-```
+## Sliding attacks
 
-## 3) practical usage
-bitboards are rebuilt from mailbox state for correctness now, and can later be
-updated incrementally for speed.
+generate_bishop_attacks(square, occupancy) and
+generate_rook_attacks(square, occupancy) receive an origin square and the
+combined occupancy bitboard. Each returns all reachable squares including the
+nearest blocker in each direction.
 
-```c
-pos_rebuild_bitboards(pos);
-if (pos->pieces[COLOR_WHITE][PIECE_KNIGHT] & (1ULL << SQUARE_F3)) {
-    // square has a white knight
-}
-```
+The internal sliding_line_attacks intersects a precomputed ray with occupancy,
+finds the nearest blocker with a leading- or trailing-zero count, and removes
+the part of the ray beyond that blocker. Bishops combine four diagonal lines;
+rooks combine four orthogonal lines. Queens combine both results in
+generate_slider_moves.
 
-## references
-<https://www.chessprogramming.org/Bitboards>
+The representation remains native 64-bit bitboards. A pair-of-32-bit
+experiment for RV32 is deliberately deferred until benchmarking can compare it
+against this reference.

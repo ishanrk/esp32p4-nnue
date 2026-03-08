@@ -1,28 +1,17 @@
 # Quiescence
 
-## 1) stand pat
-qsearch starts from static eval and updates alpha immediately.
+quiescence_search is the leaf search used by principal_variation_search. It
+receives the shared search context, mutable position, alpha-beta window, and
+ply, and returns a side-to-move score.
 
-```c
-I32 stand_pat = eval_position(pos);
-if (stand_pat > alpha) alpha = stand_pat;
-```
+When the side is not in check, evaluate supplies the stand-pat score. A score at
+or above beta returns immediately; a score above alpha raises alpha. The
+function then asks generate_moves for captures only.
 
-## 2) capture only expansion
-the current path searches captures only at q nodes.
+When the side is in check, stand pat is not legal and the generator emits all
+pseudo-legal evasions. Every candidate still passes through make_move. If none
+is legal, quiescence returns a mate score adjusted by ply.
 
-```c
-if ((move_flags(m) & MOVE_FLAG_CAPTURE) == 0) {
-    continue;
-}
-```
-
-## 3) tactical stability
-this removes many horizon artifacts at leaf depth.
-
-```c
-I32 score = -search_qsearch(pos, -beta, -alpha, depth - 1);
-```
-
-## references
-<https://www.chessprogramming.org/Quiescence_Search>
+Capture ordering uses the same table-move, promotion, capture, killer, and
+history scoring helper as normal search. Each recursive score is negated, and
+every successful make is paired with undo before alpha or beta handling.

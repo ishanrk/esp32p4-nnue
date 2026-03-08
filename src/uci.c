@@ -4,77 +4,103 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void info(const sr_t *r, void *arg) {
-    (void)arg;
-    printf("info depth %d nodes %llu time %llu ", r->depth,
-           (unsigned long long)r->nodes, (unsigned long long)r->ms);
-    if (r->score > 29000) printf("score mate %d ", (30000 - r->score + 1) / 2);
-    else if (r->score < -29000) printf("score mate -%d ", (30000 + r->score + 1) / 2);
-    else printf("score cp %d ", r->score);
-    if (r->ms) printf("nps %llu ", (unsigned long long)(r->nodes * 1000u / r->ms));
+static void print_search_info(const search_result_t *result, void *context) {
+    (void)context;
+    printf("info depth %d nodes %llu time %llu ", result->depth,
+           (unsigned long long)result->nodes,
+           (unsigned long long)result->elapsed_ms);
+    if (result->score > 29000) {
+        printf("score mate %d ", (30000 - result->score + 1) / 2);
+    } else if (result->score < -29000) {
+        printf("score mate -%d ", (30000 + result->score + 1) / 2);
+    } else {
+        printf("score cp %d ", result->score);
+    }
+    if (result->elapsed_ms) {
+        printf("nps %llu ",
+               (unsigned long long)(result->nodes * 1000u /
+                                    result->elapsed_ms));
+    }
     printf("pv");
-    for (int i = 0; i < r->pn; ++i) {
-        char b[6];
-        mv_str(r->pv[i], b);
-        printf(" %s", b);
+    for (int i = 0; i < result->pv_count; ++i) {
+        char uci_move[6];
+        move_to_uci(result->pv[i], uci_move);
+        printf(" %s", uci_move);
     }
     putchar('\n');
     fflush(stdout);
 }
 
-static void set_pos(pos_t *p, char *line) {
+static void set_uci_position(position_t *position, char *line) {
     char *moves = strstr(line, " moves ");
     if (moves) *moves = '\0';
 
-    if (!strncmp(line, "position startpos", 17)) pos_start(p);
-    else if (!strncmp(line, "position fen ", 13)) pos_set(p, line + 13);
-    else return;
+    if (!strncmp(line, "position startpos", 17)) {
+        set_start_position(position);
+    } else if (!strncmp(line, "position fen ", 13)) {
+        set_position_fen(position, line + 13);
+    } else {
+        return;
+    }
 
     if (!moves) return;
-    char *s = moves + 7;
-    for (char *tok = strtok(s, " \t\r\n"); tok; tok = strtok(NULL, " \t\r\n")) {
-        mv_t m = mv_parse(p, tok);
-        if (!m) break;
-        undo_t u;
-        if (!mv_do(p, m, &u)) break;
+    char *move_text = moves + 7;
+    for (char *token = strtok(move_text, " \t\r\n");
+         token;
+         token = strtok(NULL, " \t\r\n")) {
+        move_t move = parse_uci_move(position, token);
+        if (!move) break;
+        undo_t undo;
+        if (!make_move(position, move, &undo)) break;
     }
 }
 
-static lim_t get_lim(pos_t *p, char *line) {
-    lim_t l = {0, 0};
-    u64 wt = 0;
-    u64 bt = 0;
-    u64 wi = 0;
-    u64 bi = 0;
-    char *tok = strtok(line, " \t\r\n");
-    while ((tok = strtok(NULL, " \t\r\n"))) {
-        char *v = strtok(NULL, " \t\r\n");
-        if (!v) break;
-        if (!strcmp(tok, "depth")) l.depth = atoi(v);
-        else if (!strcmp(tok, "movetime")) l.ms = strtoull(v, NULL, 10);
-        else if (!strcmp(tok, "wtime")) wt = strtoull(v, NULL, 10);
-        else if (!strcmp(tok, "btime")) bt = strtoull(v, NULL, 10);
-        else if (!strcmp(tok, "winc")) wi = strtoull(v, NULL, 10);
-        else if (!strcmp(tok, "binc")) bi = strtoull(v, NULL, 10);
-        else if (!strcmp(tok, "nodes")) {
+static search_limits_t parse_search_limits(position_t *position, char *line) {
+    search_limits_t limits = {0, 0};
+    uint64_t white_time = 0;
+    uint64_t black_time = 0;
+    uint64_t white_increment = 0;
+    uint64_t black_increment = 0;
+    char *token = strtok(line, " \t\r\n");
+    while ((token = strtok(NULL, " \t\r\n"))) {
+        char *value = strtok(NULL, " \t\r\n");
+        if (!value) break;
+        if (!strcmp(token, "depth")) {
+            limits.depth = atoi(value);
+        } else if (!strcmp(token, "movetime")) {
+            limits.move_time_ms = strtoull(value, NULL, 10);
+        } else if (!strcmp(token, "wtime")) {
+            white_time = strtoull(value, NULL, 10);
+        } else if (!strcmp(token, "btime")) {
+            black_time = strtoull(value, NULL, 10);
+        } else if (!strcmp(token, "winc")) {
+            white_increment = strtoull(value, NULL, 10);
+        } else if (!strcmp(token, "binc")) {
+            black_increment = strtoull(value, NULL, 10);
+        } else if (!strcmp(token, "nodes")) {
         }
     }
-    if (!l.ms && (wt || bt)) {
-        u64 t = p->side == W ? wt : bt;
-        u64 inc = p->side == W ? wi : bi;
-        l.ms = t / 30u + inc / 2u;
-        if (l.ms < 10) l.ms = 10;
-        if (t > 40 && l.ms > t - 20) l.ms = t - 20;
+    if (!limits.move_time_ms && (white_time || black_time)) {
+        uint64_t remaining =
+            position->side_to_move == WHITE ? white_time : black_time;
+        uint64_t increment = position->side_to_move == WHITE
+                                 ? white_increment
+                                 : black_increment;
+        limits.move_time_ms = remaining / 30u + increment / 2u;
+        if (limits.move_time_ms < 10) limits.move_time_ms = 10;
+        if (remaining > 40 && limits.move_time_ms > remaining - 20) {
+            limits.move_time_ms = remaining - 20;
+        }
     }
-    if (!l.depth && !l.ms) l.depth = 8;
-    return l;
+    if (!limits.depth && !limits.move_time_ms) limits.depth = 8;
+    return limits;
 }
 
-void uci(void) {
-    pos_t p;
-    tt_t t = {0};
-    pos_start(&p);
-    tt_new(&t, 1);
+void run_uci_loop(void) {
+    position_t position;
+    transposition_table_t table = {0};
+    set_start_position(&position);
+    resize_transposition_table(&table, 1);
 
     char line[4096];
     while (fgets(line, sizeof(line), stdin)) {
@@ -87,46 +113,56 @@ void uci(void) {
         } else if (!strncmp(line, "isready", 7)) {
             puts("readyok");
         } else if (!strncmp(line, "ucinewgame", 10)) {
-            pos_start(&p);
-            tt_clear(&t);
+            set_start_position(&position);
+            clear_transposition_table(&table);
         } else if (!strncmp(line, "position ", 9)) {
-            set_pos(&p, line);
+            set_uci_position(&position, line);
         } else if (!strncmp(line, "setoption name Hash value ", 26)) {
-            size_t mb = strtoul(line + 26, NULL, 10);
-            if (!tt_new(&t, mb)) puts("info string hash alloc failed");
+            size_t megabytes = strtoul(line + 26, NULL, 10);
+            if (!resize_transposition_table(&table, megabytes)) {
+                puts("info string hash alloc failed");
+            }
         } else if (!strncmp(line, "setoption name EvalFile value ", 30)) {
-            char *s = line + 30;
-            s[strcspn(s, "\r\n")] = '\0';
-            if (nn_load(s)) {
-                nn_ref(&p);
+            char *path = line + 30;
+            path[strcspn(path, "\r\n")] = '\0';
+            if (load_nnue(path)) {
+                refresh_nnue(&position);
                 puts("info string nn loaded");
-            } else puts("info string nn load failed");
-        } else if (!strncmp(line, "go ", 3) || !strcmp(line, "go\n") || !strcmp(line, "go\r\n")) {
-            char tmp[4096];
-            memcpy(tmp, line, sizeof(tmp));
-            tmp[sizeof(tmp) - 1] = '\0';
-            lim_t l = get_lim(&p, tmp);
-            sr_t r = search(&p, &t, l, info, NULL);
-            if (r.best) {
-                char b[6];
-                mv_str(r.best, b);
-                printf("bestmove %s\n", b);
-            } else puts("bestmove 0000");
+            } else {
+                puts("info string nn load failed");
+            }
+        } else if (!strncmp(line, "go ", 3) ||
+                   !strcmp(line, "go\n") ||
+                   !strcmp(line, "go\r\n")) {
+            char copy[4096];
+            memcpy(copy, line, sizeof(copy));
+            copy[sizeof(copy) - 1] = '\0';
+            search_limits_t limits = parse_search_limits(&position, copy);
+            search_result_t result = search_position(
+                &position, &table, limits, print_search_info, NULL);
+            if (result.best_move) {
+                char uci_move[6];
+                move_to_uci(result.best_move, uci_move);
+                printf("bestmove %s\n", uci_move);
+            } else {
+                puts("bestmove 0000");
+            }
         } else if (!strncmp(line, "perft ", 6)) {
-            int d = atoi(line + 6);
-            u64 t0 = sys_ms();
-            u64 n = perft(&p, d);
-            u64 dt = sys_ms() - t0;
-            printf("info string perft %d nodes %llu time %llu\n", d,
-                   (unsigned long long)n, (unsigned long long)dt);
+            int depth = atoi(line + 6);
+            uint64_t start_ms = current_time_ms();
+            uint64_t nodes = perft(&position, depth);
+            uint64_t elapsed_ms = current_time_ms() - start_ms;
+            printf("info string perft %d nodes %llu time %llu\n", depth,
+                   (unsigned long long)nodes,
+                   (unsigned long long)elapsed_ms);
         } else if (!strncmp(line, "eval", 4)) {
-            printf("info string eval %d\n", eval(&p));
+            printf("info string eval %d\n", evaluate(&position));
         } else if (!strncmp(line, "quit", 4)) {
             break;
         }
         fflush(stdout);
     }
 
-    tt_free(&t);
-    nn_drop();
+    free_transposition_table(&table);
+    unload_nnue();
 }

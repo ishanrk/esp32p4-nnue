@@ -9,22 +9,22 @@ option(P4_NATIVE "use host cpu flags" OFF)
 option(P4_SAN "use sanitizers" OFF)
 
 set(P4_SRC
-    src/bb.c
-    src/eval.c
-    src/gen.c
-    src/nn.c
-    src/pos.c
+    src/bitboard.c
+    src/evaluate.c
+    src/movegen.c
+    src/nnue.c
+    src/position.c
     src/search.c
-    src/sys.c
+    src/system.c
 )
 
 add_library(p4core STATIC ${P4_SRC})
 target_include_directories(p4core PUBLIC src)
 
 if(MSVC)
-    target_compile_options(p4core PRIVATE /O2 /W4)
+    set(P4_WARNINGS /W4)
 else()
-    target_compile_options(p4core PRIVATE
+    set(P4_WARNINGS
         -O3
         -Wall
         -Wextra
@@ -42,6 +42,7 @@ else()
         target_link_options(p4core PUBLIC -fsanitize=address,undefined)
     endif()
 endif()
+target_compile_options(p4core PRIVATE ${P4_WARNINGS})
 
 include(CheckIPOSupported)
 check_ipo_supported(RESULT P4_IPO)
@@ -51,10 +52,12 @@ endif()
 
 add_executable(p4nnue src/main.c src/uci.c)
 target_link_libraries(p4nnue PRIVATE p4core)
+target_compile_options(p4nnue PRIVATE ${P4_WARNINGS})
 
 include(CTest)
 if(BUILD_TESTING)
     add_executable(p4test test/test.c)
     target_link_libraries(p4test PRIVATE p4core)
+    target_compile_options(p4test PRIVATE ${P4_WARNINGS})
     add_test(NAME p4test COMMAND p4test)
 endif()

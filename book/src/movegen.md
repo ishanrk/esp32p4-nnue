@@ -1,38 +1,22 @@
-# Movegen
+# Move Generation
 
-## 1) two stage generation
-the engine first emits pseudo legal moves, then filters to legal moves.
+generate_moves(position, list, captures_only) reads the position without
+changing it, clears the supplied move_list_t, and emits pseudo-legal moves for
+the side to move. With captures_only set, it limits ordinary generation to
+captures; search passes false in normal nodes and quiescence passes true when
+the side is not in check.
 
-```c
-MoveList pseudo;
-MoveList legal;
-movegen_pseudo_legal(&pos, &pseudo);
-movegen_legal(&pos, &legal);
-```
+Pawn generation handles single and double advances, both captures, en passant,
+and all four promotion choices. Leaper generation intersects precomputed
+knight or king attacks with friendly occupancy. Slider generation calls
+generate_bishop_attacks and generate_rook_attacks, then removes friendly
+squares and optionally noncaptures.
 
-## 2) legal filter path
-every candidate is validated by make and unmake plus king safety.
+Castling is the only move class whose generator performs attack checks. It
+requires the castling right, king and rook on their expected squares, empty
+travel squares, the king not currently in check, and no attack on either king
+travel square.
 
-```c
-for (U32 i = 0; i < pseudo.count; i++) {
-    Position tmp = pos;
-    Undo u;
-    if (make_move(&tmp, pseudo.moves[i], &u)) {
-        legal.moves[legal.count++] = pseudo.moves[i];
-    }
-}
-```
-
-## 3) supported move classes
-normal, capture, promotion, en passant, castling, and double pawn push are encoded.
-
-```c
-MOVE_FLAG_CAPTURE
-MOVE_FLAG_PROMO
-MOVE_FLAG_ENPASSANT
-MOVE_FLAG_CASTLE
-MOVE_FLAG_DOUBLE_PAWN
-```
-
-## references
-<https://www.chessprogramming.org/Move_Generation>
+All other king-safety filtering belongs to make_move. This single legality gate
+is shared by parsing, perft, tests, and search, avoiding a second legal move
+implementation.
