@@ -1,6 +1,5 @@
 #include "ch.h"
 
-#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -83,7 +82,7 @@ bool set_position_fen(position_t *position, const char *fen) {
             if (file != 8 || !rank) return false;
             --rank;
             file = 0;
-        } else if (isdigit((unsigned char)*cursor)) {
+        } else if (*cursor >= '1' && *cursor <= '8') {
             file += *cursor - '0';
             if (file > 8) return false;
         } else {
@@ -125,6 +124,9 @@ bool set_position_fen(position_t *position, const char *fen) {
         position->en_passant =
             (uint8_t)MAKE_SQUARE(cursor[0] - 'a', cursor[1] - '1');
         cursor += 2;
+    }
+    if (*cursor && *cursor != ' ' && *cursor != '\r' && *cursor != '\n') {
+        return false;
     }
 
     if (*cursor == ' ') {
@@ -192,6 +194,17 @@ bool position_is_valid(const position_t *position) {
     if (position->side_to_move > BLACK ||
         position->castling > 15 ||
         position->en_passant > NO_SQUARE) return false;
+    if (position->en_passant != NO_SQUARE) {
+        int en_passant_rank = position->en_passant >> 3;
+        int expected_rank = position->side_to_move == WHITE ? 5 : 2;
+        int pawn_square = position->en_passant +
+                          (position->side_to_move == WHITE ? -8 : 8);
+        int expected_pawn = position->side_to_move == WHITE ?
+                            BLACK_PAWN : WHITE_PAWN;
+        if (en_passant_rank != expected_rank ||
+            position->board[position->en_passant] != NO_PIECE ||
+            position->board[pawn_square] != expected_pawn) return false;
+    }
     return position->key == calculate_position_hash(position);
 }
 

@@ -25,3 +25,9 @@ undo_move(position, move, undo) reverses piece motion, including castling,
 promotion, capture, and en passant. It then restores every saved reversible
 field and the original incremental key. Restoring the saved accumulators makes
 undo exact without a full NNUE refresh.
+
+The restoration contract covers the twelve piece bitboards, three occupancy
+bitboards, square lookup array, side to move, castling rights, en passant
+square, both clocks, Zobrist key, and history count. Tests verify these defined
+fields individually after undoing a complete legal sequence rather than
+comparing structure padding.

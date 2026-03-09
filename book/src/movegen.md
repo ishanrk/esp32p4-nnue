@@ -10,7 +10,9 @@ Pawn generation handles single and double advances, both captures, en passant,
 and all four promotion choices. Leaper generation intersects precomputed
 knight or king attacks with friendly occupancy. Slider generation calls
 generate_bishop_attacks and generate_rook_attacks, then removes friendly
-squares and optionally noncaptures.
+squares and optionally noncaptures. A queen uses the union of the bishop and
+rook results, so it shares the same directional blocker convention without a
+separate attack table.
 
 Castling is the only move class whose generator performs attack checks. It
 requires the castling right, king and rook on their expected squares, empty

@@ -161,7 +161,6 @@ typedef void (*search_info_fn)(const search_result_t *result, void *context);
 extern bitboard_t knight_attacks[64];
 extern bitboard_t king_attacks[64];
 extern bitboard_t pawn_attacks[COLOR_COUNT][64];
-extern bitboard_t attack_rays[8][64];
 extern uint64_t zobrist_piece[PIECE_COUNT][64];
 extern uint64_t zobrist_castling[16];
 extern uint64_t zobrist_en_passant[8];

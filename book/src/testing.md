@@ -7,6 +7,11 @@ reporting for normal builds and continuous integration.
 The binary checks:
 
 - the fixed 32-byte NNUE header
+- coordinate-generated pawn, knight, and king attacks for every source square
+- bishop, rook, and composed queen attacks against an independent square-walking implementation
+- sliding attacks with empty, full, edge, center, adjacent-blocker, distant-blocker, multiple-blocker, and fixed-seed occupancies
+- supported FEN fields and a focused set of malformed board, side, piece, and en passant inputs
+- defined position state after making and undoing a legal sequence containing en passant and castling
 - six canonical perft positions at their recorded depths
 - position validity after every perft depth
 - incremental NNUE accumulators against full refresh after every legal root move
@@ -16,6 +21,13 @@ The binary checks:
 The generated mock network has deterministic nonzero biases and weights, so
 incremental tests compare meaningful accumulator changes without checking in a
 binary model.
+
+The sliding test implementation advances file and rank coordinates one square
+at a time, includes the first occupied square, and then stops in that
+direction. It does not call the production bishop or rook functions. Every
+source square is checked against a bounded deterministic occupancy set, keeping
+the coverage suitable for normal CI. Position restoration compares named
+fields and arrays rather than padding bytes.
 
 Release test:
 

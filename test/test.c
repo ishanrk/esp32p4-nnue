@@ -6,6 +6,17 @@
 
 static int test_failed;
 
+static const int bishop_steps[4][2] = {
+    {1, 1}, {-1, 1}, {1, -1}, {-1, -1}
+};
+static const int rook_steps[4][2] = {
+    {0, 1}, {0, -1}, {1, 0}, {-1, 0}
+};
+static const int sliding_steps[8][2] = {
+    {1, 1}, {-1, 1}, {1, -1}, {-1, -1},
+    {0, 1}, {0, -1}, {1, 0}, {-1, 0}
+};
+
 static void expect_u64(const char *name, uint64_t actual, uint64_t expected) {
     if (actual == expected) return;
     fprintf(stderr, "%s got %llu want %llu\n", name,
@@ -17,6 +28,252 @@ static void expect_true(const char *name, bool value) {
     if (value) return;
     fprintf(stderr, "%s failed\n", name);
     test_failed = 1;
+}
+
+static void expect_memory(const char *name,
+                          const void *actual,
+                          const void *expected,
+                          size_t size) {
+    if (!memcmp(actual, expected, size)) return;
+    fprintf(stderr, "%s differs\n", name);
+    test_failed = 1;
+}
+
+static bitboard_t walk_attacks(int square,
+                               bitboard_t occupancy,
+                               const int steps[][2],
+                               int step_count) {
+    bitboard_t attacks = 0;
+    for (int direction = 0; direction < step_count; ++direction) {
+        int file = square & 7;
+        int rank = square >> 3;
+        for (;;) {
+            file += steps[direction][0];
+            rank += steps[direction][1];
+            if ((unsigned)file > 7u || (unsigned)rank > 7u) break;
+            bitboard_t target = SQUARE_BIT(MAKE_SQUARE(file, rank));
+            attacks |= target;
+            if (occupancy & target) break;
+        }
+    }
+    return attacks;
+}
+
+static bitboard_t coordinate_attacks(int square,
+                                     const int steps[][2],
+                                     int step_count) {
+    bitboard_t attacks = 0;
+    int file = square & 7;
+    int rank = square >> 3;
+    for (int i = 0; i < step_count; ++i) {
+        int target_file = file + steps[i][0];
+        int target_rank = rank + steps[i][1];
+        if ((unsigned)target_file < 8u && (unsigned)target_rank < 8u) {
+            attacks |= SQUARE_BIT(MAKE_SQUARE(target_file, target_rank));
+        }
+    }
+    return attacks;
+}
+
+static void check_sliding_attacks(int square, bitboard_t occupancy) {
+    bitboard_t bishop = generate_bishop_attacks(square, occupancy);
+    bitboard_t rook = generate_rook_attacks(square, occupancy);
+    expect_u64("bishop attacks", bishop,
+               walk_attacks(square, occupancy, bishop_steps, 4));
+    expect_u64("rook attacks", rook,
+               walk_attacks(square, occupancy, rook_steps, 4));
+    expect_u64("queen attacks", bishop | rook,
+               walk_attacks(square, occupancy, sliding_steps, 8));
+}
+
+static bitboard_t blockers_at_distance(int square, int distance) {
+    bitboard_t blockers = 0;
+    for (int direction = 0; direction < 8; ++direction) {
+        int file = square & 7;
+        int rank = square >> 3;
+        for (int i = 0; i < distance; ++i) {
+            file += sliding_steps[direction][0];
+            rank += sliding_steps[direction][1];
+            if ((unsigned)file > 7u || (unsigned)rank > 7u) break;
+            if (i == distance - 1) {
+                blockers |= SQUARE_BIT(MAKE_SQUARE(file, rank));
+            }
+        }
+    }
+    return blockers;
+}
+
+static bitboard_t distant_blockers(int square) {
+    bitboard_t blockers = 0;
+    for (int direction = 0; direction < 8; ++direction) {
+        int file = square & 7;
+        int rank = square >> 3;
+        int last_square = NO_SQUARE;
+        for (;;) {
+            file += sliding_steps[direction][0];
+            rank += sliding_steps[direction][1];
+            if ((unsigned)file > 7u || (unsigned)rank > 7u) break;
+            last_square = MAKE_SQUARE(file, rank);
+        }
+        if (last_square != NO_SQUARE) blockers |= SQUARE_BIT(last_square);
+    }
+    return blockers;
+}
+
+static uint64_t next_test_bits(uint64_t *state) {
+    *state ^= *state << 13;
+    *state ^= *state >> 7;
+    *state ^= *state << 17;
+    return *state;
+}
+
+static void test_attacks(void) {
+    static const int knight_steps[8][2] = {
+        {1, 2}, {2, 1}, {2, -1}, {1, -2},
+        {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2}
+    };
+    static const int king_steps[8][2] = {
+        {-1, -1}, {0, -1}, {1, -1}, {-1, 0},
+        {1, 0}, {-1, 1}, {0, 1}, {1, 1}
+    };
+    static const int white_pawn_steps[2][2] = {{-1, 1}, {1, 1}};
+    static const int black_pawn_steps[2][2] = {{-1, -1}, {1, -1}};
+    static const bitboard_t fixed_occupancies[] = {
+        UINT64_C(0),
+        UINT64_MAX,
+        UINT64_C(0xff000000000000ff),
+        UINT64_C(0x8181818181818181),
+        UINT64_C(0xff818181818181ff),
+        UINT64_C(0x0000001818000000),
+        UINT64_C(0xaa55aa55aa55aa55),
+        UINT64_C(0x55aa55aa55aa55aa)
+    };
+    uint64_t random_state = UINT64_C(0x626f617264746573);
+
+    for (int square = 0; square < 64; ++square) {
+        expect_u64("white pawn attacks", pawn_attacks[WHITE][square],
+                   coordinate_attacks(square, white_pawn_steps, 2));
+        expect_u64("black pawn attacks", pawn_attacks[BLACK][square],
+                   coordinate_attacks(square, black_pawn_steps, 2));
+        expect_u64("knight attacks", knight_attacks[square],
+                   coordinate_attacks(square, knight_steps, 8));
+        expect_u64("king attacks", king_attacks[square],
+                   coordinate_attacks(square, king_steps, 8));
+
+        for (size_t i = 0; i < sizeof(fixed_occupancies) /
+                                      sizeof(fixed_occupancies[0]); ++i) {
+            check_sliding_attacks(square, fixed_occupancies[i]);
+        }
+        check_sliding_attacks(square, SQUARE_BIT(square));
+        check_sliding_attacks(square, blockers_at_distance(square, 1));
+        check_sliding_attacks(square, blockers_at_distance(square, 2));
+        check_sliding_attacks(square,
+                              blockers_at_distance(square, 1) |
+                              blockers_at_distance(square, 2));
+        check_sliding_attacks(square, distant_blockers(square));
+        for (int i = 0; i < 16; ++i) {
+            check_sliding_attacks(square, next_test_bits(&random_state));
+        }
+    }
+}
+
+static void test_fen_loading(void) {
+    position_t position;
+    set_start_position(&position);
+    expect_true("start position valid", position_is_valid(&position));
+    expect_u64("start side", position.side_to_move, WHITE);
+    expect_u64("start castling", position.castling,
+               CASTLE_WHITE_KING | CASTLE_WHITE_QUEEN |
+               CASTLE_BLACK_KING | CASTLE_BLACK_QUEEN);
+    expect_u64("start en passant", position.en_passant, NO_SQUARE);
+    expect_u64("start halfmove", position.halfmove_clock, 0);
+    expect_u64("start fullmove", position.fullmove_number, 1);
+
+    expect_true("black fen", set_position_fen(
+        &position, "4k3/8/8/8/4P3/8/8/4K3 b - e3 17 42"));
+    expect_u64("black side", position.side_to_move, BLACK);
+    expect_u64("no castling", position.castling, 0);
+    expect_u64("valid en passant", position.en_passant, MAKE_SQUARE(4, 2));
+    expect_u64("fen halfmove", position.halfmove_clock, 17);
+    expect_u64("fen fullmove", position.fullmove_number, 42);
+    expect_true("black position valid", position_is_valid(&position));
+
+    expect_true("white fen", set_position_fen(
+        &position, "4k3/8/8/3pP3/8/8/8/4K3 w - d6 9 27"));
+    expect_u64("white side", position.side_to_move, WHITE);
+    expect_u64("white en passant", position.en_passant, MAKE_SQUARE(3, 5));
+
+    expect_true("bad board width", !set_position_fen(
+        &position, "4k2/8/8/8/8/8/8/4K3 w - - 0 1"));
+    expect_true("too many ranks", !set_position_fen(
+        &position, "4k3/8/8/8/8/8/8/8/4K3 w - - 0 1"));
+    expect_true("too few ranks", !set_position_fen(
+        &position, "4k3/8/8/8/8/8/4K3 w - - 0 1"));
+    expect_true("invalid piece", !set_position_fen(
+        &position, "4k3/8/8/8/8/8/8/3XK3 w - - 0 1"));
+    expect_true("missing king", !set_position_fen(
+        &position, "8/8/8/8/8/8/8/4K3 w - - 0 1"));
+    expect_true("invalid side", !set_position_fen(
+        &position, "4k3/8/8/8/8/8/8/4K3 x - - 0 1"));
+    expect_true("invalid en passant file", !set_position_fen(
+        &position, "4k3/8/8/8/8/8/8/4K3 w - i6 0 1"));
+    expect_true("invalid en passant rank", !set_position_fen(
+        &position, "4k3/8/8/8/8/8/8/4K3 w - d4 0 1"));
+    expect_true("invalid en passant pawn", !set_position_fen(
+        &position, "4k3/8/8/8/8/8/8/4K3 w - d6 0 1"));
+    expect_true("invalid en passant suffix", !set_position_fen(
+        &position, "4k3/8/8/8/8/8/8/4K3 w - d6x 0 1"));
+    expect_true("invalid zero run", !set_position_fen(
+        &position, "4k3/8/8/8/8/8/8/4K03 w - - 0 1"));
+}
+
+static void expect_position_state(const position_t *position,
+                                  const position_t *expected) {
+    expect_memory("piece bitboards", position->pieces, expected->pieces,
+                  sizeof(position->pieces));
+    expect_memory("occupancy", position->occupancy, expected->occupancy,
+                  sizeof(position->occupancy));
+    expect_memory("square lookup", position->board, expected->board,
+                  sizeof(position->board));
+    expect_u64("restored side", position->side_to_move,
+               expected->side_to_move);
+    expect_u64("restored castling", position->castling, expected->castling);
+    expect_u64("restored en passant", position->en_passant,
+               expected->en_passant);
+    expect_u64("restored halfmove", position->halfmove_clock,
+               expected->halfmove_clock);
+    expect_u64("restored fullmove", position->fullmove_number,
+               expected->fullmove_number);
+    expect_u64("restored hash", position->key, expected->key);
+    expect_u64("restored history count", position->history_count,
+               expected->history_count);
+}
+
+static void test_make_undo_restoration(void) {
+    static const char *move_text[] = {
+        "e2e4", "a7a6", "e4e5", "d7d5", "e5d6", "c7d6",
+        "g1f3", "g8f6", "f1e2", "e7e6", "e1g1"
+    };
+    enum { MOVE_COUNT = (int)(sizeof(move_text) / sizeof(move_text[0])) };
+    position_t position;
+    position_t initial;
+    move_t moves[MOVE_COUNT];
+    undo_t undo[MOVE_COUNT];
+
+    set_start_position(&position);
+    initial = position;
+    for (int i = 0; i < MOVE_COUNT; ++i) {
+        moves[i] = parse_uci_move(&position, move_text[i]);
+        expect_true("sequence move parsed", moves[i] != 0);
+        if (!moves[i]) return;
+        expect_true("sequence move made", make_move(&position, moves[i], &undo[i]));
+        expect_true("position after sequence move", position_is_valid(&position));
+    }
+    for (int i = MOVE_COUNT - 1; i >= 0; --i) {
+        undo_move(&position, moves[i], &undo[i]);
+        expect_true("position after sequence undo", position_is_valid(&position));
+    }
+    expect_position_state(&position, &initial);
 }
 
 static void run_perft_case(const char *name,
@@ -96,6 +353,9 @@ static void check_incremental_nnue(const char *name, const char *fen) {
 int main(void) {
     initialize_chess();
     expect_true("nn header", sizeof(nnue_header_t) == 32);
+    test_attacks();
+    test_fen_loading();
+    test_make_undo_restoration();
 
     static const uint64_t start_nodes[] = {20, 400, 8902, 197281};
     static const uint64_t kiwi_nodes[] = {48, 2039, 97862};

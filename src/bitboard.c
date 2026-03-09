@@ -3,11 +3,24 @@
 bitboard_t knight_attacks[64];
 bitboard_t king_attacks[64];
 bitboard_t pawn_attacks[COLOR_COUNT][64];
-bitboard_t attack_rays[8][64];
 uint64_t zobrist_piece[PIECE_COUNT][64];
 uint64_t zobrist_castling[16];
 uint64_t zobrist_en_passant[8];
 uint64_t zobrist_side;
+
+enum {
+    RAY_NORTH,
+    RAY_SOUTH,
+    RAY_EAST,
+    RAY_WEST,
+    RAY_NORTHEAST,
+    RAY_NORTHWEST,
+    RAY_SOUTHEAST,
+    RAY_SOUTHWEST,
+    RAY_COUNT
+};
+
+static bitboard_t attack_rays[RAY_COUNT][64];
 
 static uint64_t splitmix64(uint64_t *state) {
     uint64_t value = (*state += UINT64_C(0x9e3779b97f4a7c15));
@@ -36,8 +49,8 @@ void initialize_chess(void) {
 
     static const int knight_file_step[8] = {1, 2, 2, 1, -1, -2, -2, -1};
     static const int knight_rank_step[8] = {2, 1, -1, -2, -2, -1, 1, 2};
-    static const int ray_file_step[8] = {0, 0, 1, -1, 1, -1, 1, -1};
-    static const int ray_rank_step[8] = {1, -1, 0, 0, 1, 1, -1, -1};
+    static const int ray_file_step[RAY_COUNT] = {0, 0, 1, -1, 1, -1, 1, -1};
+    static const int ray_rank_step[RAY_COUNT] = {1, -1, 0, 0, 1, 1, -1, -1};
 
     for (int square = 0; square < 64; ++square) {
         int file = square & 7;
@@ -67,7 +80,7 @@ void initialize_chess(void) {
             if (file) pawn_attacks[BLACK][square] |= SQUARE_BIT(square - 9);
             if (file < 7) pawn_attacks[BLACK][square] |= SQUARE_BIT(square - 7);
         }
-        for (int direction = 0; direction < 8; ++direction) {
+        for (int direction = 0; direction < RAY_COUNT; ++direction) {
             attack_rays[direction][square] =
                 build_ray(square, ray_file_step[direction], ray_rank_step[direction]);
         }
@@ -98,15 +111,15 @@ static bitboard_t sliding_line_attacks(int square,
 }
 
 bitboard_t generate_bishop_attacks(int square, bitboard_t occupancy) {
-    return sliding_line_attacks(square, occupancy, 4, false) |
-           sliding_line_attacks(square, occupancy, 5, false) |
-           sliding_line_attacks(square, occupancy, 6, true) |
-           sliding_line_attacks(square, occupancy, 7, true);
+    return sliding_line_attacks(square, occupancy, RAY_NORTHEAST, false) |
+           sliding_line_attacks(square, occupancy, RAY_NORTHWEST, false) |
+           sliding_line_attacks(square, occupancy, RAY_SOUTHEAST, true) |
+           sliding_line_attacks(square, occupancy, RAY_SOUTHWEST, true);
 }
 
 bitboard_t generate_rook_attacks(int square, bitboard_t occupancy) {
-    return sliding_line_attacks(square, occupancy, 0, false) |
-           sliding_line_attacks(square, occupancy, 1, true) |
-           sliding_line_attacks(square, occupancy, 2, false) |
-           sliding_line_attacks(square, occupancy, 3, true);
+    return sliding_line_attacks(square, occupancy, RAY_NORTH, false) |
+           sliding_line_attacks(square, occupancy, RAY_SOUTH, true) |
+           sliding_line_attacks(square, occupancy, RAY_EAST, false) |
+           sliding_line_attacks(square, occupancy, RAY_WEST, true);
 }

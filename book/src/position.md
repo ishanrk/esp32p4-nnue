@@ -14,8 +14,12 @@ pattern:
 
 The piece bitboards, occupancy bitboards, and square array must always agree.
 position_is_valid reconstructs temporary bitboards from board, checks both
-kings and state ranges, and compares key with calculate_position_hash. Tests
-call it after recursive make and undo work.
+kings and state ranges, and compares key with calculate_position_hash. An en
+passant target must be empty and on rank six when White is to move or rank
+three when Black is to move. The opponent pawn that made the double advance
+must occupy the square immediately behind that target. Tests call this
+deliberately thorough helper after construction, make, and undo work; search
+does not rebuild this state in its hot path.
 
 ## Creating positions
 
@@ -26,10 +30,17 @@ fullmove number to one.
 set_position_fen receives a position and FEN text. It replaces the position,
 parses board state, side, castling, en passant, and optional clocks, computes
 the initial key, starts the key history, refreshes NNUE, and returns whether the
-result passes position_is_valid.
+result passes position_is_valid. Board runs must use digits one through eight,
+each rank must contain exactly eight squares, and the board must contain
+exactly eight ranks. The parser rejects unknown pieces, invalid side fields,
+invalid en passant coordinates, and extra characters attached to the en
+passant field. Structural validation then requires one king per side and the
+valid en passant rank, empty target, and matching advanced pawn.
 
 set_start_position receives a position and loads the standard initial FEN.
 find_king_square returns a side's king square or NO_SQUARE.
 square_is_attacked tests pawn, knight, king, bishop, rook, and queen attacks
-against a square. side_in_check connects those queries by finding the king and
-testing attacks from the opponent.
+against a square. It reads the piece and combined occupancy bitboards and does
+not change the position. side_in_check connects those queries by finding the
+king and testing attacks from the opponent, returning false when no king is
+present so position validation can report the malformed state separately.
