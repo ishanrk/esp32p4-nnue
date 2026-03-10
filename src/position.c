@@ -49,6 +49,92 @@ static uint8_t castling_mask(int square) {
     }
 }
 
+static bool move_flags_are_valid(int flags) {
+    return flags == 0 ||
+           flags == MOVE_CAPTURE ||
+           flags == (MOVE_CAPTURE | MOVE_EN_PASSANT) ||
+           flags == MOVE_CASTLE ||
+           flags == MOVE_DOUBLE_PAWN;
+}
+
+static bool en_passant_move_is_valid(const position_t *position,
+                                     int from,
+                                     int to,
+                                     int side) {
+    int step = side == WHITE ? 8 : -8;
+    int from_rank = side == WHITE ? 4 : 3;
+    int to_rank = side == WHITE ? 5 : 2;
+    int file_delta = (to & 7) - (from & 7);
+    int capture_square = to - step;
+    int captured_pawn = side == WHITE ? BLACK_PAWN : WHITE_PAWN;
+    return position->en_passant == to &&
+           position->board[to] == NO_PIECE &&
+           (from >> 3) == from_rank &&
+           (to >> 3) == to_rank &&
+           (file_delta == -1 || file_delta == 1) &&
+           to - from == step + file_delta &&
+           position->board[capture_square] == captured_pawn;
+}
+
+static bool double_pawn_move_is_valid(const position_t *position,
+                                      int from,
+                                      int to,
+                                      int side) {
+    int step = side == WHITE ? 8 : -8;
+    int start_rank = side == WHITE ? 1 : 6;
+    return (from >> 3) == start_rank &&
+           to == from + 2 * step &&
+           position->board[from + step] == NO_PIECE &&
+           position->board[to] == NO_PIECE;
+}
+
+static bool castle_move_is_valid(const position_t *position,
+                                 int from,
+                                 int to,
+                                 int side) {
+    int transit;
+    if (side == WHITE && from == 4) {
+        if (to == 6) {
+            if (!(position->castling & CASTLE_WHITE_KING) ||
+                position->board[7] != WHITE_ROOK ||
+                position->board[5] != NO_PIECE ||
+                position->board[6] != NO_PIECE) return false;
+            transit = 5;
+        } else if (to == 2) {
+            if (!(position->castling & CASTLE_WHITE_QUEEN) ||
+                position->board[0] != WHITE_ROOK ||
+                position->board[1] != NO_PIECE ||
+                position->board[2] != NO_PIECE ||
+                position->board[3] != NO_PIECE) return false;
+            transit = 3;
+        } else {
+            return false;
+        }
+    } else if (side == BLACK && from == 60) {
+        if (to == 62) {
+            if (!(position->castling & CASTLE_BLACK_KING) ||
+                position->board[63] != BLACK_ROOK ||
+                position->board[61] != NO_PIECE ||
+                position->board[62] != NO_PIECE) return false;
+            transit = 61;
+        } else if (to == 58) {
+            if (!(position->castling & CASTLE_BLACK_QUEEN) ||
+                position->board[56] != BLACK_ROOK ||
+                position->board[57] != NO_PIECE ||
+                position->board[58] != NO_PIECE ||
+                position->board[59] != NO_PIECE) return false;
+            transit = 59;
+        } else {
+            return false;
+        }
+    } else {
+        return false;
+    }
+    int opponent = side ^ 1;
+    return !side_in_check(position, side) &&
+           !square_is_attacked(position, transit, opponent);
+}
+
 void clear_position(position_t *position) {
     initialize_chess();
     memset(position, 0, sizeof(*position));
@@ -209,6 +295,7 @@ bool position_is_valid(const position_t *position) {
 }
 
 bool make_move(position_t *position, move_t move, undo_t *undo) {
+    if (move & ~UINT32_C(0x7ffff)) return false;
     int from = MOVE_FROM(move);
     int to = MOVE_TO(move);
     int promotion = MOVE_PROMOTION(move);
@@ -216,26 +303,57 @@ bool make_move(position_t *position, move_t move, undo_t *undo) {
     int side = position->side_to_move;
     int opponent = side ^ 1;
     int piece = position->board[from];
-    if ((unsigned)from > 63u ||
-        (unsigned)to > 63u ||
+    if (from == to ||
+        !move_flags_are_valid(flags) ||
         piece == NO_PIECE ||
         piece_color(piece) != side) return false;
-    if (position->board[to] != NO_PIECE &&
-        piece_color(position->board[to]) == side) return false;
-    if (promotion && (promotion > 4 || piece_type(piece) != PAWN)) return false;
-    if ((flags & MOVE_CASTLE) && piece_type(piece) != KING) return false;
-    if ((flags & MOVE_CASTLE) && to != 6 && to != 2 && to != 62 && to != 58) return false;
-    if ((flags & MOVE_CASTLE) && ((to == 6 && position->board[7] != WHITE_ROOK) ||
-                         (to == 2 && position->board[0] != WHITE_ROOK) ||
-                         (to == 62 && position->board[63] != BLACK_ROOK) ||
-                         (to == 58 && position->board[56] != BLACK_ROOK))) return false;
 
+    int type = piece_type(piece);
     int capture_square = to;
     int captured = position->board[to];
-    if (flags & MOVE_EN_PASSANT) {
+    if (flags == (MOVE_CAPTURE | MOVE_EN_PASSANT)) {
+        if (type != PAWN || promotion ||
+            !en_passant_move_is_valid(position, from, to, side)) return false;
         capture_square = to + (side == WHITE ? -8 : 8);
         captured = position->board[capture_square];
-        if (captured != (side == WHITE ? BLACK_PAWN : WHITE_PAWN)) return false;
+    } else if (flags == MOVE_CAPTURE) {
+        if (captured == NO_PIECE ||
+            piece_color(captured) == side ||
+            piece_type(captured) == KING) return false;
+    } else if (captured != NO_PIECE) {
+        return false;
+    }
+
+    if (promotion > 4 || (promotion && type != PAWN)) return false;
+    int promotion_rank = side == WHITE ? 7 : 0;
+    if (type == PAWN) {
+        int step = side == WHITE ? 8 : -8;
+        int file_delta = (to & 7) - (from & 7);
+        bool reaches_promotion = (to >> 3) == promotion_rank;
+        if ((promotion != 0) != reaches_promotion) return false;
+        if (flags == MOVE_DOUBLE_PAWN) {
+            if (!double_pawn_move_is_valid(position, from, to, side)) return false;
+        } else if (flags != (MOVE_CAPTURE | MOVE_EN_PASSANT)) {
+            if (flags == MOVE_CAPTURE) {
+                if ((file_delta != -1 && file_delta != 1) ||
+                    to - from != step + file_delta) return false;
+            } else if (flags || file_delta || to - from != step) {
+                return false;
+            }
+        }
+    } else if (flags == MOVE_DOUBLE_PAWN ||
+               flags == (MOVE_CAPTURE | MOVE_EN_PASSANT)) {
+        return false;
+    }
+
+    if (flags == MOVE_CASTLE) {
+        if (type != KING || promotion ||
+            !castle_move_is_valid(position, from, to, side)) return false;
+    } else if (type == KING) {
+        int file_delta = (to & 7) - (from & 7);
+        int rank_delta = (to >> 3) - (from >> 3);
+        if (file_delta < -1 || file_delta > 1 ||
+            rank_delta < -1 || rank_delta > 1) return false;
     }
 
     undo->key = position->key;

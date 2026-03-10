@@ -1,24 +1,34 @@
 # Move Generation
 
-generate_moves(position, list, captures_only) reads the position without
-changing it, clears the supplied move_list_t, and emits pseudo-legal moves for
-the side to move. With captures_only set, it limits ordinary generation to
-captures; search passes false in normal nodes and quiescence passes true when
-the side is not in check.
+generate_moves(position, list, tactical_only) reads the position without
+changing it, clears the supplied move_list_t, and emits candidate moves for the
+side to move. With tactical_only false it emits every pseudo-legal move. With
+tactical_only true it emits captures, en passant captures, capture promotions,
+and quiet promotions. Quiescence uses this tactical set when the side is not in
+check and requests all candidate evasions when the side is in check.
 
-Pawn generation handles single and double advances, both captures, en passant,
-and all four promotion choices. Leaper generation intersects precomputed
-knight or king attacks with friendly occupancy. Slider generation calls
-generate_bishop_attacks and generate_rook_attacks, then removes friendly
-squares and optionally noncaptures. A queen uses the union of the bishop and
-rook results, so it shares the same directional blocker convention without a
-separate attack table.
+generate_pawn_moves reads the side's pawn bitboard, square lookup, enemy
+occupancy, en passant target, and precomputed pawn attacks. It emits single
+pushes, double pushes only when both squares are empty, captures, en passant,
+and all four promotion choices. Quiet nonpromotion pushes are omitted from the
+tactical set, while quiet promotions remain because they are tactically
+forcing.
 
-Castling is the only move class whose generator performs attack checks. It
-requires the castling right, king and rook on their expected squares, empty
-travel squares, the king not currently in check, and no attack on either king
-travel square.
+generate_leaper_moves receives the colored piece and its fixed attack table.
+It intersects each piece's attacks with either enemy occupancy or all
+nonfriendly squares, then emits packed moves. generate_slider_moves follows the
+same target-mask rule and calls the bishop or rook attack function once per
+piece direction set. A queen uses the union of both results, so it needs no
+separate attack table. Neither helper changes the position.
 
-All other king-safety filtering belongs to make_move. This single legality gate
-is shared by parsing, perft, tests, and search, avoiding a second legal move
-implementation.
+generate_castling_moves emits a candidate only when the corresponding right is
+set, the king and rook occupy their expected squares, and every required path
+square is empty. make_move owns the remaining legality checks: the king may not
+start in check, cross an attacked square, or finish in check. This avoids
+repeating destination attack generation before make_move performs the normal
+exposed-king check. An attacked b-file square does not prevent queenside
+castling because the king never occupies it.
+
+All candidate moves pass through make_move for king-safety filtering. Pins,
+ordinary king destinations, en passant discovered attacks, and non-evasions
+therefore share one legality gate across parsing, perft, tests, and search.

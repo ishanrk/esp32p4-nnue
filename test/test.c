@@ -30,6 +30,14 @@ static void expect_true(const char *name, bool value) {
     test_failed = 1;
 }
 
+static void expect_text(const char *name,
+                        const char *actual,
+                        const char *expected) {
+    if (!strcmp(actual, expected)) return;
+    fprintf(stderr, "%s got %s want %s\n", name, actual, expected);
+    test_failed = 1;
+}
+
 static void expect_memory(const char *name,
                           const void *actual,
                           const void *expected,
@@ -249,6 +257,353 @@ static void expect_position_state(const position_t *position,
                expected->history_count);
 }
 
+static move_t find_generated_move(const position_t *position,
+                                  const char *text,
+                                  bool tactical_only) {
+    move_list_t list;
+    generate_moves(position, &list, tactical_only);
+    for (int i = 0; i < list.count; ++i) {
+        char generated_text[6];
+        move_to_uci(list.moves[i], generated_text);
+        if (!strcmp(generated_text, text)) return list.moves[i];
+    }
+    return 0;
+}
+
+static bool make_uci_test_move(const char *name,
+                               position_t *position,
+                               const char *text,
+                               move_t *move,
+                               undo_t *undo) {
+    position_t before_parse = *position;
+    *move = parse_uci_move(position, text);
+    expect_true(name, *move != 0);
+    expect_position_state(position, &before_parse);
+    if (!*move) return false;
+    char formatted[6];
+    move_to_uci(*move, formatted);
+    expect_text("uci round trip", formatted, text);
+    bool made = make_move(position, *move, undo);
+    expect_true("legal move made", made);
+    if (!made) return false;
+    expect_true("valid position after move", position_is_valid(position));
+    expect_u64("side after move", position->side_to_move,
+               before_parse.side_to_move ^ 1);
+    expect_u64("fullmove after move", position->fullmove_number,
+               before_parse.fullmove_number +
+               (before_parse.side_to_move == BLACK ? 1u : 0u));
+    uint16_t expected_history = before_parse.history_count;
+    if (expected_history < POSITION_HISTORY_SIZE) ++expected_history;
+    expect_u64("history after move", position->history_count,
+               expected_history);
+    expect_u64("incremental hash after move", position->key,
+               calculate_position_hash(position));
+    return true;
+}
+
+static void finish_move_test(position_t *position,
+                             const position_t *initial,
+                             move_t move,
+                             const undo_t *undo) {
+    undo_move(position, move, undo);
+    expect_true("valid position after special undo", position_is_valid(position));
+    expect_position_state(position, initial);
+}
+
+static void expect_generated_move_rejected(const char *name,
+                                           const char *fen,
+                                           const char *text) {
+    position_t position;
+    expect_true(name, set_position_fen(&position, fen));
+    position_t initial = position;
+    move_t move = find_generated_move(&position, text, false);
+    expect_true("rejected candidate generated", move != 0);
+    if (!move) return;
+    undo_t undo;
+    expect_true("candidate rejected", !make_move(&position, move, &undo));
+    expect_true("valid position after rejection", position_is_valid(&position));
+    expect_position_state(&position, &initial);
+}
+
+static void expect_packed_move_rejected(const char *name,
+                                        const char *fen,
+                                        move_t move) {
+    position_t position;
+    expect_true(name, set_position_fen(&position, fen));
+    position_t initial = position;
+    undo_t undo;
+    expect_true("packed move rejected", !make_move(&position, move, &undo));
+    expect_true("valid position after packed rejection",
+                position_is_valid(&position));
+    expect_position_state(&position, &initial);
+}
+
+static void test_move_encoding(void) {
+    move_t move = PACK_MOVE(MAKE_SQUARE(4, 6), MAKE_SQUARE(5, 7),
+                            3, MOVE_CAPTURE);
+    expect_u64("encoded source", MOVE_FROM(move), MAKE_SQUARE(4, 6));
+    expect_u64("encoded destination", MOVE_TO(move), MAKE_SQUARE(5, 7));
+    expect_u64("encoded promotion", MOVE_PROMOTION(move), 3);
+    expect_u64("encoded flags", MOVE_FLAGS(move), MOVE_CAPTURE);
+
+    static const char promotion_text[4][6] = {
+        "a7a8n", "a7a8b", "a7a8r", "a7a8q"
+    };
+    for (int promotion = 1; promotion <= 4; ++promotion) {
+        char text[6];
+        move_to_uci(PACK_MOVE(MAKE_SQUARE(0, 6), MAKE_SQUARE(0, 7),
+                              promotion, 0), text);
+        expect_text("promotion uci", text, promotion_text[promotion - 1]);
+    }
+
+    position_t position;
+    set_start_position(&position);
+    move = parse_uci_move(&position, "e2e4");
+    expect_true("normal uci parse", move != 0);
+    char text[6];
+    move_to_uci(move, text);
+    expect_text("normal uci round trip", text, "e2e4");
+}
+
+static void test_tactical_generation(void) {
+    position_t position;
+    move_list_t list;
+    set_start_position(&position);
+    generate_moves(&position, &list, true);
+    expect_u64("start tactical moves", list.count, 0);
+
+    expect_true("tactical promotion fen", set_position_fen(
+        &position, "4k3/P7/8/8/8/8/8/4K3 w - - 0 1"));
+    generate_moves(&position, &list, true);
+    expect_u64("quiet tactical promotions", list.count, 4);
+    expect_true("tactical queen promotion",
+                find_generated_move(&position, "a7a8q", true) != 0);
+    expect_true("tactical rook promotion",
+                find_generated_move(&position, "a7a8r", true) != 0);
+    expect_true("tactical bishop promotion",
+                find_generated_move(&position, "a7a8b", true) != 0);
+    expect_true("tactical knight promotion",
+                find_generated_move(&position, "a7a8n", true) != 0);
+
+    expect_true("tactical en passant fen", set_position_fen(
+        &position, "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1"));
+    expect_true("tactical en passant",
+                find_generated_move(&position, "e5d6", true) != 0);
+}
+
+static void test_castle_case(const char *name,
+                             const char *fen,
+                             const char *text,
+                             int king_piece,
+                             int king_to,
+                             int rook_piece,
+                             int rook_from,
+                             int rook_to) {
+    position_t position;
+    expect_true(name, set_position_fen(&position, fen));
+    position_t initial = position;
+    move_t move;
+    undo_t undo;
+    if (!make_uci_test_move(name, &position, text, &move, &undo)) return;
+    expect_u64("castle flag", MOVE_FLAGS(move), MOVE_CASTLE);
+    expect_u64("castled king", position.board[king_to], king_piece);
+    expect_u64("castled rook", position.board[rook_to], rook_piece);
+    expect_u64("empty king source", position.board[MOVE_FROM(move)], NO_PIECE);
+    expect_u64("empty rook source", position.board[rook_from], NO_PIECE);
+    expect_u64("castling rights after castle", position.castling, 0);
+    expect_u64("halfmove after castle", position.halfmove_clock,
+               initial.halfmove_clock + 1u);
+    finish_move_test(&position, &initial, move, &undo);
+}
+
+static void test_castling(void) {
+    test_castle_case(
+        "white king castle",
+        "4k3/8/8/8/8/8/8/4K2R w K - 7 12",
+        "e1g1", WHITE_KING, 6, WHITE_ROOK, 7, 5);
+    test_castle_case(
+        "white queen castle",
+        "1r2k3/8/8/8/8/8/8/R3K3 w Q - 7 12",
+        "e1c1", WHITE_KING, 2, WHITE_ROOK, 0, 3);
+    test_castle_case(
+        "black king castle",
+        "4k2r/8/8/8/8/8/8/4K3 b k - 7 12",
+        "e8g8", BLACK_KING, 62, BLACK_ROOK, 63, 61);
+    test_castle_case(
+        "black queen castle",
+        "r3k3/8/8/8/8/8/8/1R2K3 b q - 7 12",
+        "e8c8", BLACK_KING, 58, BLACK_ROOK, 56, 59);
+
+    expect_generated_move_rejected(
+        "castle while in check",
+        "k3r3/8/8/8/8/8/8/4K2R w K - 0 1", "e1g1");
+    expect_generated_move_rejected(
+        "castle through attack",
+        "k4r2/8/8/8/8/8/8/4K2R w K - 0 1", "e1g1");
+    expect_generated_move_rejected(
+        "castle into attack",
+        "k5r1/8/8/8/8/8/8/4K2R w K - 0 1", "e1g1");
+    expect_packed_move_rejected(
+        "castle without rook",
+        "4k3/8/8/8/8/8/8/4K3 w K - 0 1",
+        PACK_MOVE(4, 6, 0, MOVE_CASTLE));
+    expect_packed_move_rejected(
+        "castle without right",
+        "4k3/8/8/8/8/8/8/4K2R w - - 0 1",
+        PACK_MOVE(4, 6, 0, MOVE_CASTLE));
+}
+
+static void test_en_passant(void) {
+    position_t position;
+    expect_true("legal en passant fen", set_position_fen(
+        &position, "4k3/8/8/3pP3/8/8/8/4K3 w - d6 3 17"));
+    position_t initial = position;
+    move_t move;
+    undo_t undo;
+    if (make_uci_test_move("legal en passant", &position, "e5d6",
+                           &move, &undo)) {
+        expect_u64("en passant flags", MOVE_FLAGS(move),
+                   MOVE_CAPTURE | MOVE_EN_PASSANT);
+        expect_u64("en passant pawn destination", position.board[43],
+                   WHITE_PAWN);
+        expect_u64("en passant captured square", position.board[35],
+                   NO_PIECE);
+        expect_u64("en passant halfmove", position.halfmove_clock, 0);
+        finish_move_test(&position, &initial, move, &undo);
+    }
+
+    expect_generated_move_rejected(
+        "en passant exposes king",
+        "k3r3/8/8/3pP3/8/8/8/4K3 w - d6 0 1", "e5d6");
+}
+
+static void test_promotion_case(const char *name,
+                                const char *fen,
+                                const char *text,
+                                int promotion,
+                                int placed_piece,
+                                int expected_flags) {
+    position_t position;
+    expect_true(name, set_position_fen(&position, fen));
+    position_t initial = position;
+    expect_true("promotion in tactical list",
+                find_generated_move(&position, text, true) != 0);
+    move_t move;
+    undo_t undo;
+    if (!make_uci_test_move(name, &position, text, &move, &undo)) return;
+    expect_u64("promotion selector", MOVE_PROMOTION(move), promotion);
+    expect_u64("promotion flags", MOVE_FLAGS(move), expected_flags);
+    expect_u64("promoted piece", position.board[MOVE_TO(move)], placed_piece);
+    expect_u64("promotion source empty", position.board[MOVE_FROM(move)],
+               NO_PIECE);
+    expect_u64("promotion halfmove", position.halfmove_clock, 0);
+    finish_move_test(&position, &initial, move, &undo);
+}
+
+static void test_promotions(void) {
+    const char *white_fen = "4k3/P7/8/8/8/8/8/4K3 w - - 4 11";
+    test_promotion_case("quiet queen promotion", white_fen, "a7a8q",
+                        4, WHITE_QUEEN, 0);
+    test_promotion_case("quiet rook promotion", white_fen, "a7a8r",
+                        3, WHITE_ROOK, 0);
+    test_promotion_case("quiet bishop promotion", white_fen, "a7a8b",
+                        2, WHITE_BISHOP, 0);
+    test_promotion_case("quiet knight promotion", white_fen, "a7a8n",
+                        1, WHITE_KNIGHT, 0);
+    test_promotion_case(
+        "black promotion",
+        "4K3/8/8/8/8/8/7p/4k3 b - - 4 11", "h2h1n",
+        1, BLACK_KNIGHT, 0);
+    test_promotion_case(
+        "capture promotion",
+        "1r2k3/P7/8/8/8/8/8/4K3 w - - 4 11", "a7b8q",
+        4, WHITE_QUEEN, MOVE_CAPTURE);
+}
+
+static void test_legality_filter(void) {
+    expect_generated_move_rejected(
+        "pinned piece",
+        "k3r3/8/8/8/8/8/4R3/4K3 w - - 0 1", "e2f2");
+    expect_generated_move_rejected(
+        "king into attack",
+        "k4r2/8/8/8/8/8/8/4K3 w - - 0 1", "e1f1");
+
+    position_t position;
+    expect_true("check evasion fen", set_position_fen(
+        &position, "k3r3/8/8/8/8/8/8/4K3 w - - 0 1"));
+    position_t initial = position;
+    move_t move;
+    undo_t undo;
+    if (make_uci_test_move("legal check evasion", &position, "e1d1",
+                           &move, &undo)) {
+        finish_move_test(&position, &initial, move, &undo);
+    }
+
+    expect_generated_move_rejected(
+        "non evasion while in check",
+        "k3r3/8/8/8/8/8/8/R3K3 w - - 0 1", "a1a2");
+}
+
+static void test_castling_rights(void) {
+    position_t position;
+    expect_true("rook move rights fen", set_position_fen(
+        &position, "4k3/8/8/8/8/8/8/R3K2R w KQ - 0 1"));
+    position_t initial = position;
+    move_t move;
+    undo_t undo;
+    if (make_uci_test_move("rook move rights", &position, "h1h2",
+                           &move, &undo)) {
+        expect_u64("rook move clears right", position.castling,
+                   CASTLE_WHITE_QUEEN);
+        finish_move_test(&position, &initial, move, &undo);
+    }
+
+    expect_true("rook capture rights fen", set_position_fen(
+        &position, "r3k3/8/8/8/8/8/6B1/4K3 w q - 0 1"));
+    initial = position;
+    if (make_uci_test_move("rook capture rights", &position, "g2a8",
+                           &move, &undo)) {
+        expect_u64("rook capture clears right", position.castling, 0);
+        finish_move_test(&position, &initial, move, &undo);
+    }
+}
+
+static void test_malformed_moves(void) {
+    const char *start_fen =
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    expect_packed_move_rejected(
+        "missing double pawn flag", start_fen,
+        PACK_MOVE(12, 28, 0, 0));
+    expect_packed_move_rejected(
+        "double pawn knight", start_fen,
+        PACK_MOVE(6, 21, 0, MOVE_DOUBLE_PAWN));
+    expect_packed_move_rejected(
+        "blocked double pawn",
+        "4k3/8/8/8/8/4N3/4P3/4K3 w - - 0 1",
+        PACK_MOVE(12, 28, 0, MOVE_DOUBLE_PAWN));
+    expect_packed_move_rejected(
+        "capture empty square", start_fen,
+        PACK_MOVE(6, 21, 0, MOVE_CAPTURE));
+    expect_packed_move_rejected(
+        "missing capture flag",
+        "r3k3/8/8/8/8/8/8/R3K3 w - - 0 1",
+        PACK_MOVE(0, 56, 0, 0));
+    expect_packed_move_rejected(
+        "promotion before back rank", start_fen,
+        PACK_MOVE(12, 20, 4, 0));
+    expect_packed_move_rejected(
+        "missing promotion",
+        "4k3/P7/8/8/8/8/8/4K3 w - - 0 1",
+        PACK_MOVE(48, 56, 0, 0));
+    expect_packed_move_rejected(
+        "wrong en passant target",
+        "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1",
+        PACK_MOVE(36, 45, 0, MOVE_CAPTURE | MOVE_EN_PASSANT));
+    expect_packed_move_rejected(
+        "unused packed bits", start_fen,
+        PACK_MOVE(12, 20, 0, 0) | UINT32_C(0x80000));
+}
+
 static void test_make_undo_restoration(void) {
     static const char *move_text[] = {
         "e2e4", "a7a6", "e4e5", "d7d5", "e5d6", "c7d6",
@@ -355,32 +710,40 @@ int main(void) {
     expect_true("nn header", sizeof(nnue_header_t) == 32);
     test_attacks();
     test_fen_loading();
+    test_move_encoding();
+    test_tactical_generation();
+    test_castling();
+    test_en_passant();
+    test_promotions();
+    test_legality_filter();
+    test_castling_rights();
+    test_malformed_moves();
     test_make_undo_restoration();
 
-    static const uint64_t start_nodes[] = {20, 400, 8902, 197281};
-    static const uint64_t kiwi_nodes[] = {48, 2039, 97862};
-    static const uint64_t endgame_nodes[] = {14, 191, 2812};
-    static const uint64_t position_four_nodes[] = {6, 264, 9467};
-    static const uint64_t position_five_nodes[] = {44, 1486, 62379};
-    static const uint64_t position_six_nodes[] = {46, 2079, 89890};
+    static const uint64_t start_nodes[] = {20, 400, 8902, 197281, 4865609};
+    static const uint64_t kiwi_nodes[] = {48, 2039, 97862, 4085603};
+    static const uint64_t endgame_nodes[] = {14, 191, 2812, 43238, 674624};
+    static const uint64_t position_four_nodes[] = {6, 264, 9467, 422333};
+    static const uint64_t position_five_nodes[] = {44, 1486, 62379, 2103487};
+    static const uint64_t position_six_nodes[] = {46, 2079, 89890, 3894594};
     run_perft_case("start",
                    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-                   start_nodes, 4);
+                   start_nodes, 5);
     run_perft_case("kiwi",
                    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
-                   kiwi_nodes, 3);
+                   kiwi_nodes, 4);
     run_perft_case("end",
                    "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
-                   endgame_nodes, 3);
+                   endgame_nodes, 5);
     run_perft_case("p4",
                    "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
-                   position_four_nodes, 3);
+                   position_four_nodes, 4);
     run_perft_case("p5",
                    "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
-                   position_five_nodes, 3);
+                   position_five_nodes, 4);
     run_perft_case("p6",
                    "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
-                   position_six_nodes, 3);
+                   position_six_nodes, 4);
 
     void *network = create_mock_network();
     expect_true("net alloc", network != NULL);

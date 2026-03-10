@@ -179,7 +179,7 @@ bool square_is_attacked(const position_t *position, int square, int by_color);
 bool side_in_check(const position_t *position, int color);
 uint64_t calculate_position_hash(const position_t *position);
 
-void generate_moves(const position_t *position, move_list_t *list, bool captures_only);
+void generate_moves(const position_t *position, move_list_t *list, bool tactical_only);
 bool make_move(position_t *position, move_t move, undo_t *undo);
 void undo_move(position_t *position, move_t move, const undo_t *undo);
 move_t parse_uci_move(position_t *position, const char *text);

@@ -12,7 +12,15 @@ The binary checks:
 - sliding attacks with empty, full, edge, center, adjacent-blocker, distant-blocker, multiple-blocker, and fixed-seed occupancies
 - supported FEN fields and a focused set of malformed board, side, piece, and en passant inputs
 - defined position state after making and undoing a legal sequence containing en passant and castling
-- six canonical perft positions at their recorded depths
+- packed move fields and UCI formatting for normal and promotion moves
+- the tactical generation contract including quiet promotions and en passant
+- all four castles plus check, transit attack, destination attack, missing-right, missing-rook, and irrelevant-square cases
+- legal and discovered-check en passant cases
+- quiet queen, rook, bishop, and knight promotions plus black and capture promotions
+- pinned moves, king moves into attack, check evasions, and non-evasions
+- malformed special move encodings without position corruption
+- castling-right changes after rook moves and captures
+- six canonical perft positions through practical release and sanitizer depths
 - position validity after every perft depth
 - incremental NNUE accumulators against full refresh after every legal root move
 - NNUE make and undo restoration for normal, castling-rich, en passant, and promotion positions
@@ -27,7 +35,8 @@ at a time, includes the first occupied square, and then stops in that
 direction. It does not call the production bishop or rook functions. Every
 source square is checked against a bounded deterministic occupancy set, keeping
 the coverage suitable for normal CI. Position restoration compares named
-fields and arrays rather than padding bytes.
+fields and arrays rather than padding bytes. Each special move test verifies
+the incremental key after make and the defined position state after undo.
 
 Release test:
 

@@ -169,7 +169,8 @@ static int quiescence_search(search_context_t *context,
     }
 
     move_list_t list;
-    generate_moves(position, &list, !in_check);
+    bool tactical_only = !in_check;
+    generate_moves(position, &list, tactical_only);
     int legal_moves = 0;
     for (int i = 0; i < list.count; ++i) {
         select_next_move(context, position, &list, i, 0, ply);

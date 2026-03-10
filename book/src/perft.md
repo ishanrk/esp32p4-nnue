@@ -11,14 +11,19 @@ a separate test-only implementation.
 
 The regression binary checks these standard positions:
 
-- start position through depth four
-- Kiwipete through depth three
-- the standard perft positions three through six through depth three
+- start position through depth five
+- Kiwipete through depth four
+- standard position three through depth five
+- standard positions four through six through depth four
 
 Together they exercise castling, en passant, promotions, checks, pins, and
 unusual occupancy patterns. After every depth, the test calls
 position_is_valid to ensure recursive make and undo restored the complete
 position.
+
+One-time deeper verification can use the UCI perft command without increasing
+normal sanitizer runtime. The start position at depth six is 119,060,324 nodes,
+and Kiwipete at depth five is 193,690,690 nodes.
 
 Run the suite with:
 

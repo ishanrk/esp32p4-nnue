@@ -6,7 +6,8 @@ ply, and returns a side-to-move score.
 
 When the side is not in check, evaluate supplies the stand-pat score. A score at
 or above beta returns immediately; a score above alpha raises alpha. The
-function then asks generate_moves for captures only.
+function then asks generate_moves for tactical moves: captures, en passant,
+capture promotions, and quiet promotions.
 
 When the side is in check, stand pat is not legal and the generator emits all
 pseudo-legal evasions. Every candidate still passes through make_move. If none
