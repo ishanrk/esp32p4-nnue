@@ -41,7 +41,8 @@ Example input:
     quit
 
 The test binary checks six standard perft positions, make and undo restoration,
-incremental NNUE against full refresh, and a search smoke test.
+incremental NNUE against full refresh, search terminal and draw semantics,
+transposition-table reuse, deterministic results, and timeout restoration.
 
 For AddressSanitizer and UndefinedBehaviorSanitizer:
 

@@ -1,5 +1,6 @@
 #include "ch.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,12 +10,11 @@
 typedef struct {
     transposition_table_t *table;
     move_t killer_moves[MAX_PLY][2];
-    move_t pv[MAX_PLY][MAX_PLY];
-    uint8_t pv_count[MAX_PLY];
     int history_scores[PIECE_COUNT][64];
+    position_t pv_position;
     uint64_t nodes;
-    uint64_t start_ms;
     uint64_t deadline_ms;
+    move_t root_best_move;
     bool stop;
 } search_context_t;
 
@@ -85,7 +85,9 @@ static void store_transposition_entry(search_context_t *context,
     if (!context->table || !context->table->count) return;
     tt_entry_t *entry =
         &context->table->entries[key & (context->table->count - 1)];
-    if (entry->key == key && entry->depth > depth && flag != TT_EXACT) return;
+    int stored_depth = depth > INT8_MAX ? INT8_MAX : depth;
+    if (entry->key == key && entry->depth > stored_depth &&
+        flag != TT_EXACT) return;
     int stored_score = score;
     // keep mate score relative to ply
     if (stored_score > SCORE_MATE - MAX_PLY) stored_score += ply;
@@ -93,7 +95,7 @@ static void store_transposition_entry(search_context_t *context,
     entry->key = key;
     entry->move = move;
     entry->score = (int16_t)stored_score;
-    entry->depth = (int8_t)depth;
+    entry->depth = (int8_t)stored_depth;
     entry->flag = (uint8_t)flag;
 }
 
@@ -161,6 +163,7 @@ static int quiescence_search(search_context_t *context,
     count_node(context);
     if (context->stop) return 0;
     if (ply >= MAX_PLY - 1) return evaluate(position);
+    if (position_is_draw(position)) return 0;
     bool in_check = side_in_check(position, position->side_to_move);
     if (!in_check) {
         int score = evaluate(position);
@@ -195,10 +198,9 @@ static int principal_variation_search(search_context_t *context,
                                       int beta,
                                       int ply) {
     count_node(context);
-    context->pv_count[ply] = 0;
     if (context->stop) return 0;
     if (ply >= MAX_PLY - 1) return evaluate(position);
-    if (ply && position_is_draw(position)) return 0;
+    if (position_is_draw(position)) return 0;
 
     bool in_check = side_in_check(position, position->side_to_move);
     if (in_check) ++depth;
@@ -257,14 +259,6 @@ static int principal_variation_search(search_context_t *context,
         }
         if (score > alpha) {
             alpha = score;
-            context->pv[ply][0] = move;
-            int child_count = context->pv_count[ply + 1];
-            if (child_count > MAX_PLY - ply - 1) {
-                child_count = MAX_PLY - ply - 1;
-            }
-            memcpy(&context->pv[ply][1], context->pv[ply + 1],
-                   (size_t)child_count * sizeof(move_t));
-            context->pv_count[ply] = (uint8_t)(child_count + 1);
         }
         if (alpha >= beta) {
             if (quiet) {
@@ -297,7 +291,38 @@ static int principal_variation_search(search_context_t *context,
                    : best_score >= beta ? TT_LOWER_BOUND : TT_EXACT;
     store_transposition_entry(context, position->key, depth, best_score,
                               flag, best_move, ply);
+    if (!ply) context->root_best_move = best_move;
     return best_score;
+}
+
+static bool make_principal_variation_move(position_t *position, move_t move) {
+    move_list_t list;
+    generate_moves(position, &list, false);
+    for (int i = 0; i < list.count; ++i) {
+        if (list.moves[i] != move) continue;
+        undo_t undo;
+        return make_move(position, move, &undo);
+    }
+    return false;
+}
+
+static int reconstruct_principal_variation(position_t *line,
+                                           const transposition_table_t *table,
+                                           move_t first_move,
+                                           move_t variation[MAX_PLY]) {
+    if (!first_move) return 0;
+    move_t move = first_move;
+    int count = 0;
+    while (move && count < MAX_PLY) {
+        if (!make_principal_variation_move(line, move)) break;
+        variation[count++] = move;
+        if (position_is_draw(line) || !table || !table->count) break;
+        const tt_entry_t *entry =
+            &table->entries[line->key & (table->count - 1)];
+        if (entry->key != line->key) break;
+        move = entry->move;
+    }
+    return count;
 }
 
 search_result_t search_position(position_t *position,
@@ -310,26 +335,26 @@ search_result_t search_position(position_t *position,
     search_context_t *context = calloc(1, sizeof(*context));
     if (!context) return result;
     context->table = table;
-    context->start_ms = current_time_ms();
+    uint64_t start_ms = current_time_ms();
     context->deadline_ms = limits.move_time_ms
-                               ? context->start_ms + limits.move_time_ms
+                               ? start_ms + limits.move_time_ms
                                : 0;
     int max_depth = limits.depth > 0 ? limits.depth : 64;
     if (max_depth >= MAX_PLY) max_depth = MAX_PLY - 1;
 
     for (int depth = 1; depth <= max_depth; ++depth) {
-        context->pv_count[0] = 0;
+        context->root_best_move = 0;
         int score = principal_variation_search(
             context, position, depth, -SCORE_INFINITY, SCORE_INFINITY, 0);
         if (context->stop) break;
         result.score = score;
         result.depth = depth;
         result.nodes = context->nodes;
-        result.elapsed_ms = current_time_ms() - context->start_ms;
-        result.pv_count = context->pv_count[0];
-        memcpy(result.pv, context->pv[0],
-               (size_t)result.pv_count * sizeof(move_t));
-        result.best_move = result.pv_count ? result.pv[0] : 0;
+        result.best_move = context->root_best_move;
+        context->pv_position = *position;
+        result.pv_count = reconstruct_principal_variation(
+            &context->pv_position, table, result.best_move, result.pv);
+        result.elapsed_ms = current_time_ms() - start_ms;
         if (info) info(&result, context_argument);
         if (score > SCORE_MATE - MAX_PLY ||
             score < -SCORE_MATE + MAX_PLY) break;
@@ -343,11 +368,13 @@ search_result_t search_position(position_t *position,
             if (!make_move(position, list.moves[i], &undo)) continue;
             undo_move(position, list.moves[i], &undo);
             result.best_move = list.moves[i];
+            result.pv[0] = result.best_move;
+            result.pv_count = 1;
             break;
         }
     }
     result.nodes = context->nodes;
-    result.elapsed_ms = current_time_ms() - context->start_ms;
+    result.elapsed_ms = current_time_ms() - start_ms;
     free(context);
     return result;
 }

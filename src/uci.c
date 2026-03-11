@@ -104,7 +104,8 @@ void run_uci_loop(void) {
 
     char line[4096];
     while (fgets(line, sizeof(line), stdin)) {
-        if (!strncmp(line, "uci", 3)) {
+        if (!strcmp(line, "uci\n") || !strcmp(line, "uci\r\n") ||
+            !strcmp(line, "uci")) {
             puts("id name esp32p4 nnue");
             puts("id author ishan kumthekar");
             puts("option name Hash type spin default 1 min 1 max 256");

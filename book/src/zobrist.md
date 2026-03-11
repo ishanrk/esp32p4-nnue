@@ -15,8 +15,15 @@ restores the saved key directly.
 
 position.history contains keys after each played move up to
 POSITION_HISTORY_SIZE. Search walks same-side entries back no farther than the
-halfmove clock. A matching key is treated as repetition, while a halfmove clock
-of 100 is treated as a fifty-move draw.
+halfmove clock or the start of the bounded history. The current key is not
+compared with itself. A matching earlier same-side key is treated as a search
+draw, while a halfmove clock of 100 is treated as a fifty-move draw. These
+checks apply at the root and in principal variation and quiescence nodes.
+
+This is an engine search convention: one earlier occurrence is sufficient to
+cut the line to zero. It is intentionally earlier than a formal game-level
+threefold claim. A later arena layer must count formal outcomes independently
+instead of interpreting the search cutoff as the game result.
 
 Transposition entries use the complete key and a power-of-two mask to select
 one fixed-size table slot.

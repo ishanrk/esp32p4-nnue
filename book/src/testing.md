@@ -24,7 +24,16 @@ The binary checks:
 - position validity after every perft depth
 - incremental NNUE accumulators against full refresh after every legal root move
 - NNUE make and undo restoration for normal, castling-rich, en passant, and promotion positions
-- a depth-three search smoke test with a one-megabyte transposition table
+- host structure sizes for position, undo, transposition entries, and results
+- checkmate, stalemate, a unique mate in one, and a short forced mate
+- root fifty-move and repeated-position draw handling
+- repeated fixed-depth searches on unique-move positions with stable score and move
+- root position restoration after every search case
+- no-table, empty-table, reused-table, and cleared-table score agreement
+- mate-score consistency when cached positions are reached at different plies
+- legal principal variation reconstruction from keyed table moves
+- zero-sized table reset and power-of-two table allocation
+- a time-limited search with legal fallback and last-completed-iteration retention
 
 The generated mock network has deterministic nonzero biases and weights, so
 incremental tests compare meaningful accumulator changes without checking in a
@@ -37,6 +46,10 @@ source square is checked against a bounded deterministic occupancy set, keeping
 the coverage suitable for normal CI. Position restoration compares named
 fields and arrays rather than padding bytes. Each special move test verifies
 the incremental key after make and the defined position state after undo.
+Search tests use unique mating or forced-evasion moves where best-move equality
+matters. They do not freeze elapsed time or table-dependent node counts. The
+timeout callback records the last completed iteration and verifies that a
+partial iteration does not replace its depth, score, or move.
 
 Release test:
 

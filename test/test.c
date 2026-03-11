@@ -705,9 +705,310 @@ static void check_incremental_nnue(const char *name, const char *fen) {
     expect_true("legal moves", legal_moves > 0);
 }
 
+static int count_legal_moves(position_t *position) {
+    move_list_t list;
+    generate_moves(position, &list, false);
+    int legal_moves = 0;
+    for (int i = 0; i < list.count; ++i) {
+        undo_t undo;
+        if (!make_move(position, list.moves[i], &undo)) continue;
+        ++legal_moves;
+        undo_move(position, list.moves[i], &undo);
+    }
+    return legal_moves;
+}
+
+static bool search_move_is_legal(position_t *position, move_t move) {
+    if (!move) return false;
+    move_list_t list;
+    generate_moves(position, &list, false);
+    for (int i = 0; i < list.count; ++i) {
+        if (list.moves[i] != move) continue;
+        undo_t undo;
+        if (!make_move(position, move, &undo)) return false;
+        undo_move(position, move, &undo);
+        return true;
+    }
+    return false;
+}
+
+static int count_mating_moves(position_t *position, move_t *mating_move) {
+    move_list_t list;
+    generate_moves(position, &list, false);
+    int mating_moves = 0;
+    for (int i = 0; i < list.count; ++i) {
+        undo_t undo;
+        if (!make_move(position, list.moves[i], &undo)) continue;
+        if (side_in_check(position, position->side_to_move) &&
+            !count_legal_moves(position)) {
+            ++mating_moves;
+            *mating_move = list.moves[i];
+        }
+        undo_move(position, list.moves[i], &undo);
+    }
+    return mating_moves;
+}
+
+static void expect_valid_principal_variation(const char *name,
+                                             const position_t *position,
+                                             const search_result_t *result) {
+    expect_true(name, result->pv_count >= 0 && result->pv_count <= MAX_PLY);
+    if (!result->pv_count) {
+        expect_true("empty variation has no best move", !result->best_move);
+        return;
+    }
+    expect_u64("variation starts with best move", result->pv[0],
+               result->best_move);
+    position_t line = *position;
+    for (int i = 0; i < result->pv_count; ++i) {
+        move_list_t list;
+        generate_moves(&line, &list, false);
+        bool found = false;
+        for (int j = 0; j < list.count; ++j) {
+            if (list.moves[j] != result->pv[i]) continue;
+            undo_t undo;
+            if (!make_move(&line, result->pv[i], &undo)) continue;
+            found = true;
+            break;
+        }
+        expect_true("legal variation move", found);
+        if (!found) break;
+    }
+}
+
+static void test_terminal_search(void) {
+    position_t position;
+    expect_true("checkmate fen", set_position_fen(
+        &position, "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"));
+    position_t initial = position;
+    search_result_t result = search_position(
+        &position, NULL, (search_limits_t){3, 0}, NULL, NULL);
+    expect_true("checkmate score", result.score < -29000);
+    expect_u64("checkmate best move", result.best_move, 0);
+    expect_position_state(&position, &initial);
+
+    expect_true("stalemate fen", set_position_fen(
+        &position, "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1"));
+    initial = position;
+    result = search_position(
+        &position, NULL, (search_limits_t){3, 0}, NULL, NULL);
+    expect_u64("stalemate score", result.score, 0);
+    expect_u64("stalemate best move", result.best_move, 0);
+    expect_position_state(&position, &initial);
+
+    expect_true("mate in one fen", set_position_fen(
+        &position, "7k/8/5KQ1/8/8/8/8/8 w - - 0 1"));
+    initial = position;
+    move_t mating_move = 0;
+    expect_u64("unique mating move", count_mating_moves(&position, &mating_move),
+               1);
+    int mating_score = 0;
+    for (int run = 0; run < 3; ++run) {
+        result = search_position(
+            &position, NULL, (search_limits_t){4, 0}, NULL, NULL);
+        expect_true("mate in one score", result.score > 29000);
+        if (!run) mating_score = result.score;
+        expect_u64("stable mate score", result.score, mating_score);
+        expect_u64("mate in one best move", result.best_move, mating_move);
+        expect_u64("mate in one depth", result.depth, 1);
+        expect_true("mate in one legal",
+                    search_move_is_legal(&position, result.best_move));
+        expect_position_state(&position, &initial);
+    }
+
+    expect_true("forced mate fen", set_position_fen(
+        &position, "7k/8/5K2/4Q3/8/8/8/8 w - - 0 1"));
+    initial = position;
+    result = search_position(
+        &position, NULL, (search_limits_t){5, 0}, NULL, NULL);
+    expect_true("forced mate score", result.score > 29000);
+    char move_text[6];
+    move_to_uci(result.best_move, move_text);
+    expect_text("forced mate move", move_text, "f6g6");
+    expect_position_state(&position, &initial);
+}
+
+static void test_draw_search(void) {
+    position_t position;
+    expect_true("fifty move fen", set_position_fen(
+        &position, "7k/8/8/8/8/8/6Q1/6K1 w - - 100 1"));
+    position_t initial = position;
+    search_result_t result = search_position(
+        &position, NULL, (search_limits_t){3, 0}, NULL, NULL);
+    expect_u64("fifty move score", result.score, 0);
+    expect_true("fifty move fallback",
+                search_move_is_legal(&position, result.best_move));
+    expect_position_state(&position, &initial);
+
+    set_start_position(&position);
+    static const char *repetition_moves[] = {
+        "g1f3", "g8f6", "f3g1", "f6g8"
+    };
+    for (size_t i = 0; i < sizeof(repetition_moves) /
+                                  sizeof(repetition_moves[0]); ++i) {
+        move_t move = parse_uci_move(&position, repetition_moves[i]);
+        expect_true("repetition move parsed", move != 0);
+        if (!move) return;
+        undo_t undo;
+        expect_true("repetition move made", make_move(&position, move, &undo));
+    }
+    initial = position;
+    result = search_position(
+        &position, NULL, (search_limits_t){3, 0}, NULL, NULL);
+    expect_u64("repetition score", result.score, 0);
+    expect_true("repetition fallback",
+                search_move_is_legal(&position, result.best_move));
+    expect_position_state(&position, &initial);
+}
+
+static void test_deterministic_search(void) {
+    position_t position;
+    expect_true("forced evasion fen", set_position_fen(
+        &position, "7k/8/5K2/8/8/8/8/7R b - - 0 1"));
+    position_t initial = position;
+    expect_u64("one legal evasion", count_legal_moves(&position), 1);
+    search_result_t first = search_position(
+        &position, NULL, (search_limits_t){4, 0}, NULL, NULL);
+    for (int run = 0; run < 3; ++run) {
+        search_result_t result = search_position(
+            &position, NULL, (search_limits_t){4, 0}, NULL, NULL);
+        expect_u64("deterministic score", result.score, first.score);
+        expect_u64("deterministic move", result.best_move, first.best_move);
+        expect_true("deterministic legal move",
+                    search_move_is_legal(&position, result.best_move));
+        expect_position_state(&position, &initial);
+    }
+}
+
+static bool table_is_clear(const transposition_table_t *table) {
+    for (size_t i = 0; i < table->count; ++i) {
+        const tt_entry_t *entry = &table->entries[i];
+        if (entry->key || entry->move || entry->score ||
+            entry->depth || entry->flag) return false;
+    }
+    return true;
+}
+
+static void test_transposition_table_search(void) {
+    position_t position;
+    expect_true("table search fen", set_position_fen(
+        &position, "7k/8/5K2/4Q3/8/8/8/8 w - - 0 1"));
+    position_t initial = position;
+    search_limits_t limits = {5, 0};
+    search_result_t no_table = search_position(
+        &position, NULL, limits, NULL, NULL);
+
+    transposition_table_t table = {0};
+    expect_true("table allocation", resize_transposition_table(&table, 1));
+    expect_true("table power of two",
+                table.count && !(table.count & (table.count - 1)));
+    expect_true("new table clear", table_is_clear(&table));
+    search_result_t empty_table = search_position(
+        &position, &table, limits, NULL, NULL);
+    search_result_t reused_table = search_position(
+        &position, &table, limits, NULL, NULL);
+    expect_u64("empty table score", empty_table.score, no_table.score);
+    expect_u64("reused table score", reused_table.score, no_table.score);
+    expect_u64("empty table move", empty_table.best_move,
+               no_table.best_move);
+    expect_u64("reused table move", reused_table.best_move,
+               no_table.best_move);
+    expect_valid_principal_variation(
+        "empty table variation", &position, &empty_table);
+    expect_valid_principal_variation(
+        "reused table variation", &position, &reused_table);
+    expect_position_state(&position, &initial);
+
+    move_t parent_move = reused_table.best_move;
+    undo_t parent_undo;
+    expect_true("mate parent move", make_move(
+        &position, parent_move, &parent_undo));
+    position_t child = position;
+    search_result_t reused_child = search_position(
+        &position, &table, (search_limits_t){3, 0}, NULL, NULL);
+    clear_transposition_table(&table);
+    expect_true("table clear", table_is_clear(&table));
+    search_result_t clear_child = search_position(
+        &position, &table, (search_limits_t){3, 0}, NULL, NULL);
+    expect_u64("mate table score", reused_child.score, clear_child.score);
+    expect_u64("mate table move", reused_child.best_move,
+               clear_child.best_move);
+    expect_true("child mate score", reused_child.score < -29000);
+    expect_position_state(&position, &child);
+    undo_move(&position, parent_move, &parent_undo);
+    expect_position_state(&position, &initial);
+
+    expect_true("table evasion fen", set_position_fen(
+        &position, "7k/8/5K2/8/8/8/8/7R b - - 0 1"));
+    initial = position;
+    clear_transposition_table(&table);
+    no_table = search_position(
+        &position, NULL, (search_limits_t){4, 0}, NULL, NULL);
+    empty_table = search_position(
+        &position, &table, (search_limits_t){4, 0}, NULL, NULL);
+    reused_table = search_position(
+        &position, &table, (search_limits_t){4, 0}, NULL, NULL);
+    expect_u64("evasion empty table score", empty_table.score,
+               no_table.score);
+    expect_u64("evasion reused table score", reused_table.score,
+               no_table.score);
+    expect_u64("evasion empty table move", empty_table.best_move,
+               no_table.best_move);
+    expect_u64("evasion reused table move", reused_table.best_move,
+               no_table.best_move);
+    expect_position_state(&position, &initial);
+
+    expect_true("zero table resize", resize_transposition_table(&table, 0));
+    expect_true("zero table state", !table.entries && !table.count);
+}
+
+typedef struct {
+    search_result_t last;
+    int calls;
+} search_trace_t;
+
+static void record_search_iteration(const search_result_t *result,
+                                    void *argument) {
+    search_trace_t *trace = argument;
+    trace->last = *result;
+    ++trace->calls;
+}
+
+static void test_search_timeout(void) {
+    position_t position;
+    expect_true("timeout fen", set_position_fen(
+        &position,
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"));
+    position_t initial = position;
+    transposition_table_t table = {0};
+    expect_true("timeout table", resize_transposition_table(&table, 1));
+    search_trace_t trace = {0};
+    search_result_t result = search_position(
+        &position, &table, (search_limits_t){0, 10},
+        record_search_iteration, &trace);
+    expect_true("timeout legal move",
+                search_move_is_legal(&position, result.best_move));
+    if (trace.calls) {
+        expect_u64("last completed depth", result.depth, trace.last.depth);
+        expect_u64("last completed score", result.score, trace.last.score);
+        expect_u64("last completed move", result.best_move,
+                   trace.last.best_move);
+    }
+    expect_position_state(&position, &initial);
+    free_transposition_table(&table);
+}
+
+static void test_search_structure_sizes(void) {
+    expect_u64("position size", sizeof(position_t), 2512);
+    expect_u64("undo size", sizeof(undo_t), 280);
+    expect_u64("table entry size", sizeof(tt_entry_t), 16);
+    expect_u64("search result size", sizeof(search_result_t), 544);
+}
+
 int main(void) {
     initialize_chess();
     expect_true("nn header", sizeof(nnue_header_t) == 32);
+    test_search_structure_sizes();
     test_attacks();
     test_fen_loading();
     test_move_encoding();
@@ -761,14 +1062,11 @@ int main(void) {
         "inc promo",
         "4k3/P7/8/8/8/8/7p/4K3 w - - 0 1");
 
-    position_t position;
-    set_start_position(&position);
-    transposition_table_t table = {0};
-    expect_true("tt alloc", resize_transposition_table(&table, 1));
-    search_result_t result = search_position(
-        &position, &table, (search_limits_t){3, 0}, NULL, NULL);
-    expect_true("search move", result.best_move != 0 && result.depth == 3);
-    free_transposition_table(&table);
+    test_terminal_search();
+    test_draw_search();
+    test_deterministic_search();
+    test_transposition_table_search();
+    test_search_timeout();
 
     unload_nnue();
     free(network);
