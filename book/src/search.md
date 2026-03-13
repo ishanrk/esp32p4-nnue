@@ -13,10 +13,11 @@ move. Recursive nodes perform no heap allocation and do not copy positions.
 
 On a 64-bit host the context is 6,640 bytes. The previous 69,800-byte context
 contained a 128 by 128 move matrix for principal variations. Removing that
-matrix saves 63,160 bytes. A principal_variation_search frame is about 1,472
-bytes in the measured GCC release object, mostly because move_list_t and undo_t
-remain local to every active node. That recursive stack cost is separate from
-the heap-owned context and remains an important embedded measurement.
+matrix saves 63,160 bytes. With the 24-byte snapshot-free undo record, a
+principal_variation_search frame is about 1,216 bytes and a quiescence_search
+frame about 1,184 bytes in the measured GCC release object. The 1,028-byte
+move_list_t now dominates both frames. That recursive stack cost is separate
+from the heap-owned context and remains an important embedded measurement.
 
 Iterative deepening calls principal_variation_search once for each depth. Alpha
 is the best score already proved for the side to move and beta is the cutoff

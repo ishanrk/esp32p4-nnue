@@ -16,11 +16,13 @@ The single-threaded search uses iterative deepening principal variation search,
 quiescence, a fixed-size transposition table, killer moves, history ordering,
 check extension, and late move reduction.
 
-The integer NNUE uses two perspectives, eight mirrored king buckets, ten
-nonking piece classes, 640 piece-square features per bucket, and 64 hidden
-values. Feature weights are signed int8, accumulators and output weights use
-signed int16, and the exported network is 328096 bytes. The portable scalar C
-path is the correctness reference for later ESP32 P4 PIE work.
+The integer NNUE uses two vertically normalized perspectives, horizontal king
+symmetry, eight king buckets, ten nonking piece classes, 640 piece-square
+features per bucket, and 64 hidden values. Feature weights are signed int8,
+accumulators and output weights use signed int16, and the version 2 exported
+network is 328096 bytes. Make and undo maintain accumulators without snapshots.
+The portable scalar C path is the correctness reference for later ESP32 P4 PIE
+work.
 
 ## Host build and test
 
@@ -40,9 +42,10 @@ Example input:
     go depth 6
     quit
 
-The test binary checks six standard perft positions, make and undo restoration,
+The test suite checks six standard perft positions, make and undo restoration,
 incremental NNUE against full refresh, search terminal and draw semantics,
-transposition-table reuse, deterministic results, and timeout restoration.
+shared C and Python NNUE feature fixtures, transposition-table reuse,
+deterministic results, and timeout restoration.
 
 For AddressSanitizer and UndefinedBehaviorSanitizer:
 

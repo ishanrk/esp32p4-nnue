@@ -59,5 +59,16 @@ if(BUILD_TESTING)
     add_executable(p4test test/test.c)
     target_link_libraries(p4test PRIVATE p4core)
     target_compile_options(p4test PRIVATE ${P4_WARNINGS})
+    target_compile_definitions(
+        p4test PRIVATE
+        P4_NNUE_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/nnue_features.txt"
+    )
     add_test(NAME p4test COMMAND p4test)
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME p4features
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/train/test_features.py
+        )
+    endif()
 endif()

@@ -1,8 +1,8 @@
 # Testing
 
-The project intentionally has one focused C regression binary registered as
-p4test. Running it directly prints ok on success; CTest supplies failure
-reporting for normal builds and continuous integration.
+The project has one focused C regression binary named p4test and one pure-Python
+feature-mapping test named p4features. CTest registers both when a Python
+interpreter is available. Running p4test directly prints ok on success.
 
 The binary checks:
 
@@ -23,7 +23,16 @@ The binary checks:
 - six canonical perft positions through practical release and sanitizer depths
 - position validity after every perft depth
 - incremental NNUE accumulators against full refresh after every legal root move
-- NNUE make and undo restoration for normal, castling-rich, en passant, and promotion positions
+- version 2 loader magic, dimensions, quantization, size, alignment, and bias bounds
+- borrowed binding and owned file-loading behavior
+- shared C feature fixtures for both perspectives, king symmetry, buckets, classes, and edges
+- quiet and double pawns, knight, bishop, rook, queen, capture, and en passant updates
+- quiet promotion to every piece and capture promotion
+- king moves within one view, across a bucket, and across horizontal symmetry
+- king-side and queen-side castling for both colors
+- NNUE make and undo restoration against full refresh for every focused case
+- a deterministic 48-ply legal sequence with refresh checks after every make and undo
+- clipped-zero, clipped-upper, positive, negative, and side-order evaluation cases
 - host structure sizes for position, undo, transposition entries, and results
 - checkmate, stalemate, a unique mate in one, and a short forced mate
 - root fifty-move and repeated-position draw handling
@@ -36,8 +45,15 @@ The binary checks:
 - a time-limited search with legal fallback and last-completed-iteration retention
 
 The generated mock network has deterministic nonzero biases and weights, so
-incremental tests compare meaningful accumulator changes without checking in a
-binary model.
+incremental tests compare meaningful accumulator and evaluation changes without
+checking in a binary model. A separate purpose-built model isolates activation
+clipping and side-to-move ordering.
+
+test/nnue_features.txt is the common mapping oracle. p4test evaluates it through
+nnue_king_bucket and nnue_feature_index. train/test_features.py evaluates the
+same rows through train/features.py and additionally checks vertical and
+horizontal symmetric pairs. This prevents the runtime and training encoders
+from agreeing only with themselves.
 
 The sliding test implementation advances file and rank coordinates one square
 at a time, includes the first occupied square, and then stops in that
@@ -65,4 +81,6 @@ Sanitizer test:
 
 Clang uses the same commands in a separate directory with
 CMAKE_C_COMPILER=clang. The CI workflow runs the GCC release and sanitizer
-configurations.
+configurations. The Python mapping test can also be run directly:
+
+    python3 train/test_features.py

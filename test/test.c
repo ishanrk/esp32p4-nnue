@@ -243,6 +243,12 @@ static void expect_position_state(const position_t *position,
                   sizeof(position->occupancy));
     expect_memory("square lookup", position->board, expected->board,
                   sizeof(position->board));
+    expect_memory("accumulator", position->accumulator,
+                  expected->accumulator, sizeof(position->accumulator));
+    expect_memory("king bucket", position->king_bucket,
+                  expected->king_bucket, sizeof(position->king_bucket));
+    expect_memory("king mirror", position->king_mirror,
+                  expected->king_mirror, sizeof(position->king_mirror));
     expect_u64("restored side", position->side_to_move,
                expected->side_to_move);
     expect_u64("restored castling", position->castling, expected->castling);
@@ -645,18 +651,90 @@ static void run_perft_case(const char *name,
     }
 }
 
+static int compare_ints(const void *left, const void *right) {
+    int a = *(const int *)left;
+    int b = *(const int *)right;
+    return (a > b) - (a < b);
+}
+
+static void test_nnue_feature_mapping(void) {
+    FILE *fixtures = fopen(P4_NNUE_FIXTURE_PATH, "r");
+    expect_true("feature fixtures open", fixtures != NULL);
+    if (!fixtures) return;
+    char line[2048];
+    int fixture_count = 0;
+    while (fgets(line, sizeof(line), fixtures)) {
+        if (line[0] == '#' || line[0] == '\n') continue;
+        char *name = strtok(line, "|");
+        char *fen = strtok(NULL, "|");
+        char *perspective_text = strtok(NULL, "|");
+        char *bucket_text = strtok(NULL, "|");
+        char *features_text = strtok(NULL, "\r\n");
+        expect_true("feature fixture fields",
+                    name && fen && perspective_text && bucket_text &&
+                    features_text);
+        if (!name || !fen || !perspective_text || !bucket_text ||
+            !features_text) continue;
+
+        int perspective = atoi(perspective_text);
+        int expected_bucket = atoi(bucket_text);
+        int expected[NNUE_MAX_ACTIVE_FEATURES];
+        int expected_count = 0;
+        for (char *value = strtok(features_text, ",");
+             value && expected_count < NNUE_MAX_ACTIVE_FEATURES;
+             value = strtok(NULL, ",")) {
+            expected[expected_count++] = atoi(value);
+        }
+
+        position_t position;
+        expect_true(name, set_position_fen(&position, fen));
+        int king_square = find_king_square(&position, perspective);
+        expect_u64("fixture king bucket",
+                   (uint64_t)nnue_king_bucket(king_square, perspective),
+                   (uint64_t)expected_bucket);
+        int actual[NNUE_MAX_ACTIVE_FEATURES];
+        int actual_count = 0;
+        for (int piece = 0; piece < PIECE_COUNT; ++piece) {
+            bitboard_t pieces = position.pieces[piece];
+            while (pieces) {
+                int square = pop_first_square(&pieces);
+                int feature = nnue_feature_index(
+                    king_square, piece, square, perspective);
+                if (feature >= 0) actual[actual_count++] = feature;
+            }
+        }
+        qsort(actual, (size_t)actual_count, sizeof(actual[0]), compare_ints);
+        expect_u64("fixture feature count", (uint64_t)actual_count,
+                   (uint64_t)expected_count);
+        if (actual_count == expected_count) {
+            expect_memory(name, actual, expected,
+                          (size_t)actual_count * sizeof(actual[0]));
+        }
+        ++fixture_count;
+    }
+    fclose(fixtures);
+    expect_u64("feature fixture count", (uint64_t)fixture_count, 10);
+    expect_u64("left king bucket", (uint64_t)nnue_king_bucket(3, WHITE), 3);
+    expect_u64("right king bucket", (uint64_t)nnue_king_bucket(4, WHITE), 3);
+    expect_true("left king not mirrored", !nnue_king_mirror(3, WHITE));
+    expect_true("right king mirrored", nnue_king_mirror(4, WHITE));
+    expect_u64("mirrored feature pair",
+               (uint64_t)nnue_feature_index(3, WHITE_PAWN, 8, WHITE),
+               (uint64_t)nnue_feature_index(4, WHITE_PAWN, 15, WHITE));
+}
+
 static void *create_mock_network(void) {
     uint8_t *memory = calloc(1, NNUE_FILE_SIZE);
     if (!memory) return NULL;
     nnue_header_t *header = (nnue_header_t *)memory;
     memcpy(header->magic, "P4NNUE1", 8);
-    header->version = 1;
+    header->version = NNUE_FORMAT_VERSION;
     header->bucket_count = NNUE_BUCKET_COUNT;
     header->features_per_bucket = NNUE_FEATURES_PER_BUCKET;
     header->hidden_size = NNUE_HIDDEN_SIZE;
-    header->activation_clip = 127;
-    header->feature_quantization = 64;
-    header->output_quantization = 64;
+    header->activation_clip = NNUE_ACTIVATION_CLIP;
+    header->feature_quantization = NNUE_FEATURE_QUANTIZATION;
+    header->output_quantization = NNUE_OUTPUT_QUANTIZATION;
     header->file_size = NNUE_FILE_SIZE;
     header->output_bias = 123;
 
@@ -676,6 +754,98 @@ static void *create_mock_network(void) {
     return memory;
 }
 
+static void expect_network_rejected(const char *name,
+                                    const void *memory,
+                                    size_t size) {
+    unload_nnue();
+    expect_true(name, !bind_nnue(memory, size));
+    expect_true("invalid network unloaded", !nnue_is_loaded());
+}
+
+static void test_nnue_loader(void *memory) {
+    nnue_header_t *header = memory;
+    nnue_header_t valid_header = *header;
+    int16_t *feature_bias =
+        (int16_t *)((uint8_t *)memory + sizeof(*header));
+
+    expect_true("valid network bind", bind_nnue(memory, NNUE_FILE_SIZE));
+    expect_true("valid network loaded", nnue_is_loaded());
+    unload_nnue();
+
+    header->magic[7] = 'x';
+    expect_network_rejected("network magic", memory, NNUE_FILE_SIZE);
+    *header = valid_header;
+    ++header->version;
+    expect_network_rejected("network version", memory, NNUE_FILE_SIZE);
+    *header = valid_header;
+    ++header->bucket_count;
+    expect_network_rejected("network buckets", memory, NNUE_FILE_SIZE);
+    *header = valid_header;
+    ++header->features_per_bucket;
+    expect_network_rejected("network features", memory, NNUE_FILE_SIZE);
+    *header = valid_header;
+    ++header->hidden_size;
+    expect_network_rejected("network width", memory, NNUE_FILE_SIZE);
+    *header = valid_header;
+    --header->activation_clip;
+    expect_network_rejected("network clip", memory, NNUE_FILE_SIZE);
+    *header = valid_header;
+    ++header->feature_quantization;
+    expect_network_rejected("network feature quantization",
+                            memory, NNUE_FILE_SIZE);
+    *header = valid_header;
+    ++header->output_quantization;
+    expect_network_rejected("network output quantization",
+                            memory, NNUE_FILE_SIZE);
+    *header = valid_header;
+    header->reserved = 1;
+    expect_network_rejected("network reserved", memory, NNUE_FILE_SIZE);
+    *header = valid_header;
+    --header->file_size;
+    expect_network_rejected("network header size", memory, NNUE_FILE_SIZE);
+    *header = valid_header;
+    expect_network_rejected("network data size", memory, NNUE_FILE_SIZE - 1);
+
+    int16_t saved_bias = feature_bias[0];
+    int16_t saved_bias_1 = feature_bias[1];
+    feature_bias[0] = NNUE_ACCUMULATOR_BIAS_MIN - 1;
+    expect_network_rejected("network low bias", memory, NNUE_FILE_SIZE);
+    feature_bias[0] = NNUE_ACCUMULATOR_BIAS_MAX + 1;
+    expect_network_rejected("network high bias", memory, NNUE_FILE_SIZE);
+    feature_bias[0] = saved_bias;
+
+    feature_bias[0] = NNUE_ACCUMULATOR_BIAS_MIN;
+    feature_bias[1] = NNUE_ACCUMULATOR_BIAS_MAX;
+    expect_true("network bias boundaries", bind_nnue(memory, NNUE_FILE_SIZE));
+    unload_nnue();
+    feature_bias[0] = saved_bias;
+    feature_bias[1] = saved_bias_1;
+
+    uint8_t *unaligned = malloc(NNUE_FILE_SIZE + 1u);
+    expect_true("unaligned network allocation", unaligned != NULL);
+    if (unaligned) {
+        memcpy(unaligned + 1, memory, NNUE_FILE_SIZE);
+        expect_network_rejected(
+            "network alignment", unaligned + 1, NNUE_FILE_SIZE);
+        free(unaligned);
+    }
+
+    const char *model_path = "p4nnue-runtime-test.bin";
+    FILE *model_file = fopen(model_path, "wb");
+    expect_true("network file create", model_file != NULL);
+    if (model_file) {
+        expect_u64("network file write",
+                   fwrite(memory, 1, NNUE_FILE_SIZE, model_file),
+                   NNUE_FILE_SIZE);
+        expect_true("network file close", !fclose(model_file));
+        expect_true("network file load", load_nnue(model_path));
+        expect_true("owned network loaded", nnue_is_loaded());
+        unload_nnue();
+        expect_true("network file remove", !remove(model_path));
+    }
+    expect_true("final network bind", bind_nnue(memory, NNUE_FILE_SIZE));
+}
+
 static void check_incremental_nnue(const char *name, const char *fen) {
     position_t position;
     expect_true(name, set_position_fen(&position, fen));
@@ -683,26 +853,243 @@ static void check_incremental_nnue(const char *name, const char *fen) {
     generate_moves(&position, &list, false);
     int legal_moves = 0;
     for (int i = 0; i < list.count; ++i) {
+        position_t initial = position;
         undo_t undo;
-        if (!make_move(&position, list.moves[i], &undo)) continue;
+        if (!make_move(&position, list.moves[i], &undo)) {
+            expect_position_state(&position, &initial);
+            continue;
+        }
         ++legal_moves;
-        int16_t accumulator[COLOR_COUNT][NNUE_HIDDEN_SIZE];
-        uint8_t king_bucket[COLOR_COUNT] = {
-            position.king_bucket[WHITE],
-            position.king_bucket[BLACK]
-        };
-        memcpy(accumulator, position.accumulator, sizeof(accumulator));
+        position_t incremental = position;
+        int incremental_score = evaluate_nnue(&position);
         refresh_nnue(&position);
-        if (memcmp(accumulator, position.accumulator, sizeof(accumulator)) ||
-            king_bucket[WHITE] != position.king_bucket[WHITE] ||
-            king_bucket[BLACK] != position.king_bucket[BLACK]) {
+        if (memcmp(incremental.accumulator, position.accumulator,
+                   sizeof(position.accumulator)) ||
+            memcmp(incremental.king_bucket, position.king_bucket,
+                   sizeof(position.king_bucket)) ||
+            memcmp(incremental.king_mirror, position.king_mirror,
+                   sizeof(position.king_mirror)) ||
+            incremental_score != evaluate_nnue(&position)) {
             fprintf(stderr, "%s nn mismatch\n", name);
             test_failed = 1;
         }
         undo_move(&position, list.moves[i], &undo);
         expect_true("position after undo", position_is_valid(&position));
+        expect_position_state(&position, &initial);
     }
     expect_true("legal moves", legal_moves > 0);
+}
+
+enum { KING_VIEW_UNCHECKED, KING_VIEW_SAME, KING_VIEW_CHANGED };
+
+static void test_incremental_move(const char *name,
+                                  const char *fen,
+                                  const char *move_text,
+                                  int expected_king_view) {
+    position_t position;
+    expect_true(name, set_position_fen(&position, fen));
+    position_t initial = position;
+    move_t move = find_generated_move(&position, move_text, false);
+    expect_true("incremental move generated", move != 0);
+    if (!move) return;
+    int side = position.side_to_move;
+    undo_t undo;
+    expect_true("incremental move legal", make_move(&position, move, &undo));
+    bool king_view_changed =
+        position.king_bucket[side] != initial.king_bucket[side] ||
+        position.king_mirror[side] != initial.king_mirror[side];
+    if (expected_king_view == KING_VIEW_SAME) {
+        expect_true("same king view", !king_view_changed);
+        expect_memory("same view accumulator", position.accumulator[side],
+                      initial.accumulator[side],
+                      sizeof(position.accumulator[side]));
+    } else if (expected_king_view == KING_VIEW_CHANGED) {
+        expect_true("changed king view", king_view_changed);
+    }
+
+    position_t incremental = position;
+    int incremental_score = evaluate_nnue(&position);
+    refresh_nnue(&position);
+    expect_memory("focused incremental accumulator", position.accumulator,
+                  incremental.accumulator, sizeof(position.accumulator));
+    expect_memory("focused incremental bucket", position.king_bucket,
+                  incremental.king_bucket, sizeof(position.king_bucket));
+    expect_memory("focused incremental mirror", position.king_mirror,
+                  incremental.king_mirror, sizeof(position.king_mirror));
+    expect_u64("focused incremental evaluation",
+               (uint64_t)evaluate_nnue(&position),
+               (uint64_t)incremental_score);
+    undo_move(&position, move, &undo);
+    expect_position_state(&position, &initial);
+}
+
+static void test_focused_incremental_nnue(void) {
+    const char *start =
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    test_incremental_move("quiet pawn", start, "e2e3", KING_VIEW_UNCHECKED);
+    test_incremental_move("double pawn", start, "e2e4", KING_VIEW_UNCHECKED);
+    test_incremental_move("knight", start, "g1f3", KING_VIEW_UNCHECKED);
+    test_incremental_move(
+        "bishop", "7k/8/8/8/8/8/2B5/K7 w - - 0 1", "c2d3",
+        KING_VIEW_UNCHECKED);
+    test_incremental_move(
+        "rook", "7k/8/8/8/8/8/R7/K7 w - - 0 1", "a2a3",
+        KING_VIEW_UNCHECKED);
+    test_incremental_move(
+        "queen", "7k/8/8/8/8/8/Q7/K7 w - - 0 1", "a2b3",
+        KING_VIEW_UNCHECKED);
+    test_incremental_move(
+        "same bucket king", "7k/8/8/8/8/8/8/K7 w - - 0 1", "a1a2",
+        KING_VIEW_SAME);
+    test_incremental_move(
+        "black nonfeature king", "7k/8/8/8/8/8/8/K7 b - - 0 1", "h8h7",
+        KING_VIEW_SAME);
+    test_incremental_move(
+        "bucket crossing king", "7k/8/8/8/K7/8/8/8 w - - 0 1", "a4a5",
+        KING_VIEW_CHANGED);
+    test_incremental_move(
+        "mirror crossing king", "7k/8/8/8/8/8/8/3K4 w - - 0 1", "d1e1",
+        KING_VIEW_CHANGED);
+    test_incremental_move(
+        "capture", "7k/8/8/8/3p4/2B5/8/K7 w - - 0 1", "c3d4",
+        KING_VIEW_UNCHECKED);
+    test_incremental_move(
+        "en passant", "7k/8/8/3pP3/8/8/8/K7 w - d6 0 1", "e5d6",
+        KING_VIEW_UNCHECKED);
+    const char *promotion = "7k/P7/8/8/8/8/8/K7 w - - 0 1";
+    test_incremental_move(
+        "queen promotion", promotion, "a7a8q", KING_VIEW_UNCHECKED);
+    test_incremental_move(
+        "rook promotion", promotion, "a7a8r", KING_VIEW_UNCHECKED);
+    test_incremental_move(
+        "bishop promotion", promotion, "a7a8b", KING_VIEW_UNCHECKED);
+    test_incremental_move(
+        "knight promotion", promotion, "a7a8n", KING_VIEW_UNCHECKED);
+    test_incremental_move(
+        "capture promotion", "1r5k/P7/8/8/8/8/8/K7 w - - 0 1",
+        "a7b8q", KING_VIEW_UNCHECKED);
+    test_incremental_move(
+        "white king castle", "4k3/8/8/8/8/8/8/4K2R w K - 0 1",
+        "e1g1", KING_VIEW_CHANGED);
+    test_incremental_move(
+        "white queen castle", "4k3/8/8/8/8/8/8/R3K3 w Q - 0 1",
+        "e1c1", KING_VIEW_CHANGED);
+    test_incremental_move(
+        "black king castle", "4k2r/8/8/8/8/8/8/4K3 b k - 0 1",
+        "e8g8", KING_VIEW_CHANGED);
+    test_incremental_move(
+        "black queen castle", "r3k3/8/8/8/8/8/8/4K3 b q - 0 1",
+        "e8c8", KING_VIEW_CHANGED);
+}
+
+static void test_incremental_nnue_sequence(void) {
+    enum { SEQUENCE_LIMIT = 48 };
+    position_t position;
+    set_start_position(&position);
+    position_t initial = position;
+    move_t moves[SEQUENCE_LIMIT];
+    undo_t undo[SEQUENCE_LIMIT];
+    uint64_t random_state = UINT64_C(0x6e6e7565736571);
+    int move_count = 0;
+
+    while (move_count < SEQUENCE_LIMIT) {
+        move_list_t list;
+        generate_moves(&position, &list, false);
+        if (!list.count) break;
+        int start = (int)(next_test_bits(&random_state) %
+                          (uint64_t)list.count);
+        bool made = false;
+        for (int offset = 0; offset < list.count; ++offset) {
+            int index = (start + offset) % list.count;
+            position_t before = position;
+            if (!make_move(&position, list.moves[index], &undo[move_count])) {
+                expect_position_state(&position, &before);
+                continue;
+            }
+            moves[move_count] = list.moves[index];
+            position_t incremental = position;
+            int incremental_score = evaluate_nnue(&position);
+            refresh_nnue(&position);
+            expect_memory("sequence incremental accumulator",
+                          position.accumulator, incremental.accumulator,
+                          sizeof(position.accumulator));
+            expect_memory("sequence incremental bucket", position.king_bucket,
+                          incremental.king_bucket,
+                          sizeof(position.king_bucket));
+            expect_memory("sequence incremental mirror", position.king_mirror,
+                          incremental.king_mirror,
+                          sizeof(position.king_mirror));
+            expect_u64("sequence incremental evaluation",
+                       (uint64_t)evaluate_nnue(&position),
+                       (uint64_t)incremental_score);
+            ++move_count;
+            made = true;
+            break;
+        }
+        if (!made) break;
+    }
+    expect_true("sequence length", move_count >= 24);
+    while (move_count) {
+        --move_count;
+        undo_move(&position, moves[move_count], &undo[move_count]);
+        position_t incremental = position;
+        refresh_nnue(&position);
+        expect_memory("sequence undo accumulator", position.accumulator,
+                      incremental.accumulator, sizeof(position.accumulator));
+        expect_memory("sequence undo bucket", position.king_bucket,
+                      incremental.king_bucket, sizeof(position.king_bucket));
+        expect_memory("sequence undo mirror", position.king_mirror,
+                      incremental.king_mirror, sizeof(position.king_mirror));
+    }
+    expect_position_state(&position, &initial);
+}
+
+static void clear_network_parameters(void *memory) {
+    nnue_header_t *header = memory;
+    header->output_bias = 0;
+    memset((uint8_t *)memory + sizeof(*header), 0,
+           NNUE_FILE_SIZE - sizeof(*header));
+}
+
+static void test_nnue_evaluation(void *memory) {
+    nnue_header_t *header = memory;
+    int16_t *feature_bias =
+        (int16_t *)((uint8_t *)memory + sizeof(*header));
+    int16_t *output_weights = feature_bias + NNUE_HIDDEN_SIZE;
+    int8_t *feature_weights =
+        (int8_t *)(output_weights + 2 * NNUE_HIDDEN_SIZE);
+    position_t position;
+
+    unload_nnue();
+    clear_network_parameters(memory);
+    feature_bias[0] = -20;
+    feature_bias[1] = 200;
+    output_weights[0] = INT16_MAX;
+    output_weights[1] = NNUE_OUTPUT_QUANTIZATION;
+    expect_true("activation network", bind_nnue(memory, NNUE_FILE_SIZE));
+    expect_true("activation fen", set_position_fen(
+        &position, "7k/8/8/8/8/8/8/K7 w - - 0 1"));
+    expect_u64("zero and upper clipping", (uint64_t)evaluate_nnue(&position), 1);
+    unload_nnue();
+    output_weights[1] = -NNUE_OUTPUT_QUANTIZATION;
+    expect_true("negative network", bind_nnue(memory, NNUE_FILE_SIZE));
+    expect_true("negative fen", set_position_fen(
+        &position, "7k/8/8/8/8/8/8/K7 w - - 0 1"));
+    expect_true("negative output", evaluate_nnue(&position) == -1);
+
+    unload_nnue();
+    clear_network_parameters(memory);
+    feature_weights[8 * NNUE_HIDDEN_SIZE] = 100;
+    feature_weights[375 * NNUE_HIDDEN_SIZE] = 20;
+    output_weights[0] = NNUE_OUTPUT_QUANTIZATION;
+    output_weights[NNUE_HIDDEN_SIZE] = -NNUE_OUTPUT_QUANTIZATION;
+    expect_true("perspective network", bind_nnue(memory, NNUE_FILE_SIZE));
+    expect_true("white perspective fen", set_position_fen(
+        &position, "7k/8/8/8/8/8/P7/K7 w - - 0 1"));
+    expect_true("white perspective score", evaluate_nnue(&position) == 1);
+    expect_true("black perspective fen", set_position_fen(
+        &position, "7k/8/8/8/8/8/P7/K7 b - - 0 1"));
+    expect_true("black perspective score", evaluate_nnue(&position) == -1);
 }
 
 static int count_legal_moves(position_t *position) {
@@ -1000,7 +1387,7 @@ static void test_search_timeout(void) {
 
 static void test_search_structure_sizes(void) {
     expect_u64("position size", sizeof(position_t), 2512);
-    expect_u64("undo size", sizeof(undo_t), 280);
+    expect_u64("undo size", sizeof(undo_t), 24);
     expect_u64("table entry size", sizeof(tt_entry_t), 16);
     expect_u64("search result size", sizeof(search_result_t), 544);
 }
@@ -1045,10 +1432,12 @@ int main(void) {
     run_perft_case("p6",
                    "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
                    position_six_nodes, 4);
+    test_nnue_feature_mapping();
 
     void *network = create_mock_network();
     expect_true("net alloc", network != NULL);
-    expect_true("net bind", network && bind_nnue(network, NNUE_FILE_SIZE));
+    if (!network) return 1;
+    test_nnue_loader(network);
     check_incremental_nnue(
         "inc start",
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
@@ -1061,6 +1450,9 @@ int main(void) {
     check_incremental_nnue(
         "inc promo",
         "4k3/P7/8/8/8/8/7p/4K3 w - - 0 1");
+    test_focused_incremental_nnue();
+    test_incremental_nnue_sequence();
+    test_nnue_evaluation(network);
 
     test_terminal_search();
     test_draw_search();

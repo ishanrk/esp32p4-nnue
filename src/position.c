@@ -362,14 +362,10 @@ bool make_move(position_t *position, move_t move, undo_t *undo) {
     undo->history_count = position->history_count;
     undo->castling = position->castling;
     undo->en_passant = position->en_passant;
-    undo->king_bucket[0] = position->king_bucket[0];
-    undo->king_bucket[1] = position->king_bucket[1];
+    undo->king_bucket = position->king_bucket[side];
+    undo->king_mirror = position->king_mirror[side];
     undo->moved_piece = (uint8_t)piece;
     undo->captured_piece = (uint8_t)captured;
-    if (nnue_is_loaded()) {
-        memcpy(undo->accumulator, position->accumulator,
-               sizeof(undo->accumulator));
-    }
 
     position->key ^= zobrist_castling[position->castling];
     if (position->en_passant != NO_SQUARE) {
@@ -405,9 +401,14 @@ bool make_move(position_t *position, move_t move, undo_t *undo) {
     }
 
     if (flags & MOVE_DOUBLE_PAWN) position->en_passant = (uint8_t)((from + to) >> 1);
-    // rebuild one view after king bucket change
     if (piece_type(piece) == KING && nnue_is_loaded()) {
-        refresh_nnue_perspective(position, side);
+        int bucket = nnue_king_bucket(to, side);
+        bool mirror = nnue_king_mirror(to, side);
+        if (bucket != position->king_bucket[side] ||
+            mirror != (position->king_mirror[side] != 0)) {
+            // rebuild changed king view
+            refresh_nnue_perspective(position, side);
+        }
     }
 
     position->key ^= zobrist_castling[position->castling];
@@ -434,6 +435,10 @@ void undo_move(position_t *position, move_t move, const undo_t *undo) {
     int to = MOVE_TO(move);
     int flags = MOVE_FLAGS(move);
     int side = position->side_to_move ^ 1;
+    bool rebuild_king_view =
+        nnue_is_loaded() && piece_type(undo->moved_piece) == KING &&
+        (position->king_bucket[side] != undo->king_bucket ||
+         position->king_mirror[side] != undo->king_mirror);
 
     if (flags & MOVE_CASTLE) {
         if (to == 6) {
@@ -464,13 +469,10 @@ void undo_move(position_t *position, move_t move, const undo_t *undo) {
     position->halfmove_clock = undo->halfmove_clock;
     position->fullmove_number = undo->fullmove_number;
     position->history_count = undo->history_count;
-    position->king_bucket[0] = undo->king_bucket[0];
-    position->king_bucket[1] = undo->king_bucket[1];
+    position->king_bucket[side] = undo->king_bucket;
+    position->king_mirror[side] = undo->king_mirror;
     position->key = undo->key;
-    if (nnue_is_loaded()) {
-        memcpy(position->accumulator, undo->accumulator,
-               sizeof(position->accumulator));
-    }
+    if (rebuild_king_view) refresh_nnue_perspective(position, side);
 }
 
 void move_to_uci(move_t move, char output[6]) {

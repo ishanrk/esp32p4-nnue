@@ -5,74 +5,14 @@ from pathlib import Path
 
 import numpy as np
 
-KING_BUCKET_COUNT = 8
-FEATURES_PER_BUCKET = 640
-HIDDEN_SIZE = 64
-FEATURE_COUNT = KING_BUCKET_COUNT * FEATURES_PER_BUCKET
-MAX_ACTIVE_FEATURES = 30
-PIECE_INDEX = {symbol: index for index, symbol in enumerate("PNBRQKpnbrqk")}
-
-
-def king_bucket(square: int, perspective: int) -> int:
-    if perspective:
-        square ^= 56
-    file = square & 7
-    rank = square >> 3
-    if file > 3:
-        file = 7 - file
-    return file + (4 if rank >= 4 else 0)
-
-
-def feature_index(
-    piece: int, square: int, perspective: int, bucket: int
-) -> int | None:
-    piece_type = piece % 6
-    if piece_type == 5:
-        return None
-    if perspective:
-        square ^= 56
-    own_piece = (piece >= 6) == bool(perspective)
-    piece_class = piece_type if own_piece else 5 + piece_type
-    return bucket * FEATURES_PER_BUCKET + piece_class * 64 + square
+from features import FEATURE_COUNT, MAX_ACTIVE_FEATURES, encode_feature_indices
 
 
 def encode_position(fen: str) -> tuple[np.ndarray, np.ndarray]:
-    fields = fen.split()
-    if len(fields) < 2:
-        raise ValueError("bad fen")
-    board = fields[0]
-    side = 0 if fields[1] == "w" else 1
-    pieces: list[tuple[int, int]] = []
-    kings = [-1, -1]
-    rank = 7
-    file = 0
-    for symbol in board:
-        if symbol == "/":
-            rank -= 1
-            file = 0
-        elif symbol.isdigit():
-            file += int(symbol)
-        else:
-            piece = PIECE_INDEX[symbol]
-            square = rank * 8 + file
-            pieces.append((piece, square))
-            if piece % 6 == 5:
-                kings[int(piece >= 6)] = square
-            file += 1
-    if min(kings) < 0:
-        raise ValueError("missing king")
-
     encoded = []
-    for perspective in (side, side ^ 1):
-        bucket = king_bucket(kings[perspective], perspective)
+    for active in encode_feature_indices(fen):
         features = np.full(MAX_ACTIVE_FEATURES, FEATURE_COUNT, dtype=np.int64)
-        index = 0
-        for piece, square in pieces:
-            feature = feature_index(piece, square, perspective, bucket)
-            if feature is None:
-                continue
-            features[index] = feature
-            index += 1
+        features[:len(active)] = active
         encoded.append(features)
     return encoded[0], encoded[1]
 

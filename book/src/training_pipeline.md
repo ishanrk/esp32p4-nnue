@@ -13,11 +13,17 @@ bound, and writes FEN plus a score from the side-to-move perspective.
 
 ## Sparse preparation
 
-train/data.py defines the same eight buckets, 640 features per bucket, and
-64-value width as ch.h. king_bucket and feature_index mirror the C runtime.
-encode_position converts a FEN into fixed-length sparse feature arrays for the
-side-to-move and opponent perspectives. load_csv stacks those arrays with
-floating-point teacher scores.
+train/features.py is the pure-Python definition of the version 2 feature map.
+It vertically flips the Black perspective, mirrors every square when the
+normalized king is on files e through h, assigns the eight king buckets and ten
+piece classes, and returns full zero-through-5119 feature indices.
+test/nnue_features.txt supplies shared expected buckets and indices to the C and
+Python tests.
+
+train/data.py calls that mapping and pads each perspective to 30 active features
+with sentinel index 5120. encode_position returns side-to-move features first
+and opponent features second. load_csv stacks those arrays with floating-point
+teacher scores.
 
 train/prep.py reads the label CSV through load_csv and writes a compressed NPZ
 with side features, opponent features, and labels.
@@ -34,7 +40,11 @@ tanh-scaled centipawn values, and saves the model state.
 
 train/export.py loads that state, quantizes feature weights and bias by Q1,
 quantizes output weights by Q2, scales output bias by both, writes the fixed
-header and arrays, and rejects any result that is not exactly 328096 bytes.
+version 2 header and arrays, and rejects any result that is not exactly 328096
+bytes. Feature bias is clamped to -28928 through 28957 so any exported model is
+safe for 30 signed int8 feature contributions in an int16 accumulator. This
+pipeline defines the runtime format but does not provide the final trained
+reference model.
 
     python train/label.py games.pgn stockfish labels.csv --nodes 20000
     python train/prep.py labels.csv data.npz

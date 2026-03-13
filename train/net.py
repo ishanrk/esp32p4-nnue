@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import torch
 
-from data import FEATURE_COUNT, HIDDEN_SIZE
+from features import (
+    ACTIVATION_CLIP,
+    FEATURE_COUNT,
+    FEATURE_QUANTIZATION,
+    HIDDEN_SIZE,
+    OUTPUT_QUANTIZATION,
+)
 
-Q1 = 64
-Q2 = 64
-CLIP = 127
+Q1 = FEATURE_QUANTIZATION
+Q2 = OUTPUT_QUANTIZATION
+CLIP = ACTIVATION_CLIP
 
 
 class NnueNetwork(torch.nn.Module):

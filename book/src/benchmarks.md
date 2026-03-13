@@ -38,3 +38,22 @@ variation memory reduction did not change their search trees.
 ESP32 P4 cycle counts, native 64-bit versus paired 32-bit bitboards, and portable
 scalar versus PIE kernels all remain future measurement tasks. These host
 numbers must not be presented as device performance.
+
+## Incremental NNUE make and undo
+
+The runtime comparison uses the kiwipete position at depth seven with a loaded
+328096-byte zero-parameter network. Version 1 is loaded by the starting binary
+and the semantically equivalent version 2 image by the snapshot-free binary.
+Both searches return e2a6 at score zero after exactly 412398 nodes. Five paired
+GCC release runs on the same x86-64 host produced:
+
+| runtime | times | median time | median nodes per second |
+| --- | --- | ---: | ---: |
+| accumulator snapshots | 113 114 110 111 112 ms | 112 ms | 3,682,125 |
+| reversible accumulators | 115 113 111 112 114 ms | 113 ms | 3,649,539 |
+
+The roughly one-percent difference is timing noise at this duration, so this
+measurement does not support a host speedup claim. The deterministic result is
+the removal of a 256-byte copy from every make and every undo and the reduction
+of undo_t from 280 to 24 bytes. Device timing and stack measurements remain the
+authority for ESP32 P4 performance.

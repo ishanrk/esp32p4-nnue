@@ -47,11 +47,18 @@ enum {
     POSITION_HISTORY_SIZE = 256
 };
 enum {
+    NNUE_FORMAT_VERSION = 2,
     NNUE_BUCKET_COUNT = 8,
     NNUE_FEATURES_PER_BUCKET = 640,
     NNUE_HIDDEN_SIZE = 64,
-    NNUE_FEATURE_WEIGHT_COUNT =
-        NNUE_BUCKET_COUNT * NNUE_FEATURES_PER_BUCKET * NNUE_HIDDEN_SIZE
+    NNUE_FEATURE_COUNT = NNUE_BUCKET_COUNT * NNUE_FEATURES_PER_BUCKET,
+    NNUE_FEATURE_WEIGHT_COUNT = NNUE_FEATURE_COUNT * NNUE_HIDDEN_SIZE,
+    NNUE_MAX_ACTIVE_FEATURES = 30,
+    NNUE_ACTIVATION_CLIP = 127,
+    NNUE_FEATURE_QUANTIZATION = 64,
+    NNUE_OUTPUT_QUANTIZATION = 64,
+    NNUE_ACCUMULATOR_BIAS_MIN = -28928,
+    NNUE_ACCUMULATOR_BIAS_MAX = 28957
 };
 
 #define SQUARE_BIT(square) (UINT64_C(1) << (square))
@@ -110,6 +117,7 @@ typedef struct {
     uint16_t fullmove_number;
     uint16_t history_count;
     uint8_t king_bucket[COLOR_COUNT];
+    uint8_t king_mirror[COLOR_COUNT];
     uint8_t side_to_move;
     uint8_t castling;
     uint8_t en_passant;
@@ -117,13 +125,13 @@ typedef struct {
 
 typedef struct {
     uint64_t key;
-    int16_t accumulator[COLOR_COUNT][NNUE_HIDDEN_SIZE];
     uint16_t halfmove_clock;
     uint16_t fullmove_number;
     uint16_t history_count;
     uint8_t castling;
     uint8_t en_passant;
-    uint8_t king_bucket[COLOR_COUNT];
+    uint8_t king_bucket;
+    uint8_t king_mirror;
     uint8_t moved_piece;
     uint8_t captured_piece;
 } undo_t;
@@ -190,6 +198,12 @@ bool load_nnue(const char *path);
 bool bind_nnue(const void *data, size_t size);
 void unload_nnue(void);
 bool nnue_is_loaded(void);
+int nnue_king_bucket(int king_square, int perspective);
+bool nnue_king_mirror(int king_square, int perspective);
+int nnue_feature_index(int king_square,
+                       int piece,
+                       int square,
+                       int perspective);
 void refresh_nnue(position_t *position);
 void refresh_nnue_perspective(position_t *position, int perspective);
 void add_nnue_feature(position_t *position, int piece, int square);
