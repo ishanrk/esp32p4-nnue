@@ -70,5 +70,17 @@ if(BUILD_TESTING)
             NAME p4features
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/train/test_features.py
         )
+        execute_process(
+            COMMAND ${Python3_EXECUTABLE} -c "import chess, numpy"
+            RESULT_VARIABLE P4_TRAIN_DEPS
+            OUTPUT_QUIET
+            ERROR_QUIET
+        )
+        if(P4_TRAIN_DEPS EQUAL 0)
+            add_test(
+                NAME p4data
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/train/test_data.py
+            )
+        endif()
     endif()
 endif()

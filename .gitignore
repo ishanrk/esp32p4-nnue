@@ -6,5 +6,13 @@ __pycache__/
 *.bin
 *.npz
 *.csv
+*.jsonl
+*.jsonl.meta.json
+*.pgn
+*.zst
 *.pt
+/data/
+!/test/training_games.pgn
+!/test/training_labels.jsonl
+!/test/training_labels.jsonl.meta.json
 /.vscode/

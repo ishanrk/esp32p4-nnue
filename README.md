@@ -44,8 +44,9 @@ Example input:
 
 The test suite checks six standard perft positions, make and undo restoration,
 incremental NNUE against full refresh, search terminal and draw semantics,
-shared C and Python NNUE feature fixtures, transposition-table reuse,
-deterministic results, and timeout restoration.
+shared C and Python NNUE feature fixtures, deterministic whole-game dataset
+splits, compact data shards, transposition-table reuse, deterministic results,
+and timeout restoration.
 
 For AddressSanitizer and UndefinedBehaviorSanitizer:
 
@@ -59,13 +60,21 @@ Install the host dependencies:
 
     python -m pip install -r train/requirements.txt
 
-Generate fixed-node Stockfish teacher labels, prepare sparse features, train,
-and export:
+Generate fixed-node Stockfish teacher labels, prepare compact sparse shards,
+train without loading the whole dataset, and export:
 
-    python train/label.py games.pgn stockfish labels.csv --nodes 20000
-    python train/prep.py labels.csv data.npz
-    python train/train.py data.npz model.pt
+    python train/label.py games.pgn stockfish labels.jsonl --nodes 20000
+    python train/prep.py labels.jsonl data
+    python train/train.py data model.pt
     python train/export.py model.pt nn.bin
+
+Labeling samples every fourth ply from ply eight by default. A deterministic
+seed assigns each complete source game to an approximately 90/5/5
+training/validation/test split. Preparation writes `uint16` feature IDs and
+clipped `int16` side-to-move centipawn labels to bounded NPZ shards, with the
+exact mapping and teacher settings in `data/manifest.json`. The implementation
+book describes the source format, split rule, memory calculation, Lichess data
+sources, and scaling tradeoffs.
 
 Load the exported file through UCI:
 

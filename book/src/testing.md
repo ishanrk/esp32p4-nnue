@@ -1,8 +1,10 @@
 # Testing
 
-The project has one focused C regression binary named p4test and one pure-Python
-feature-mapping test named p4features. CTest registers both when a Python
-interpreter is available. Running p4test directly prints ok on success.
+The project has one focused C regression binary named p4test, one pure-Python
+feature-mapping test named p4features, and one training data test named p4data.
+CTest registers p4features when a Python interpreter is available and p4data
+when NumPy and python-chess are also installed. Continuous integration installs
+those data-test dependencies. Running p4test directly prints ok on success.
 
 The binary checks:
 
@@ -55,6 +57,16 @@ same rows through train/features.py and additionally checks vertical and
 horizontal symmetric pairs. This prevents the runtime and training encoders
 from agreeing only with themselves.
 
+test/training_games.pgn contains eight short legal games with different lengths,
+a Black-to-move setup, castling, captures, and promotions. train/test_data.py
+uses a deterministic fake score callback, never an engine process, to check that
+repeated labeling produces identical JSONL and that every game has one split.
+test/training_labels.jsonl is a separate prewritten preparation fixture. Its
+seven positions cover all three splits, both score clip boundaries, sparse
+padding, and shard boundaries. The data test checks `uint16` feature and
+`int16` label arrays, manifest and file counts, empty input, malformed FEN, and
+cross-split rejection.
+
 The sliding test implementation advances file and rank coordinates one square
 at a time, includes the first occupied square, and then stops in that
 direction. It does not call the production bishop or rook functions. Every
@@ -81,6 +93,8 @@ Sanitizer test:
 
 Clang uses the same commands in a separate directory with
 CMAKE_C_COMPILER=clang. The CI workflow runs the GCC release and sanitizer
-configurations. The Python mapping test can also be run directly:
+configurations. The Python tests can also be run directly after installing the
+host training dependencies:
 
     python3 train/test_features.py
+    python3 train/test_data.py

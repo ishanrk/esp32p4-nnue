@@ -5,6 +5,7 @@ FEATURES_PER_BUCKET = 640
 HIDDEN_SIZE = 64
 FEATURE_COUNT = KING_BUCKET_COUNT * FEATURES_PER_BUCKET
 MAX_ACTIVE_FEATURES = 30
+PADDING_FEATURE = FEATURE_COUNT
 FORMAT_VERSION = 2
 ACTIVATION_CLIP = 127
 FEATURE_QUANTIZATION = 64
@@ -79,8 +80,10 @@ def parse_fen(fen: str) -> tuple[int, list[tuple[int, int]], list[int]]:
         rank = 7 - rank_index
         file = 0
         for symbol in text:
-            if symbol.isdigit():
+            if symbol in "12345678":
                 file += int(symbol)
+                if file > 8:
+                    raise ValueError("bad fen rank")
                 continue
             if symbol not in PIECE_INDEX or file >= 8:
                 raise ValueError("bad fen piece")
@@ -92,7 +95,9 @@ def parse_fen(fen: str) -> tuple[int, list[tuple[int, int]], list[int]]:
             file += 1
         if file != 8:
             raise ValueError("bad fen rank")
-    if min(kings) < 0:
+    if sum(piece == 5 for piece, _ in pieces) != 1 or sum(
+        piece == 11 for piece, _ in pieces
+    ) != 1:
         raise ValueError("missing king")
     if sum(piece % 6 != 5 for piece, _ in pieces) > MAX_ACTIVE_FEATURES:
         raise ValueError("too many nonking pieces")
@@ -124,3 +129,13 @@ def encode_feature_indices(fen: str) -> tuple[list[int], list[int]]:
     _, side_features = _active_feature_indices(pieces, kings, side)
     _, opponent_features = _active_feature_indices(pieces, kings, side ^ 1)
     return side_features, opponent_features
+
+
+def encode_position(fen: str) -> tuple[list[int], list[int]]:
+    encoded = []
+    for active in encode_feature_indices(fen):
+        features = active + [PADDING_FEATURE] * (
+            MAX_ACTIVE_FEATURES - len(active)
+        )
+        encoded.append(features)
+    return encoded[0], encoded[1]

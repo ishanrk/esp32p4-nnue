@@ -1,0 +1,23 @@
+{
+  "engine": {
+    "author": "tests",
+    "name": "fixture teacher"
+  },
+  "label_format_version": 1,
+  "max_ply": null,
+  "min_ply": 8,
+  "node_budget": 100,
+  "score_clip": {
+    "maximum": 30000,
+    "minimum": -30000,
+    "rule": "clamp"
+  },
+  "score_perspective": "side_to_move",
+  "split_percent": {
+    "test": 5,
+    "train": 90,
+    "validation": 5
+  },
+  "split_seed": 7,
+  "stride": 4
+}

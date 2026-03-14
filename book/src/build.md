@@ -12,6 +12,11 @@ and test binary, then run the registered test:
 The resulting programs are build/p4nnue and build/p4test. The core is the static
 library p4core. Compiler warnings are applied to all three targets.
 
+When NumPy and python-chess are installed, CTest also registers the training
+data transformation test. Continuous integration installs those two host
+dependencies before configuring CMake. The feature-mapping test remains pure
+Python and runs whenever a Python interpreter is available.
+
 ## Sanitizer and compiler checks
 
 AddressSanitizer and UndefinedBehaviorSanitizer are enabled by P4_SAN:
