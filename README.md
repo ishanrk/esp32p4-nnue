@@ -45,8 +45,9 @@ Example input:
 The test suite checks six standard perft positions, make and undo restoration,
 incremental NNUE against full refresh, search terminal and draw semantics,
 shared C and Python NNUE feature fixtures, deterministic whole-game dataset
-splits, compact data shards, transposition-table reuse, deterministic results,
-and timeout restoration.
+splits, compact data shards, baseline checkpoint selection, safe model export,
+exact Python and C integer evaluation, transposition-table reuse, deterministic
+results, and timeout restoration.
 
 For AddressSanitizer and UndefinedBehaviorSanitizer:
 
@@ -61,24 +62,33 @@ Install the host dependencies:
     python -m pip install -r train/requirements.txt
 
 Generate fixed-node Stockfish teacher labels, prepare compact sparse shards,
-train without loading the whole dataset, and export:
+select the best validation checkpoint without loading the whole dataset, and
+export the exact runtime format:
 
     python train/label.py games.pgn stockfish labels.jsonl --nodes 20000
     python train/prep.py labels.jsonl data
-    python train/train.py data model.pt
+    python train/train.py data model.pt --epochs 12 --batch 4096 --lr 0.001 \
+        --seed 7 --score-scale 400 --device auto --workers 0
     python train/export.py model.pt nn.bin
 
 Labeling samples every fourth ply from ply eight by default. A deterministic
 seed assigns each complete source game to an approximately 90/5/5
 training/validation/test split. Preparation writes `uint16` feature IDs and
 clipped `int16` side-to-move centipawn labels to bounded NPZ shards, with the
-exact mapping and teacher settings in `data/manifest.json`. The implementation
-book describes the source format, split rule, memory calculation, Lichess data
-sources, and scaling tradeoffs.
+exact mapping and teacher settings in `data/manifest.json`. Training writes the
+selected checkpoint to `model.pt` and its reproducibility record to
+`model.pt.json`. Export writes the 328096-byte `nn.bin` and model manifest
+`nn.bin.json`; export fails instead of silently saturating parameters. The
+implementation book describes the complete workflow and parameter tradeoffs.
 
 Load the exported file through UCI:
 
     setoption name EvalFile value nn.bin
+
+Evaluate one quoted FEN with the C runtime or its exact Python integer oracle:
+
+    ./build/p4eval nn.bin "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    python train/integer.py nn.bin "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 ## ESP32 P4
 

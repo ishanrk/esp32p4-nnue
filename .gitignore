@@ -4,6 +4,7 @@
 __pycache__/
 *.py[cod]
 *.bin
+*.bin.json
 *.npz
 *.csv
 *.jsonl
@@ -11,6 +12,7 @@ __pycache__/
 *.pgn
 *.zst
 *.pt
+*.pt.json
 /data/
 !/test/training_games.pgn
 !/test/training_labels.jsonl

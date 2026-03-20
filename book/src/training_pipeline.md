@@ -2,8 +2,8 @@
 
 Training runs on a host and produces the integer network consumed by
 `src/nnue.c`. This repository does not contain a final trained network or a
-large dataset. It provides a reproducible path from source games to bounded
-training, validation, and test shards:
+large dataset. It provides a reproducible path from source games through the
+exported runtime model:
 
 ```text
 pgn games
@@ -12,6 +12,11 @@ pgn games
   -> compact sparse features
   -> train validation and test shards
   -> dataset manifest
+  -> bounded baseline training
+  -> best validation checkpoint
+  -> safe integer quantization
+  -> runtime model and model manifest
+  -> exact python and c comparison
 ```
 
 The labeled JSONL is retained separately from encoded data. It contains FENs
@@ -104,9 +109,10 @@ The splits have distinct roles:
 - validation positions measure choices during development without updating weights
 - test positions remain isolated for a final assessment after choices are fixed
 
-`train/train.py` consumes the prepared training shards and reports validation
-error. It does not merge the splits or create a second position-level split.
-The test shards are deliberately untouched by ordinary training.
+`train/train.py` consumes the prepared training shards without merging the
+splits or creating a second position-level split. Test shards remain untouched
+during optimization and checkpoint selection. They are read once after the
+best validation checkpoint has been chosen.
 
 ## Exact sparse features
 
@@ -191,44 +197,138 @@ functions to hold only one shard plus one batch conversion in memory. It may
 shuffle shard and row order deterministically for optimization without changing
 split membership.
 
-## Training and export
+## Baseline training
 
 `NnueNetwork` in `train/net.py` receives side-to-move and opponent feature
 tensors. Its 5121-row embedding reserves the last zero row for padding, adds one
 shared 64-value feature bias to each perspective, applies clipped ReLU, joins
 the perspectives, and returns one score from the linear output layer.
 
-`train/train.py` receives a dataset directory or manifest path and a checkpoint
-output path. For each epoch it derives deterministic shard and row orders from
-the training seed. Each batch is converted to the integer index type PyTorch
-requires, sent to the selected CPU or CUDA device, and optimized with AdamW.
-`_scaled_loss` applies smooth L1 loss after tanh-scaling predictions and targets
-by 400 centipawns.
+`ShardDataset(shard_paths, seed)` receives the ordered training shard paths and
+an epoch seed. Each data-loader worker takes a disjoint slice of the shuffled
+shard order, opens one shard at a time, and yields its rows in a seeded order.
+Memory is therefore bounded by one loaded shard and the loader's conservative
+prefetch for each worker rather than the complete dataset. Worker count defaults
+to zero and can be increased explicitly after measuring host memory and input
+throughput.
 
-`evaluate_shards(network, shard_paths, batch_size, device)` disables gradients,
-streams the ordered validation shards in batches, and returns mean absolute
-centipawn error or `None` for an empty validation split. It changes no weights
-and receives no test shard paths. After the configured epochs the command saves
-the model state.
+`transformed_loss(prediction, target, score_scale)` applies smooth L1 to the
+tanh-transformed prediction and teacher score. The bounded transform reduces
+the leverage of very large centipawn and finite mate labels, while smooth L1 is
+less sensitive to individual outliers than squared error. The default scale is
+400 centipawns. This is still teacher-score regression, not WDL training or game
+result mixing.
 
-`train/export.py` loads that state, quantizes feature weights and bias by Q1,
-quantizes output weights by Q2, and scales output bias by both factors. It
-clamps feature bias to the accumulator-safe range and writes the fixed version
-2 header and arrays. Export rejects a result that is not exactly 328096 bytes.
-This defines the runtime format but does not provide a final trained model.
+`evaluate_shards(network, shard_paths, batch_size, score_scale, device)` disables
+gradients, reads one shard and one batch at a time, and returns transformed loss
+and raw centipawn mean absolute error. It does not update the network.
+`train_baseline` validates that every split is nonempty, seeds initialization
+and row order, optimizes with AdamW, and evaluates validation after every epoch.
+It replaces the saved checkpoint only when validation transformed loss reaches
+a new minimum. After all epochs it reloads that checkpoint and evaluates the
+test split for the first and only time. Training loss never selects a model.
 
-## Tiny fixture run
+An epoch is one pass over every training position. More epochs allow more
+updates but eventually risk fitting the training set instead of improving held
+out positions. Batch size is the number of positions used for one optimizer
+update; larger batches usually improve device throughput and memory use, while
+smaller batches make more updates and introduce more gradient variation.
+Learning rate controls update size and is usually the first value to reduce if
+loss is unstable. Score scale controls where tanh begins compressing large
+scores: a smaller value focuses the loss more strongly on scores near equality,
+and a larger value preserves more distinction between large evaluations.
 
-The committed labeled fixture needs no Stockfish process. It is useful for
-checking preparation and inspecting the manifest:
+The useful options and defaults are:
+
+- `--epochs 12`
+- `--batch 4096`
+- `--lr 0.001`
+- `--seed 7`
+- `--score-scale 400`
+- `--device auto`, which selects CUDA when available and otherwise CPU
+- `--workers 0`
+- `--weight-decay 0.01`
+
+The checkpoint companion `<checkpoint>.json` records the exact 8-bucket,
+width-64 architecture, seed, PyTorch and NumPy versions, selected device,
+training options, dataset manifest path and split counts, selection rule, best
+epoch, validation metrics, and final test metrics. Initialization and data order
+are seeded. GPU kernels, library versions, and different hardware may still
+produce different results, so GPU runs are not claimed to be bit identical.
+The record intentionally contains no cryptographic hash.
+
+Validation loss is the primary selection metric. Validation and test
+centipawn MAE report the mean absolute distance from teacher scores in familiar
+units, but mate-scale labels and the distribution of positions can dominate the
+number. A lower MAE is useful evidence for this regression objective; it is not
+an Elo estimate and does not guarantee a stronger chess engine.
+
+## Quantization and export
+
+`load_checkpoint_parameters` reconstructs the baseline network and extracts
+the learned arrays. `quantize_parameters` rounds feature weights and the shared
+feature bias by Q1 = 64, output weights by Q2 = 64, and output bias by Q1 times
+Q2. Feature weights become signed int8, feature bias and output weights become
+signed int16, and output bias becomes signed int32.
+
+Quantization maps floating parameters onto the exact integer values consumed by
+the C runtime. A value outside its destination range would saturate and change
+the trained network unexpectedly. Export counts out-of-range values separately
+for feature weights, feature bias, output weights, and output bias, and fails if
+any count is nonzero. It does not silently clip. Feature bias is also restricted
+to -28928 through 28957, which leaves room for the maximum 30 signed int8
+feature vectors in a legal position without overflowing a signed int16
+accumulator.
+
+`build_model_blob` writes the fixed version 2 header, 64 feature biases, 128
+output weights, and 327680 feature weights in the order expected by
+`src/nnue.c`. `export_parameters` writes only after quantization passes and also
+creates a JSON model manifest. The binary must be exactly 328096 bytes. The
+manifest records runtime and feature format versions, architecture,
+quantization, byte size, dataset description, training settings and seed, best
+epoch, validation and test metrics, and the four saturation counts. It contains
+no signature or cryptographic hash.
+
+`load_exported_model` in `train/integer.py` validates and parses that binary.
+`evaluate_integer(model, fen)` encodes the two sparse perspectives, adds int8
+feature vectors to the int16-safe bias, clips both 64-value accumulators to 0
+through 127, orders side to move before opponent, computes the integer dot
+product, and divides by Q1 times Q2 with truncation toward zero. This is an
+independent Python implementation of exported integer inference, not a floating
+PyTorch comparison.
+
+## Smoke training and comparison
+
+The committed seven-position labeled fixture needs no Stockfish process. It
+exercises all three splits and the full train, select, export, and integer
+comparison path quickly on CPU:
 
 ```sh
-python train/prep.py test/training_labels.jsonl build_tiny_data --shard-size 2
-python -m json.tool build_tiny_data/manifest.json
+python train/prep.py test/training_labels.jsonl build_smoke_data --shard-size 2
+python train/train.py build_smoke_data build_smoke.pt --epochs 3 --batch 2 \
+    --lr 0.001 --seed 7 --score-scale 400 --device cpu --workers 0
+python train/export.py build_smoke.pt build_smoke.bin
+python train/integer.py build_smoke.bin \
+    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+./build/p4eval build_smoke.bin \
+    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 ```
 
-To exercise real labeling with a local Stockfish executable, use the committed
-eight-game PGN and a deliberately small limit:
+The last two commands must print the same integer. `train/test_model.py`
+automates exact comparison on three board arrangements with both sides to move
+and tests unsafe and nonfinite exports. The tiny checkpoint is meaningful only
+as a pipeline smoke artifact and must not be published as a reference network.
+
+The smoke commands produce:
+
+- `build_smoke_data/manifest.json` and split NPZ shards
+- `build_smoke.pt`, the selected floating checkpoint
+- `build_smoke.pt.json`, its reproducibility manifest
+- `build_smoke.bin`, the exact runtime model
+- `build_smoke.bin.json`, the exported model manifest
+
+To exercise teacher labeling separately with a local Stockfish executable, use
+the committed eight-game PGN and a deliberately small limit:
 
 ```sh
 python train/label.py test/training_games.pgn /path/to/stockfish \
@@ -238,8 +338,8 @@ python train/prep.py build_tiny_labels.jsonl build_tiny_teacher_data \
     --shard-size 8
 ```
 
-The normal unit test substitutes a fake score function because engine startup,
-version, and analysis cost are external integration concerns.
+The normal labeler test substitutes a fake score function because engine
+startup, version, and analysis cost are external integration concerns.
 
 ## Scaling a real run
 
@@ -250,8 +350,12 @@ under the ignored `data` directory:
 python train/label.py games.pgn /path/to/stockfish labels.jsonl \
     --nodes 20000 --stride 4 --min-ply 8 --limit 1000000 --seed 7
 python train/prep.py labels.jsonl data --shard-size 100000
-python train/train.py data model.pt --epochs 12 --batch 4096 --seed 7
+python train/train.py data model.pt --epochs 12 --batch 4096 --lr 0.001 \
+    --seed 7 --score-scale 400 --device auto --workers 0 \
+    --weight-decay 0.01
 python train/export.py model.pt nn.bin
+./build/p4eval nn.bin \
+    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 ```
 
 Reasonable parameters depend on available time and storage:
@@ -267,4 +371,6 @@ Reasonable parameters depend on available time and storage:
 More shallow labels and fewer deeper labels spend the same resources
 differently; neither is universally best. Record the manifest, measure
 validation behavior, and keep the test split unused until the experiment is
-fixed. Training and publishing a final reference network remain later work.
+fixed. This repository does not include a substantive prepared dataset or a
+trained reference network, so the commands above define the reference run
+rather than claiming results from the tiny fixture.

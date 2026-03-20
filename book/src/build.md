@@ -9,13 +9,18 @@ and test binary, then run the registered test:
     cmake --build build --parallel
     ctest --test-dir build --output-on-failure
 
-The resulting programs are build/p4nnue and build/p4test. The core is the static
-library p4core. Compiler warnings are applied to all three targets.
+The resulting programs are build/p4nnue, build/p4eval, and build/p4test. The
+core is the static library p4core. Compiler warnings are applied to every C
+target. p4eval loads one exported model and FEN for integer inference checks.
 
 When NumPy and python-chess are installed, CTest also registers the training
-data transformation test. Continuous integration installs those two host
-dependencies before configuring CMake. The feature-mapping test remains pure
-Python and runs whenever a Python interpreter is available.
+data and model export tests. The model test invokes p4eval and requires exact
+agreement with the Python integer implementation. When PyTorch is also
+installed, CTest registers a short two-epoch fixture training test for best
+checkpoint and manifest behavior. Continuous integration installs the light
+data and model-test dependencies; it does not install the large training
+framework. The feature-mapping test remains pure Python and runs whenever a
+Python interpreter is available.
 
 ## Sanitizer and compiler checks
 

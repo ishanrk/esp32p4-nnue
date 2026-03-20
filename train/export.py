@@ -1,74 +1,294 @@
 from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
 import struct
+from typing import Any
 
 import numpy as np
-import torch
 
 from features import (
     ACCUMULATOR_BIAS_MAX,
     ACCUMULATOR_BIAS_MIN,
+    ACTIVATION_CLIP,
     FEATURE_COUNT,
     FEATURES_PER_BUCKET,
+    FEATURE_QUANTIZATION,
     FORMAT_VERSION,
     HIDDEN_SIZE,
     KING_BUCKET_COUNT,
+    OUTPUT_QUANTIZATION,
 )
-from net import CLIP, Q1, Q2, NnueNetwork
 
 MAGIC = b"P4NNUE1\0"
+HEADER_SIZE = 32
 FILE_SIZE = (
-    32
+    HEADER_SIZE
     + HIDDEN_SIZE * 2
     + 2 * HIDDEN_SIZE * 2
     + FEATURE_COUNT * HIDDEN_SIZE
 )
+MODEL_MANIFEST_VERSION = 1
+TRAINING_MANIFEST_VERSION = 1
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("model")
-    parser.add_argument("out")
-    args = parser.parse_args()
-
-    network = NnueNetwork()
-    network.load_state_dict(
-        torch.load(args.model, map_location="cpu", weights_only=True)
+def _quantize_array(
+    values: np.ndarray,
+    scale: int,
+    minimum: int,
+    maximum: int,
+) -> tuple[np.ndarray, int]:
+    if not np.all(np.isfinite(values)):
+        raise ValueError("model contains nonfinite parameters")
+    rounded = np.rint(values * scale)
+    saturation_count = int(
+        np.count_nonzero((rounded < minimum) | (rounded > maximum))
     )
-    network.eval()
-    with torch.no_grad():
-        feature_weights = torch.round(
-            network.feature_transformer.weight[:FEATURE_COUNT] * Q1
-        ).clamp(-128, 127).to(torch.int8).numpy()
-        feature_bias = torch.round(network.feature_bias * Q1).clamp(
-            ACCUMULATOR_BIAS_MIN, ACCUMULATOR_BIAS_MAX
-        ).to(torch.int16).numpy()
-        output_weights = torch.round(network.output.weight[0] * Q2).clamp(
-            -32768, 32767
-        ).to(torch.int16).numpy()
-        output_bias = int(
-            torch.round(network.output.bias[0] * Q1 * Q2).clamp(
-                -(2**31), 2**31 - 1
-            )
+    return rounded, saturation_count
+
+
+def quantize_parameters(
+    feature_weights: np.ndarray,
+    feature_bias: np.ndarray,
+    output_weights: np.ndarray,
+    output_bias: float,
+) -> tuple[dict[str, Any], dict[str, int]]:
+    feature_weights = np.asarray(feature_weights)
+    feature_bias = np.asarray(feature_bias)
+    output_weights = np.asarray(output_weights)
+    if feature_weights.shape != (FEATURE_COUNT, HIDDEN_SIZE):
+        raise ValueError("bad feature weight shape")
+    if feature_bias.shape != (HIDDEN_SIZE,):
+        raise ValueError("bad feature bias shape")
+    if output_weights.shape != (2 * HIDDEN_SIZE,):
+        raise ValueError("bad output weight shape")
+    if not np.isfinite(output_bias):
+        raise ValueError("model contains nonfinite parameters")
+
+    rounded_feature_weights, feature_weight_saturation = _quantize_array(
+        feature_weights, FEATURE_QUANTIZATION, -128, 127
+    )
+    rounded_feature_bias, feature_bias_saturation = _quantize_array(
+        feature_bias,
+        FEATURE_QUANTIZATION,
+        ACCUMULATOR_BIAS_MIN,
+        ACCUMULATOR_BIAS_MAX,
+    )
+    rounded_output_weights, output_weight_saturation = _quantize_array(
+        output_weights, OUTPUT_QUANTIZATION, -32768, 32767
+    )
+    rounded_output_bias = int(
+        np.rint(output_bias * FEATURE_QUANTIZATION * OUTPUT_QUANTIZATION)
+    )
+    output_bias_saturation = int(
+        rounded_output_bias < -(2**31) or rounded_output_bias > 2**31 - 1
+    )
+    saturation_counts = {
+        "feature_weights": feature_weight_saturation,
+        "feature_bias": feature_bias_saturation,
+        "output_weights": output_weight_saturation,
+        "output_bias": output_bias_saturation,
+    }
+    if any(saturation_counts.values()):
+        raise ValueError(
+            "quantization saturation "
+            + json.dumps(saturation_counts, sort_keys=True)
         )
 
+    quantized = {
+        "feature_weights": rounded_feature_weights.astype(np.int8),
+        "feature_bias": rounded_feature_bias.astype(np.int16),
+        "output_weights": rounded_output_weights.astype(np.int16),
+        "output_bias": rounded_output_bias,
+    }
+    return quantized, saturation_counts
+
+
+def build_model_blob(quantized: dict[str, Any]) -> bytes:
     header = struct.pack(
-        "<8s8HIi", MAGIC, FORMAT_VERSION,
-        KING_BUCKET_COUNT, FEATURES_PER_BUCKET,
-        HIDDEN_SIZE, CLIP, Q1, Q2, 0, FILE_SIZE, output_bias
+        "<8s8HIi",
+        MAGIC,
+        FORMAT_VERSION,
+        KING_BUCKET_COUNT,
+        FEATURES_PER_BUCKET,
+        HIDDEN_SIZE,
+        ACTIVATION_CLIP,
+        FEATURE_QUANTIZATION,
+        OUTPUT_QUANTIZATION,
+        0,
+        FILE_SIZE,
+        quantized["output_bias"],
     )
     blob = (
         header
-        + feature_bias.astype("<i2").tobytes()
-        + output_weights.astype("<i2").tobytes()
-        + feature_weights.tobytes()
+        + quantized["feature_bias"].astype("<i2", copy=False).tobytes()
+        + quantized["output_weights"].astype("<i2", copy=False).tobytes()
+        + quantized["feature_weights"].tobytes()
     )
     if len(blob) != FILE_SIZE:
-        raise RuntimeError("bad size")
-    with open(args.out, "wb") as output:
-        output.write(blob)
-    print(len(blob))
+        raise RuntimeError("bad model size")
+    return blob
+
+
+def load_checkpoint_parameters(
+    checkpoint_path: str | Path,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    import torch
+
+    from net import NnueNetwork
+
+    network = NnueNetwork()
+    network.load_state_dict(
+        torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    )
+    network.eval()
+    with torch.no_grad():
+        feature_weights = (
+            network.feature_transformer.weight[:FEATURE_COUNT]
+            .detach()
+            .cpu()
+            .numpy()
+        )
+        feature_bias = network.feature_bias.detach().cpu().numpy()
+        output_weights = network.output.weight[0].detach().cpu().numpy()
+        output_bias = float(network.output.bias[0].detach().cpu())
+    return feature_weights, feature_bias, output_weights, output_bias
+
+
+def validate_training_manifest(manifest: dict[str, Any]) -> None:
+    if manifest.get("format_version") != TRAINING_MANIFEST_VERSION:
+        raise ValueError("incompatible training manifest version")
+    architecture = manifest.get("architecture", {})
+    expected = {
+        "activation": "clipped_relu",
+        "activation_clip": ACTIVATION_CLIP,
+        "bucket_count": KING_BUCKET_COUNT,
+        "feature_count": FEATURE_COUNT,
+        "feature_mapping_version": FORMAT_VERSION,
+        "feature_quantization": FEATURE_QUANTIZATION,
+        "features_per_bucket": FEATURES_PER_BUCKET,
+        "hidden_width": HIDDEN_SIZE,
+        "output_quantization": OUTPUT_QUANTIZATION,
+        "perspective_order": ["side_to_move", "opponent"],
+    }
+    for field, value in expected.items():
+        if architecture.get(field) != value:
+            raise ValueError(f"incompatible training architecture {field}")
+    for field in (
+        "seed",
+        "training_parameters",
+        "best_epoch",
+        "validation_metrics",
+        "test_metrics",
+        "dataset",
+        "checkpoint_selection",
+        "determinism",
+        "device",
+        "numpy_version",
+        "pytorch_version",
+    ):
+        if field not in manifest:
+            raise ValueError(f"training manifest missing {field}")
+
+
+def build_model_manifest(
+    training_manifest: dict[str, Any], saturation_counts: dict[str, int]
+) -> dict[str, Any]:
+    validate_training_manifest(training_manifest)
+    return {
+        "activation": {
+            "clip": ACTIVATION_CLIP,
+            "name": "clipped_relu",
+        },
+        "best_epoch": training_manifest["best_epoch"],
+        "bucket_count": KING_BUCKET_COUNT,
+        "checkpoint_selection": training_manifest["checkpoint_selection"],
+        "dataset_description": training_manifest["dataset"],
+        "export_saturation_counts": saturation_counts,
+        "feature_count": FEATURE_COUNT,
+        "feature_mapping_version": FORMAT_VERSION,
+        "feature_quantization": FEATURE_QUANTIZATION,
+        "features_per_bucket": FEATURES_PER_BUCKET,
+        "format_version": FORMAT_VERSION,
+        "hidden_width": HIDDEN_SIZE,
+        "manifest_version": MODEL_MANIFEST_VERSION,
+        "model_byte_size": FILE_SIZE,
+        "output_quantization": OUTPUT_QUANTIZATION,
+        "perspective_order": ["side_to_move", "opponent"],
+        "test_metrics": training_manifest["test_metrics"],
+        "training_environment": {
+            "device": training_manifest.get("device"),
+            "numpy_version": training_manifest.get("numpy_version"),
+            "pytorch_version": training_manifest.get("pytorch_version"),
+        },
+        "training_parameters": training_manifest["training_parameters"],
+        "training_seed": training_manifest["seed"],
+        "validation_metrics": training_manifest["validation_metrics"],
+    }
+
+
+def export_parameters(
+    output_path: str | Path,
+    manifest_path: str | Path,
+    training_manifest: dict[str, Any],
+    feature_weights: np.ndarray,
+    feature_bias: np.ndarray,
+    output_weights: np.ndarray,
+    output_bias: float,
+) -> dict[str, Any]:
+    quantized, saturation_counts = quantize_parameters(
+        feature_weights, feature_bias, output_weights, output_bias
+    )
+    blob = build_model_blob(quantized)
+    model_manifest = build_model_manifest(
+        training_manifest, saturation_counts
+    )
+    Path(output_path).write_bytes(blob)
+    Path(manifest_path).write_text(
+        json.dumps(model_manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return model_manifest
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="quantize and export the baseline runtime model"
+    )
+    parser.add_argument("model")
+    parser.add_argument("out")
+    parser.add_argument("--training-manifest")
+    parser.add_argument("--manifest")
+    args = parser.parse_args()
+    training_manifest_path = Path(
+        args.training_manifest or str(args.model) + ".json"
+    )
+    output_manifest_path = Path(args.manifest or str(args.out) + ".json")
+    try:
+        training_manifest = json.loads(
+            training_manifest_path.read_text(encoding="utf-8")
+        )
+        parameters = load_checkpoint_parameters(args.model)
+        model_manifest = export_parameters(
+            args.out,
+            output_manifest_path,
+            training_manifest,
+            *parameters,
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        parser.error(str(error))
+    print(
+        json.dumps(
+            {
+                "model_byte_size": model_manifest["model_byte_size"],
+                "saturation_counts": model_manifest[
+                    "export_saturation_counts"
+                ],
+            },
+            sort_keys=True,
+        )
+    )
 
 
 if __name__ == "__main__":

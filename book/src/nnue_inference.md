@@ -73,3 +73,27 @@ with all 128 activations at 127 and all output weights at an int16 extreme, the
 dot product plus an int32 bias is safe in int64 and the scaled result fits int.
 evaluate_nnue performs no allocation or accumulator copy and returns the
 side-to-move score.
+
+## Export parity tools
+
+`train/integer.py` reads the exported version 2 model directly. Its
+`load_exported_model` function validates the fixed header, byte size, array
+layout, and accumulator-safe feature biases before returning NumPy integer
+arrays. `evaluate_integer` receives those arrays and a FEN, rebuilds sparse
+features through the shared Python mapping, performs signed integer
+accumulation and clipping, keeps the side-to-move perspective first, and uses
+division truncated toward zero to match C. It does not call the floating
+training network.
+
+`p4eval` is the narrow C comparison executable. It receives an exported model
+path and one quoted FEN, initializes the chess tables, loads and validates the
+model through `load_nnue`, builds the position through `set_position_fen`, and
+prints `evaluate_nnue`. The two commands below must print the same integer:
+
+    python train/integer.py nn.bin "FEN"
+    ./build/p4eval nn.bin "FEN"
+
+The model regression test uses start positions, sparse pawn positions, and
+queen positions with both sides to move. Exact equality protects sparse
+accumulation, activation clipping, perspective order, signed dot products, and
+negative division semantics at once.

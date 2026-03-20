@@ -54,6 +54,10 @@ add_executable(p4nnue src/main.c src/uci.c)
 target_link_libraries(p4nnue PRIVATE p4core)
 target_compile_options(p4nnue PRIVATE ${P4_WARNINGS})
 
+add_executable(p4eval src/eval_tool.c)
+target_link_libraries(p4eval PRIVATE p4core)
+target_compile_options(p4eval PRIVATE ${P4_WARNINGS})
+
 include(CTest)
 if(BUILD_TESTING)
     add_executable(p4test test/test.c)
@@ -81,6 +85,25 @@ if(BUILD_TESTING)
                 NAME p4data
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/train/test_data.py
             )
+            add_test(
+                NAME p4model
+                COMMAND ${CMAKE_COMMAND} -E env
+                    P4_EVAL_TOOL=$<TARGET_FILE:p4eval>
+                    ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/train/test_model.py
+            )
+            execute_process(
+                COMMAND ${Python3_EXECUTABLE} -c "import torch"
+                RESULT_VARIABLE P4_TORCH_DEPS
+                OUTPUT_QUIET
+                ERROR_QUIET
+            )
+            if(P4_TORCH_DEPS EQUAL 0)
+                add_test(
+                    NAME p4training
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/train/test_training.py
+                )
+            endif()
         endif()
     endif()
 endif()

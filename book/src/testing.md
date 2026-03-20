@@ -1,10 +1,13 @@
 # Testing
 
-The project has one focused C regression binary named p4test, one pure-Python
-feature-mapping test named p4features, and one training data test named p4data.
-CTest registers p4features when a Python interpreter is available and p4data
-when NumPy and python-chess are also installed. Continuous integration installs
-those data-test dependencies. Running p4test directly prints ok on success.
+The project has one focused C regression binary named p4test and four Python
+tests named p4features, p4data, p4model, and p4training. CTest registers
+p4features when a Python interpreter is available. NumPy and python-chess add
+p4data and p4model; p4model receives the built p4eval path and compares Python
+and C integer scores exactly. PyTorch additionally enables the short
+p4training fixture run. Continuous integration installs the light data and
+model-test dependencies but leaves PyTorch training to host environments that
+install `train/requirements.txt`. Running p4test directly prints ok on success.
 
 The binary checks:
 
@@ -67,6 +70,21 @@ padding, and shard boundaries. The data test checks `uint16` feature and
 `int16` label arrays, manifest and file counts, empty input, malformed FEN, and
 cross-split rejection.
 
+train/test_training.py prepares that same fixture in a temporary directory,
+runs two CPU epochs, checks that a best validation checkpoint exists, and
+verifies the reproducibility manifest, split counts, selection rule, validation
+metrics, and final test metric. Its checkpoint and manifests are deleted with
+the temporary directory. The test is deliberately tiny and says nothing about
+network strength.
+
+train/test_model.py exports deterministic floating fixture parameters into a
+temporary 328096-byte model. It requires zero saturation and no hash fields,
+then compares Python and C integer evaluation for the initial board, a sparse
+pawn board, and a queen board with both sides to move. Separate cases prove that
+one out-of-range feature weight, accumulator-unsafe feature bias, output weight,
+or output bias fails export, as does a nonfinite parameter. No binary fixture
+model is committed.
+
 The sliding test implementation advances file and rank coordinates one square
 at a time, includes the first occupied square, and then stops in that
 direction. It does not call the production bishop or rook functions. Every
@@ -94,7 +112,9 @@ Sanitizer test:
 Clang uses the same commands in a separate directory with
 CMAKE_C_COMPILER=clang. The CI workflow runs the GCC release and sanitizer
 configurations. The Python tests can also be run directly after installing the
-host training dependencies:
+host training dependencies and building p4eval:
 
     python3 train/test_features.py
     python3 train/test_data.py
+    P4_EVAL_TOOL=build/p4eval python3 train/test_model.py
+    python3 train/test_training.py
