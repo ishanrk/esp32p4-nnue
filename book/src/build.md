@@ -9,9 +9,11 @@ and test binary, then run the registered test:
     cmake --build build --parallel
     ctest --test-dir build --output-on-failure
 
-The resulting programs are build/p4nnue, build/p4eval, and build/p4test. The
-core is the static library p4core. Compiler warnings are applied to every C
-target. p4eval loads one exported model and FEN for integer inference checks.
+The resulting programs are build/p4nnue, build/p4eval, build/p4bench, and
+build/p4test. The core is the static library p4core. Compiler warnings are
+applied to every C target. p4eval loads one exported model and FEN for integer
+inference checks. p4bench reports profile sizes, integer evaluation throughput,
+and repeatable fixed-depth search measurements.
 
 When NumPy and python-chess are installed, CTest also registers the training
 data and model export tests. The model test invokes p4eval and requires exact
@@ -21,6 +23,22 @@ checkpoint and manifest behavior. Continuous integration installs the light
 data and model-test dependencies; it does not install the large training
 framework. The feature-mapping test remains pure Python and runs whenever a
 Python interpreter is available.
+
+## Compile-time NNUE profile
+
+`P4_NNUE_PROFILE` is the one host build selection point for experimental NNUE
+dimensions. The default is the chosen `8x64` profile. The supported comparison
+values are `4x128`, `8x64`, `8x96`, and `16x48`:
+
+    cmake -S . -B build-16x48 -DCMAKE_BUILD_TYPE=Release \
+        -DP4_NNUE_PROFILE=16x48
+    cmake --build build-16x48 --parallel
+
+CMake passes the selected bucket count and hidden width as public compile-time
+definitions to the core and its host executables. `src/nnue_config.h` supplies
+the 8x64 default for builds outside root CMake, including the current firmware
+build. There is no runtime profile branch in inference or incremental updates.
+A binary rejects a model whose header does not match its compiled profile.
 
 ## Sanitizer and compiler checks
 

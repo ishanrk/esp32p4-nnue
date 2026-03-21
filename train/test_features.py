@@ -14,6 +14,7 @@ from features import (
     king_bucket,
     king_mirror,
 )
+from profiles import MODEL_SIZE_LIMIT, PROFILES
 
 
 FIXTURES = Path(__file__).parents[1] / "test" / "nnue_features.txt"
@@ -66,6 +67,45 @@ class FeatureMappingTest(unittest.TestCase):
         self.assertLessEqual(
             ACCUMULATOR_BIAS_MAX + MAX_ACTIVE_FEATURES * 127, 32767
         )
+
+    def test_profile_bucket_regions(self) -> None:
+        for profile in PROFILES:
+            rank_bands = profile.bucket_count // 4
+            buckets = set()
+            for square in range(64):
+                file = square & 7
+                rank = square >> 3
+                normalized_file = file if file < 4 else 7 - file
+                expected = (
+                    normalized_file + 4 * (rank * rank_bands // 8)
+                )
+                actual = king_bucket(square, 0, profile)
+                self.assertEqual(actual, expected, (profile.name, square))
+                self.assertEqual(
+                    actual,
+                    king_bucket(square ^ 56, 1, profile),
+                    (profile.name, square),
+                )
+                buckets.add(actual)
+            self.assertEqual(buckets, set(range(profile.bucket_count)))
+
+    def test_profile_sizes(self) -> None:
+        expected = {
+            "4x128": (328480, 328193, 512),
+            "8x64": (328096, 327937, 256),
+            "8x96": (492128, 491905, 384),
+            "16x48": (491840, 491713, 192),
+        }
+        for profile in PROFILES:
+            self.assertEqual(
+                (
+                    profile.model_bytes,
+                    profile.training_parameter_count,
+                    profile.accumulator_bytes,
+                ),
+                expected[profile.name],
+            )
+            self.assertLessEqual(profile.model_bytes, MODEL_SIZE_LIMIT)
 
 
 if __name__ == "__main__":

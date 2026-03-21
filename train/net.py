@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import torch
 
-from features import (
+from profiles import (
     ACTIVATION_CLIP,
-    FEATURE_COUNT,
+    DEFAULT_PROFILE,
     FEATURE_QUANTIZATION,
-    HIDDEN_SIZE,
+    NnueProfile,
     OUTPUT_QUANTIZATION,
 )
 
@@ -16,16 +16,21 @@ CLIP = ACTIVATION_CLIP
 
 
 class NnueNetwork(torch.nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, profile: NnueProfile = DEFAULT_PROFILE) -> None:
         super().__init__()
+        self.profile = profile
         self.feature_transformer = torch.nn.Embedding(
-            FEATURE_COUNT + 1, HIDDEN_SIZE, padding_idx=FEATURE_COUNT
+            profile.feature_count + 1,
+            profile.hidden_width,
+            padding_idx=profile.padding_feature,
         )
-        self.feature_bias = torch.nn.Parameter(torch.zeros(HIDDEN_SIZE))
-        self.output = torch.nn.Linear(2 * HIDDEN_SIZE, 1)
+        self.feature_bias = torch.nn.Parameter(
+            torch.zeros(profile.hidden_width)
+        )
+        self.output = torch.nn.Linear(2 * profile.hidden_width, 1)
         torch.nn.init.normal_(self.feature_transformer.weight, std=0.02)
         with torch.no_grad():
-            self.feature_transformer.weight[FEATURE_COUNT].zero_()
+            self.feature_transformer.weight[profile.padding_feature].zero_()
 
     def forward(
         self, side_features: torch.Tensor, opponent_features: torch.Tensor

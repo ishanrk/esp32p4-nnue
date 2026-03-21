@@ -1,17 +1,23 @@
 from __future__ import annotations
 
-KING_BUCKET_COUNT = 8
-FEATURES_PER_BUCKET = 640
-HIDDEN_SIZE = 64
-FEATURE_COUNT = KING_BUCKET_COUNT * FEATURES_PER_BUCKET
-MAX_ACTIVE_FEATURES = 30
-PADDING_FEATURE = FEATURE_COUNT
-FORMAT_VERSION = 2
-ACTIVATION_CLIP = 127
-FEATURE_QUANTIZATION = 64
-OUTPUT_QUANTIZATION = 64
-ACCUMULATOR_BIAS_MIN = -28928
-ACCUMULATOR_BIAS_MAX = 28957
+from profiles import (
+    ACCUMULATOR_BIAS_MAX,
+    ACCUMULATOR_BIAS_MIN,
+    ACTIVATION_CLIP,
+    DEFAULT_PROFILE,
+    FEATURES_PER_BUCKET,
+    FEATURE_MAPPING_VERSION,
+    FEATURE_QUANTIZATION,
+    MAX_ACTIVE_FEATURES,
+    NnueProfile,
+    OUTPUT_QUANTIZATION,
+)
+
+KING_BUCKET_COUNT = DEFAULT_PROFILE.bucket_count
+HIDDEN_SIZE = DEFAULT_PROFILE.hidden_width
+FEATURE_COUNT = DEFAULT_PROFILE.feature_count
+PADDING_FEATURE = DEFAULT_PROFILE.padding_feature
+FORMAT_VERSION = FEATURE_MAPPING_VERSION
 PIECE_INDEX = {symbol: index for index, symbol in enumerate("PNBRQKpnbrqk")}
 
 
@@ -23,27 +29,44 @@ def _perspective_square(square: int, perspective: int, mirror: bool) -> int:
     return square
 
 
-def _king_view(king_square: int, perspective: int) -> tuple[int, bool]:
+def _king_view(
+    king_square: int,
+    perspective: int,
+    profile: NnueProfile,
+) -> tuple[int, bool]:
     if not 0 <= king_square < 64 or perspective not in (0, 1):
         raise ValueError("bad king view")
     square = _perspective_square(king_square, perspective, False)
     mirror = (square & 7) >= 4
     if mirror:
         square ^= 7
-    bucket = (square & 7) + (4 if square >> 3 >= 4 else 0)
+    rank_bands = profile.bucket_count // 4
+    bucket = (square & 7) + 4 * ((square >> 3) * rank_bands // 8)
     return bucket, mirror
 
 
-def king_mirror(king_square: int, perspective: int) -> bool:
-    return _king_view(king_square, perspective)[1]
+def king_mirror(
+    king_square: int,
+    perspective: int,
+    profile: NnueProfile = DEFAULT_PROFILE,
+) -> bool:
+    return _king_view(king_square, perspective, profile)[1]
 
 
-def king_bucket(king_square: int, perspective: int) -> int:
-    return _king_view(king_square, perspective)[0]
+def king_bucket(
+    king_square: int,
+    perspective: int,
+    profile: NnueProfile = DEFAULT_PROFILE,
+) -> int:
+    return _king_view(king_square, perspective, profile)[0]
 
 
 def _feature_index_from_view(
-    bucket: int, mirror: bool, piece: int, square: int, perspective: int
+    bucket: int,
+    mirror: bool,
+    piece: int,
+    square: int,
+    perspective: int,
 ) -> int | None:
     piece_type = piece % 6
     if piece_type == 5:
@@ -59,11 +82,15 @@ def _feature_index_from_view(
 
 
 def feature_index(
-    king_square: int, piece: int, square: int, perspective: int
+    king_square: int,
+    piece: int,
+    square: int,
+    perspective: int,
+    profile: NnueProfile = DEFAULT_PROFILE,
 ) -> int | None:
     if not 0 <= piece < 12 or not 0 <= square < 64:
         raise ValueError("bad piece square")
-    bucket, mirror = _king_view(king_square, perspective)
+    bucket, mirror = _king_view(king_square, perspective, profile)
     return _feature_index_from_view(bucket, mirror, piece, square, perspective)
 
 
@@ -106,9 +133,12 @@ def parse_fen(fen: str) -> tuple[int, list[tuple[int, int]], list[int]]:
 
 
 def _active_feature_indices(
-    pieces: list[tuple[int, int]], kings: list[int], perspective: int
+    pieces: list[tuple[int, int]],
+    kings: list[int],
+    perspective: int,
+    profile: NnueProfile,
 ) -> tuple[int, list[int]]:
-    bucket, mirror = _king_view(kings[perspective], perspective)
+    bucket, mirror = _king_view(kings[perspective], perspective, profile)
     features = []
     for piece, square in pieces:
         index = _feature_index_from_view(
@@ -119,22 +149,36 @@ def _active_feature_indices(
     return bucket, features
 
 
-def active_feature_indices(fen: str, perspective: int) -> tuple[int, list[int]]:
+def active_feature_indices(
+    fen: str,
+    perspective: int,
+    profile: NnueProfile = DEFAULT_PROFILE,
+) -> tuple[int, list[int]]:
     _, pieces, kings = parse_fen(fen)
-    return _active_feature_indices(pieces, kings, perspective)
+    return _active_feature_indices(pieces, kings, perspective, profile)
 
 
-def encode_feature_indices(fen: str) -> tuple[list[int], list[int]]:
+def encode_feature_indices(
+    fen: str,
+    profile: NnueProfile = DEFAULT_PROFILE,
+) -> tuple[list[int], list[int]]:
     side, pieces, kings = parse_fen(fen)
-    _, side_features = _active_feature_indices(pieces, kings, side)
-    _, opponent_features = _active_feature_indices(pieces, kings, side ^ 1)
+    _, side_features = _active_feature_indices(
+        pieces, kings, side, profile
+    )
+    _, opponent_features = _active_feature_indices(
+        pieces, kings, side ^ 1, profile
+    )
     return side_features, opponent_features
 
 
-def encode_position(fen: str) -> tuple[list[int], list[int]]:
+def encode_position(
+    fen: str,
+    profile: NnueProfile = DEFAULT_PROFILE,
+) -> tuple[list[int], list[int]]:
     encoded = []
-    for active in encode_feature_indices(fen):
-        features = active + [PADDING_FEATURE] * (
+    for active in encode_feature_indices(fen, profile):
+        features = active + [profile.padding_feature] * (
             MAX_ACTIVE_FEATURES - len(active)
         )
         encoded.append(features)

@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "nnue_config.h"
+
 typedef uint64_t bitboard_t;
 typedef uint32_t move_t;
 
@@ -48,9 +50,9 @@ enum {
 };
 enum {
     NNUE_FORMAT_VERSION = 2,
-    NNUE_BUCKET_COUNT = 8,
+    NNUE_BUCKET_COUNT = P4_NNUE_BUCKET_COUNT,
     NNUE_FEATURES_PER_BUCKET = 640,
-    NNUE_HIDDEN_SIZE = 64,
+    NNUE_HIDDEN_SIZE = P4_NNUE_HIDDEN_SIZE,
     NNUE_FEATURE_COUNT = NNUE_BUCKET_COUNT * NNUE_FEATURES_PER_BUCKET,
     NNUE_FEATURE_WEIGHT_COUNT = NNUE_FEATURE_COUNT * NNUE_HIDDEN_SIZE,
     NNUE_MAX_ACTIVE_FEATURES = 30,

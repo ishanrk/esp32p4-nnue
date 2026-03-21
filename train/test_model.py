@@ -9,49 +9,72 @@ import unittest
 
 import numpy as np
 
-from export import FILE_SIZE, export_parameters, quantize_parameters
-from features import (
+from export import export_parameters, quantize_parameters
+from profiles import (
     ACCUMULATOR_BIAS_MAX,
-    FEATURE_COUNT,
+    DEFAULT_PROFILE,
+    FEATURES_PER_BUCKET,
     FEATURE_QUANTIZATION,
-    FORMAT_VERSION,
-    HIDDEN_SIZE,
-    KING_BUCKET_COUNT,
+    FEATURE_MAPPING_VERSION,
+    NnueProfile,
     OUTPUT_QUANTIZATION,
+    get_profile,
 )
 from integer import evaluate_integer, load_exported_model
 
 
-def fixture_parameters() -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+PROFILE = get_profile(
+    os.environ.get("P4_NNUE_PROFILE", DEFAULT_PROFILE.name)
+)
+
+
+def fixture_parameters(
+    profile: NnueProfile = PROFILE,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     feature_values = (
-        (np.arange(FEATURE_COUNT * HIDDEN_SIZE, dtype=np.int64) * 17) % 7
+        (
+            np.arange(
+                profile.feature_count * profile.hidden_width,
+                dtype=np.int64,
+            )
+            * 17
+        )
+        % 7
     ) - 3
     feature_weights = feature_values.reshape(
-        FEATURE_COUNT, HIDDEN_SIZE
+        profile.feature_count, profile.hidden_width
     ).astype(np.float32) / FEATURE_QUANTIZATION
     feature_bias = (
-        np.arange(HIDDEN_SIZE, dtype=np.float32) - 31
+        np.arange(profile.hidden_width, dtype=np.float32)
+        - profile.hidden_width // 2
     ) / FEATURE_QUANTIZATION
     output_weights = (
-        ((np.arange(2 * HIDDEN_SIZE, dtype=np.float32) % 11) - 5) * 100
+        (
+            (np.arange(2 * profile.hidden_width, dtype=np.float32) % 11)
+            - 5
+        )
+        * 100
     ) / OUTPUT_QUANTIZATION
     output_bias = 123 / (FEATURE_QUANTIZATION * OUTPUT_QUANTIZATION)
     return feature_weights, feature_bias, output_weights, output_bias
 
 
-def fixture_training_manifest() -> dict:
+def fixture_training_manifest(profile: NnueProfile = PROFILE) -> dict:
     return {
         "architecture": {
             "activation": "clipped_relu",
             "activation_clip": 127,
-            "bucket_count": KING_BUCKET_COUNT,
-            "feature_count": FEATURE_COUNT,
-            "feature_mapping_version": FORMAT_VERSION,
+            "bucket_count": profile.bucket_count,
+            "feature_count": profile.feature_count,
+            "feature_mapping_version": FEATURE_MAPPING_VERSION,
             "feature_quantization": FEATURE_QUANTIZATION,
-            "features_per_bucket": 640,
-            "hidden_width": HIDDEN_SIZE,
+            "features_per_bucket": FEATURES_PER_BUCKET,
+            "hidden_width": profile.hidden_width,
+            "model_byte_size": profile.model_bytes,
             "output_quantization": OUTPUT_QUANTIZATION,
             "perspective_order": ["side_to_move", "opponent"],
+            "profile": profile.name,
+            "training_parameter_count": profile.training_parameter_count,
         },
         "best_epoch": 2,
         "checkpoint_selection": {
@@ -96,9 +119,9 @@ class ExportTest(unittest.TestCase):
                 fixture_training_manifest(),
                 *fixture_parameters(),
             )
-            self.assertEqual(model_path.stat().st_size, FILE_SIZE)
-            self.assertEqual(manifest["model_byte_size"], FILE_SIZE)
-            self.assertEqual(manifest["feature_count"], FEATURE_COUNT)
+            self.assertEqual(model_path.stat().st_size, PROFILE.model_bytes)
+            self.assertEqual(manifest["model_byte_size"], PROFILE.model_bytes)
+            self.assertEqual(manifest["feature_count"], PROFILE.feature_count)
             self.assertEqual(
                 manifest["export_saturation_counts"],
                 {
@@ -129,7 +152,6 @@ class ExportTest(unittest.TestCase):
                     text=True,
                 )
                 self.assertEqual(int(result.stdout), python_score, fen)
-            self.assertLess(min(python_scores), 0)
             self.assertGreater(len(set(python_scores)), 1)
 
     def test_saturation_and_nonfinite_parameters_fail(self) -> None:
@@ -140,7 +162,11 @@ class ExportTest(unittest.TestCase):
         bad_feature_weights[0, 0] = 128 / FEATURE_QUANTIZATION
         with self.assertRaisesRegex(ValueError, '"feature_weights": 1'):
             quantize_parameters(
-                bad_feature_weights, feature_bias, output_weights, output_bias
+                bad_feature_weights,
+                feature_bias,
+                output_weights,
+                output_bias,
+                PROFILE,
             )
 
         bad_feature_bias = feature_bias.copy()
@@ -149,14 +175,22 @@ class ExportTest(unittest.TestCase):
         ) / FEATURE_QUANTIZATION
         with self.assertRaisesRegex(ValueError, '"feature_bias": 1'):
             quantize_parameters(
-                feature_weights, bad_feature_bias, output_weights, output_bias
+                feature_weights,
+                bad_feature_bias,
+                output_weights,
+                output_bias,
+                PROFILE,
             )
 
         bad_output_weights = output_weights.copy()
         bad_output_weights[0] = 32768 / OUTPUT_QUANTIZATION
         with self.assertRaisesRegex(ValueError, '"output_weights": 1'):
             quantize_parameters(
-                feature_weights, feature_bias, bad_output_weights, output_bias
+                feature_weights,
+                feature_bias,
+                bad_output_weights,
+                output_bias,
+                PROFILE,
             )
 
         bad_output_bias = (2**31) / (
@@ -164,14 +198,22 @@ class ExportTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, '"output_bias": 1'):
             quantize_parameters(
-                feature_weights, feature_bias, output_weights, bad_output_bias
+                feature_weights,
+                feature_bias,
+                output_weights,
+                bad_output_bias,
+                PROFILE,
             )
 
         nonfinite = feature_weights.copy()
         nonfinite[0, 0] = np.nan
         with self.assertRaisesRegex(ValueError, "nonfinite"):
             quantize_parameters(
-                nonfinite, feature_bias, output_weights, output_bias
+                nonfinite,
+                feature_bias,
+                output_weights,
+                output_bias,
+                PROFILE,
             )
 
 

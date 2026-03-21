@@ -8,27 +8,23 @@ from typing import Any
 
 import numpy as np
 
-from features import (
+from profiles import (
     ACCUMULATOR_BIAS_MAX,
     ACCUMULATOR_BIAS_MIN,
     ACTIVATION_CLIP,
-    FEATURE_COUNT,
+    DEFAULT_PROFILE,
     FEATURES_PER_BUCKET,
     FEATURE_QUANTIZATION,
-    FORMAT_VERSION,
-    HIDDEN_SIZE,
-    KING_BUCKET_COUNT,
+    FEATURE_MAPPING_VERSION,
+    MODEL_HEADER_SIZE,
+    NnueProfile,
     OUTPUT_QUANTIZATION,
+    profile_from_dimensions,
 )
 
 MAGIC = b"P4NNUE1\0"
-HEADER_SIZE = 32
-FILE_SIZE = (
-    HEADER_SIZE
-    + HIDDEN_SIZE * 2
-    + 2 * HIDDEN_SIZE * 2
-    + FEATURE_COUNT * HIDDEN_SIZE
-)
+HEADER_SIZE = MODEL_HEADER_SIZE
+FILE_SIZE = DEFAULT_PROFILE.model_bytes
 MODEL_MANIFEST_VERSION = 1
 TRAINING_MANIFEST_VERSION = 1
 
@@ -53,15 +49,19 @@ def quantize_parameters(
     feature_bias: np.ndarray,
     output_weights: np.ndarray,
     output_bias: float,
+    profile: NnueProfile = DEFAULT_PROFILE,
 ) -> tuple[dict[str, Any], dict[str, int]]:
     feature_weights = np.asarray(feature_weights)
     feature_bias = np.asarray(feature_bias)
     output_weights = np.asarray(output_weights)
-    if feature_weights.shape != (FEATURE_COUNT, HIDDEN_SIZE):
+    if feature_weights.shape != (
+        profile.feature_count,
+        profile.hidden_width,
+    ):
         raise ValueError("bad feature weight shape")
-    if feature_bias.shape != (HIDDEN_SIZE,):
+    if feature_bias.shape != (profile.hidden_width,):
         raise ValueError("bad feature bias shape")
-    if output_weights.shape != (2 * HIDDEN_SIZE,):
+    if output_weights.shape != (2 * profile.hidden_width,):
         raise ValueError("bad output weight shape")
     if not np.isfinite(output_bias):
         raise ValueError("model contains nonfinite parameters")
@@ -105,19 +105,22 @@ def quantize_parameters(
     return quantized, saturation_counts
 
 
-def build_model_blob(quantized: dict[str, Any]) -> bytes:
+def build_model_blob(
+    quantized: dict[str, Any],
+    profile: NnueProfile = DEFAULT_PROFILE,
+) -> bytes:
     header = struct.pack(
         "<8s8HIi",
         MAGIC,
-        FORMAT_VERSION,
-        KING_BUCKET_COUNT,
+        FEATURE_MAPPING_VERSION,
+        profile.bucket_count,
         FEATURES_PER_BUCKET,
-        HIDDEN_SIZE,
+        profile.hidden_width,
         ACTIVATION_CLIP,
         FEATURE_QUANTIZATION,
         OUTPUT_QUANTIZATION,
         0,
-        FILE_SIZE,
+        profile.model_bytes,
         quantized["output_bias"],
     )
     blob = (
@@ -126,26 +129,27 @@ def build_model_blob(quantized: dict[str, Any]) -> bytes:
         + quantized["output_weights"].astype("<i2", copy=False).tobytes()
         + quantized["feature_weights"].tobytes()
     )
-    if len(blob) != FILE_SIZE:
+    if len(blob) != profile.model_bytes:
         raise RuntimeError("bad model size")
     return blob
 
 
 def load_checkpoint_parameters(
     checkpoint_path: str | Path,
+    profile: NnueProfile = DEFAULT_PROFILE,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     import torch
 
     from net import NnueNetwork
 
-    network = NnueNetwork()
+    network = NnueNetwork(profile)
     network.load_state_dict(
         torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     )
     network.eval()
     with torch.no_grad():
         feature_weights = (
-            network.feature_transformer.weight[:FEATURE_COUNT]
+            network.feature_transformer.weight[: profile.feature_count]
             .detach()
             .cpu()
             .numpy()
@@ -156,21 +160,30 @@ def load_checkpoint_parameters(
     return feature_weights, feature_bias, output_weights, output_bias
 
 
-def validate_training_manifest(manifest: dict[str, Any]) -> None:
+def validate_training_manifest(manifest: dict[str, Any]) -> NnueProfile:
     if manifest.get("format_version") != TRAINING_MANIFEST_VERSION:
         raise ValueError("incompatible training manifest version")
     architecture = manifest.get("architecture", {})
+    try:
+        profile = profile_from_dimensions(
+            architecture["bucket_count"], architecture["hidden_width"]
+        )
+    except (KeyError, TypeError) as error:
+        raise ValueError("training manifest has no valid profile") from error
     expected = {
         "activation": "clipped_relu",
         "activation_clip": ACTIVATION_CLIP,
-        "bucket_count": KING_BUCKET_COUNT,
-        "feature_count": FEATURE_COUNT,
-        "feature_mapping_version": FORMAT_VERSION,
+        "bucket_count": profile.bucket_count,
+        "feature_count": profile.feature_count,
+        "feature_mapping_version": FEATURE_MAPPING_VERSION,
         "feature_quantization": FEATURE_QUANTIZATION,
         "features_per_bucket": FEATURES_PER_BUCKET,
-        "hidden_width": HIDDEN_SIZE,
+        "hidden_width": profile.hidden_width,
+        "model_byte_size": profile.model_bytes,
         "output_quantization": OUTPUT_QUANTIZATION,
         "perspective_order": ["side_to_move", "opponent"],
+        "profile": profile.name,
+        "training_parameter_count": profile.training_parameter_count,
     }
     for field, value in expected.items():
         if architecture.get(field) != value:
@@ -190,32 +203,34 @@ def validate_training_manifest(manifest: dict[str, Any]) -> None:
     ):
         if field not in manifest:
             raise ValueError(f"training manifest missing {field}")
+    return profile
 
 
 def build_model_manifest(
     training_manifest: dict[str, Any], saturation_counts: dict[str, int]
 ) -> dict[str, Any]:
-    validate_training_manifest(training_manifest)
+    profile = validate_training_manifest(training_manifest)
     return {
         "activation": {
             "clip": ACTIVATION_CLIP,
             "name": "clipped_relu",
         },
         "best_epoch": training_manifest["best_epoch"],
-        "bucket_count": KING_BUCKET_COUNT,
+        "bucket_count": profile.bucket_count,
         "checkpoint_selection": training_manifest["checkpoint_selection"],
         "dataset_description": training_manifest["dataset"],
         "export_saturation_counts": saturation_counts,
-        "feature_count": FEATURE_COUNT,
-        "feature_mapping_version": FORMAT_VERSION,
+        "feature_count": profile.feature_count,
+        "feature_mapping_version": FEATURE_MAPPING_VERSION,
         "feature_quantization": FEATURE_QUANTIZATION,
         "features_per_bucket": FEATURES_PER_BUCKET,
-        "format_version": FORMAT_VERSION,
-        "hidden_width": HIDDEN_SIZE,
+        "format_version": FEATURE_MAPPING_VERSION,
+        "hidden_width": profile.hidden_width,
         "manifest_version": MODEL_MANIFEST_VERSION,
-        "model_byte_size": FILE_SIZE,
+        "model_byte_size": profile.model_bytes,
         "output_quantization": OUTPUT_QUANTIZATION,
         "perspective_order": ["side_to_move", "opponent"],
+        "profile": profile.name,
         "test_metrics": training_manifest["test_metrics"],
         "training_environment": {
             "device": training_manifest.get("device"),
@@ -224,6 +239,7 @@ def build_model_manifest(
         },
         "training_parameters": training_manifest["training_parameters"],
         "training_seed": training_manifest["seed"],
+        "training_parameter_count": profile.training_parameter_count,
         "validation_metrics": training_manifest["validation_metrics"],
     }
 
@@ -237,10 +253,15 @@ def export_parameters(
     output_weights: np.ndarray,
     output_bias: float,
 ) -> dict[str, Any]:
+    profile = validate_training_manifest(training_manifest)
     quantized, saturation_counts = quantize_parameters(
-        feature_weights, feature_bias, output_weights, output_bias
+        feature_weights,
+        feature_bias,
+        output_weights,
+        output_bias,
+        profile,
     )
-    blob = build_model_blob(quantized)
+    blob = build_model_blob(quantized, profile)
     model_manifest = build_model_manifest(
         training_manifest, saturation_counts
     )
@@ -269,7 +290,8 @@ def main() -> None:
         training_manifest = json.loads(
             training_manifest_path.read_text(encoding="utf-8")
         )
-        parameters = load_checkpoint_parameters(args.model)
+        profile = validate_training_manifest(training_manifest)
+        parameters = load_checkpoint_parameters(args.model, profile)
         model_manifest = export_parameters(
             args.out,
             output_manifest_path,

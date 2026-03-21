@@ -16,13 +16,14 @@ The single-threaded search uses iterative deepening principal variation search,
 quiescence, a fixed-size transposition table, killer moves, history ordering,
 check extension, and late move reduction.
 
-The integer NNUE uses two vertically normalized perspectives, horizontal king
-symmetry, eight king buckets, ten nonking piece classes, 640 piece-square
-features per bucket, and 64 hidden values. Feature weights are signed int8,
-accumulators and output weights use signed int16, and the version 2 exported
-network is 328096 bytes. Make and undo maintain accumulators without snapshots.
-The portable scalar C path is the correctness reference for later ESP32 P4 PIE
-work.
+The default integer NNUE uses two vertically normalized perspectives,
+horizontal king symmetry, eight king buckets, ten nonking piece classes, 640
+piece-square features per bucket, and 64 hidden values. Feature weights are
+signed int8, accumulators and output weights use signed int16, and its version 2
+exported network is 328096 bytes. Four constrained profiles remain reproducible
+through one compile-time CMake setting; 8x64 stays the selected default. Make
+and undo maintain accumulators without snapshots. The portable scalar C path is
+the correctness reference for later ESP32 P4 PIE work.
 
 ## Host build and test
 
@@ -33,6 +34,13 @@ work.
 Run the UCI engine with:
 
     ./build/p4nnue
+
+`build/p4bench` measures an exported model's integer evaluation and fixed-depth
+search throughput. An experimental profile build uses, for example:
+
+    cmake -S . -B build-16x48 -DCMAKE_BUILD_TYPE=Release \
+        -DP4_NNUE_PROFILE=16x48
+    cmake --build build-16x48 --parallel
 
 Example input:
 
@@ -66,7 +74,7 @@ select the best validation checkpoint without loading the whole dataset, and
 export the exact runtime format:
 
     python train/label.py games.pgn stockfish labels.jsonl --nodes 20000
-    python train/prep.py labels.jsonl data
+    python train/prep.py labels.jsonl data --profile 8x64
     python train/train.py data model.pt --epochs 12 --batch 4096 --lr 0.001 \
         --seed 7 --score-scale 400 --device auto --workers 0
     python train/export.py model.pt nn.bin
@@ -80,6 +88,8 @@ selected checkpoint to `model.pt` and its reproducibility record to
 `model.pt.json`. Export writes the 328096-byte `nn.bin` and model manifest
 `nn.bin.json`; export fails instead of silently saturating parameters. The
 implementation book describes the complete workflow and parameter tradeoffs.
+The NNUE profile comparison page records exact size, RAM, host throughput, smoke
+training, and arena-harness results without treating fixture metrics as strength.
 
 Load the exported file through UCI:
 

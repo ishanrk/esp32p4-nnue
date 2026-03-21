@@ -17,15 +17,12 @@ from data import (
     clip_score,
 )
 from features import (
-    FEATURE_COUNT,
     FEATURES_PER_BUCKET,
     FORMAT_VERSION,
-    HIDDEN_SIZE,
-    KING_BUCKET_COUNT,
     MAX_ACTIVE_FEATURES,
-    PADDING_FEATURE,
     encode_position,
 )
+from profiles import DEFAULT_PROFILE, PROFILE_BY_NAME, NnueProfile, get_profile
 
 
 def _write_shard(
@@ -84,6 +81,7 @@ def prepare_dataset(
     *,
     shard_size: int = 100000,
     metadata_path: str | Path | None = None,
+    profile: NnueProfile = DEFAULT_PROFILE,
 ) -> dict[str, Any]:
     if shard_size <= 0:
         raise ValueError("shard size must be positive")
@@ -126,7 +124,7 @@ def prepare_dataset(
                 if game_id > current_game_id:
                     current_game_id = game_id
                     current_game_split = split
-                side, opponent = encode_position(fen)
+                side, opponent = encode_position(fen, profile)
                 score = clip_score(record["score"])
             except (KeyError, TypeError, ValueError) as error:
                 raise ValueError(
@@ -166,17 +164,18 @@ def prepare_dataset(
 
     manifest = {
         "feature_dtype": FEATURE_DTYPE.name,
-        "feature_count": FEATURE_COUNT,
+        "feature_count": profile.feature_count,
         "feature_mapping_version": FORMAT_VERSION,
         "features_per_bucket": FEATURES_PER_BUCKET,
         "format_version": DATASET_FORMAT_VERSION,
-        "hidden_width": HIDDEN_SIZE,
-        "king_buckets": KING_BUCKET_COUNT,
+        "hidden_width": profile.hidden_width,
+        "king_buckets": profile.bucket_count,
         "label_dtype": LABEL_DTYPE.name,
         "max_ply": metadata.get("max_ply"),
         "min_ply": metadata.get("min_ply"),
-        "padding_feature": PADDING_FEATURE,
+        "padding_feature": profile.padding_feature,
         "position_count": position_count,
+        "profile": profile.name,
         "sampling_stride": metadata.get("stride"),
         "score_clip": {
             "maximum": SCORE_LIMIT,
@@ -210,12 +209,16 @@ def main() -> None:
     parser.add_argument("out")
     parser.add_argument("--shard-size", type=int, default=100000)
     parser.add_argument("--metadata")
+    parser.add_argument(
+        "--profile", choices=tuple(PROFILE_BY_NAME), default=DEFAULT_PROFILE.name
+    )
     args = parser.parse_args()
     manifest = prepare_dataset(
         args.src,
         args.out,
         shard_size=args.shard_size,
         metadata_path=args.metadata,
+        profile=get_profile(args.profile),
     )
     print(sum(manifest["split_counts"].values()))
 

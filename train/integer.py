@@ -7,56 +7,55 @@ from typing import Any
 
 import numpy as np
 
-from export import FILE_SIZE, HEADER_SIZE, MAGIC
-from features import (
+from export import HEADER_SIZE, MAGIC
+from features import encode_feature_indices
+from profiles import (
     ACCUMULATOR_BIAS_MAX,
     ACCUMULATOR_BIAS_MIN,
     ACTIVATION_CLIP,
-    FEATURE_COUNT,
     FEATURES_PER_BUCKET,
     FEATURE_QUANTIZATION,
-    FORMAT_VERSION,
-    HIDDEN_SIZE,
-    KING_BUCKET_COUNT,
+    FEATURE_MAPPING_VERSION,
     OUTPUT_QUANTIZATION,
-    encode_feature_indices,
+    profile_from_dimensions,
 )
 
 
 def load_exported_model(path: str | Path) -> dict[str, Any]:
     blob = Path(path).read_bytes()
-    if len(blob) != FILE_SIZE:
+    if len(blob) < HEADER_SIZE:
         raise ValueError("bad model size")
     header = struct.unpack("<8s8HIi", blob[:HEADER_SIZE])
+    profile = profile_from_dimensions(header[2], header[4])
     expected = (
         MAGIC,
-        FORMAT_VERSION,
-        KING_BUCKET_COUNT,
+        FEATURE_MAPPING_VERSION,
+        profile.bucket_count,
         FEATURES_PER_BUCKET,
-        HIDDEN_SIZE,
+        profile.hidden_width,
         ACTIVATION_CLIP,
         FEATURE_QUANTIZATION,
         OUTPUT_QUANTIZATION,
         0,
-        FILE_SIZE,
+        profile.model_bytes,
     )
-    if header[:-1] != expected:
+    if header[:-1] != expected or len(blob) != profile.model_bytes:
         raise ValueError("bad model header")
     offset = HEADER_SIZE
     feature_bias = np.frombuffer(
-        blob, dtype="<i2", count=HIDDEN_SIZE, offset=offset
+        blob, dtype="<i2", count=profile.hidden_width, offset=offset
     ).astype(np.int16, copy=True)
-    offset += HIDDEN_SIZE * 2
+    offset += profile.hidden_width * 2
     output_weights = np.frombuffer(
-        blob, dtype="<i2", count=2 * HIDDEN_SIZE, offset=offset
+        blob, dtype="<i2", count=2 * profile.hidden_width, offset=offset
     ).astype(np.int16, copy=True)
-    offset += 2 * HIDDEN_SIZE * 2
+    offset += 2 * profile.hidden_width * 2
     feature_weights = np.frombuffer(
         blob,
         dtype=np.int8,
-        count=FEATURE_COUNT * HIDDEN_SIZE,
+        count=profile.feature_count * profile.hidden_width,
         offset=offset,
-    ).reshape(FEATURE_COUNT, HIDDEN_SIZE).copy()
+    ).reshape(profile.feature_count, profile.hidden_width).copy()
     if np.any(feature_bias < ACCUMULATOR_BIAS_MIN) or np.any(
         feature_bias > ACCUMULATOR_BIAS_MAX
     ):
@@ -66,6 +65,7 @@ def load_exported_model(path: str | Path) -> dict[str, Any]:
         "feature_weights": feature_weights,
         "output_bias": header[-1],
         "output_weights": output_weights,
+        "profile": profile,
     }
 
 
@@ -87,7 +87,8 @@ def _truncate_division(value: int, divisor: int) -> int:
 
 
 def evaluate_integer(model: dict[str, Any], fen: str) -> int:
-    side_features, opponent_features = encode_feature_indices(fen)
+    profile = model["profile"]
+    side_features, opponent_features = encode_feature_indices(fen, profile)
     side = np.clip(
         _accumulate(model, side_features), 0, ACTIVATION_CLIP
     ).astype(np.int64)
@@ -96,8 +97,8 @@ def evaluate_integer(model: dict[str, Any], fen: str) -> int:
     ).astype(np.int64)
     output_weights = model["output_weights"].astype(np.int64)
     score = int(model["output_bias"])
-    score += int(side @ output_weights[:HIDDEN_SIZE])
-    score += int(opponent @ output_weights[HIDDEN_SIZE:])
+    score += int(side @ output_weights[: profile.hidden_width])
+    score += int(opponent @ output_weights[profile.hidden_width :])
     return _truncate_division(
         score, FEATURE_QUANTIZATION * OUTPUT_QUANTIZATION
     )

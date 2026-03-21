@@ -7,14 +7,11 @@ from typing import Any
 import numpy as np
 
 from features import (
-    FEATURE_COUNT,
     FEATURES_PER_BUCKET,
     FORMAT_VERSION,
-    HIDDEN_SIZE,
-    KING_BUCKET_COUNT,
     MAX_ACTIVE_FEATURES,
-    PADDING_FEATURE,
 )
+from profiles import DEFAULT_PROFILE, NnueProfile, profile_from_dimensions
 
 DATASET_FORMAT_VERSION = 1
 SCORE_LIMIT = 30000
@@ -75,14 +72,16 @@ def load_dataset_manifest(
     )
     with manifest_path.open(encoding="utf-8") as source:
         manifest = json.load(source)
+    profile = dataset_profile(manifest)
     expected = {
         "format_version": DATASET_FORMAT_VERSION,
         "feature_mapping_version": FORMAT_VERSION,
-        "king_buckets": KING_BUCKET_COUNT,
+        "king_buckets": profile.bucket_count,
         "features_per_bucket": FEATURES_PER_BUCKET,
-        "feature_count": FEATURE_COUNT,
-        "hidden_width": HIDDEN_SIZE,
-        "padding_feature": PADDING_FEATURE,
+        "feature_count": profile.feature_count,
+        "hidden_width": profile.hidden_width,
+        "padding_feature": profile.padding_feature,
+        "profile": profile.name,
         "feature_dtype": FEATURE_DTYPE.name,
         "label_dtype": LABEL_DTYPE.name,
         "score_perspective": SCORE_PERSPECTIVE,
@@ -100,6 +99,15 @@ def load_dataset_manifest(
     return manifest, manifest_path.parent
 
 
+def dataset_profile(manifest: dict[str, Any]) -> NnueProfile:
+    try:
+        return profile_from_dimensions(
+            manifest["king_buckets"], manifest["hidden_width"]
+        )
+    except (KeyError, TypeError) as error:
+        raise ValueError("manifest has no valid nnue profile") from error
+
+
 def split_shard_paths(
     manifest: dict[str, Any], dataset_directory: Path, split: str
 ) -> list[Path]:
@@ -108,7 +116,10 @@ def split_shard_paths(
     return [dataset_directory / name for name in manifest["shards"][split]]
 
 
-def load_shard(path: str | Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def load_shard(
+    path: str | Path,
+    profile: NnueProfile = DEFAULT_PROFILE,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     with np.load(path, allow_pickle=False) as shard:
         if set(shard.files) != {"side", "opponent", "score"}:
             raise ValueError(f"bad shard arrays in {path}")
@@ -123,7 +134,9 @@ def load_shard(path: str | Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         raise ValueError(f"bad side feature shape in {path}")
     if opponent.shape != side.shape or score.shape != (len(side),):
         raise ValueError(f"bad shard shape in {path}")
-    if np.any(side > FEATURE_COUNT) or np.any(opponent > FEATURE_COUNT):
+    if np.any(side > profile.feature_count) or np.any(
+        opponent > profile.feature_count
+    ):
         raise ValueError(f"feature out of range in {path}")
     if np.any(score < -SCORE_LIMIT) or np.any(score > SCORE_LIMIT):
         raise ValueError(f"label out of range in {path}")

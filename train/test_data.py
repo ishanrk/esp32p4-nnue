@@ -15,6 +15,7 @@ from data import (
     SCORE_LIMIT,
     SPLITS,
     assign_game_split,
+    dataset_profile,
     load_dataset_manifest,
     load_shard,
     split_shard_paths,
@@ -22,6 +23,7 @@ from data import (
 from features import MAX_ACTIVE_FEATURES, PADDING_FEATURE, encode_position
 from label import analyse_with_teacher, write_labeled_positions
 from prep import prepare_dataset
+from profiles import PROFILES
 
 
 ROOT = Path(__file__).parents[1]
@@ -130,6 +132,31 @@ class LabelingTest(unittest.TestCase):
 
 
 class PreparationTest(unittest.TestCase):
+    def test_profile_specific_shards(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            for profile in PROFILES:
+                output = Path(temporary) / profile.name
+                prepared = prepare_dataset(
+                    LABEL_FIXTURE,
+                    output,
+                    shard_size=2,
+                    profile=profile,
+                )
+                manifest, directory = load_dataset_manifest(output)
+                self.assertEqual(dataset_profile(manifest), profile)
+                self.assertEqual(
+                    prepared["padding_feature"], profile.padding_feature
+                )
+                for split in SPLITS:
+                    for path in split_shard_paths(manifest, directory, split):
+                        side, opponent, _ = load_shard(path, profile)
+                        self.assertTrue(
+                            np.all(side <= profile.padding_feature)
+                        )
+                        self.assertTrue(
+                            np.all(opponent <= profile.padding_feature)
+                        )
+
     def test_compact_shards_and_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "data"

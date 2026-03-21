@@ -14,6 +14,7 @@
 - [Classical Evaluation](eval_classic.md)
 - [NNUE Inference](nnue_inference.md)
 - [King Conditioned Features](factorized_halfkp.md)
+- [NNUE Profile Comparison](nnue_profiles.md)
 - [Training Pipeline](training_pipeline.md)
 - [Testing](testing.md)
 - [Benchmarks](benchmarks.md)

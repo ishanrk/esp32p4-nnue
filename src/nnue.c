@@ -118,7 +118,9 @@ static bool map_king_view(int king_square,
     int square = perspective_square(king_square, perspective, false);
     *mirror = (square & 7) >= 4;
     if (*mirror) square ^= 7;
-    *bucket = (square & 7) + ((square >> 3) >= 4 ? 4 : 0);
+    int rank = square >> 3;
+    int rank_bands = NNUE_BUCKET_COUNT / 4;
+    *bucket = (square & 7) + 4 * (rank * rank_bands / 8);
     return true;
 }
 

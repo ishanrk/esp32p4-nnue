@@ -9,15 +9,18 @@ from typing import Any
 import numpy as np
 import torch
 
-from data import load_dataset_manifest, load_shard, split_shard_paths
-from features import (
+from data import (
+    dataset_profile,
+    load_dataset_manifest,
+    load_shard,
+    split_shard_paths,
+)
+from profiles import (
     ACTIVATION_CLIP,
-    FEATURE_COUNT,
     FEATURES_PER_BUCKET,
     FEATURE_QUANTIZATION,
-    FORMAT_VERSION,
-    HIDDEN_SIZE,
-    KING_BUCKET_COUNT,
+    FEATURE_MAPPING_VERSION,
+    NnueProfile,
     OUTPUT_QUANTIZATION,
 )
 from net import NnueNetwork
@@ -27,10 +30,16 @@ CHECKPOINT_SELECTION_RULE = "minimum validation transformed smooth l1"
 
 
 class ShardDataset(torch.utils.data.IterableDataset):
-    def __init__(self, shard_paths: Sequence[Path], seed: int) -> None:
+    def __init__(
+        self,
+        shard_paths: Sequence[Path],
+        seed: int,
+        profile: NnueProfile,
+    ) -> None:
         super().__init__()
         self.shard_paths = tuple(shard_paths)
         self.seed = seed
+        self.profile = profile
 
     def __iter__(self) -> Iterator[tuple[np.ndarray, np.ndarray, np.int16]]:
         worker = torch.utils.data.get_worker_info()
@@ -41,7 +50,9 @@ class ShardDataset(torch.utils.data.IterableDataset):
         shard_order = shard_random.permutation(len(self.shard_paths))
         for shard_index in shard_order[worker_id::worker_count]:
             index = int(shard_index)
-            side, opponent, score = load_shard(self.shard_paths[index])
+            side, opponent, score = load_shard(
+                self.shard_paths[index], self.profile
+            )
             row_random = np.random.default_rng(
                 np.random.SeedSequence(seed_parts + [index])
             )
@@ -76,7 +87,9 @@ def evaluate_shards(
     network.eval()
     with torch.no_grad():
         for shard_path in shard_paths:
-            side, opponent, score = load_shard(shard_path)
+            side, opponent, score = load_shard(
+                shard_path, network.profile
+            )
             for start in range(0, len(score), batch_size):
                 end = start + batch_size
                 side_batch = torch.from_numpy(side[start:end]).to(
@@ -122,9 +135,10 @@ def create_training_loader(
     workers: int,
     seed: int,
     device: torch.device,
+    profile: NnueProfile,
 ) -> torch.utils.data.DataLoader:
     arguments: dict[str, Any] = {
-        "dataset": ShardDataset(shard_paths, seed),
+        "dataset": ShardDataset(shard_paths, seed, profile),
         "batch_size": batch_size,
         "num_workers": workers,
         "pin_memory": device.type == "cuda",
@@ -158,6 +172,7 @@ def train_baseline(
         torch.cuda.manual_seed_all(seed)
     device = select_device(requested_device)
     manifest, dataset_directory = load_dataset_manifest(data_path)
+    profile = dataset_profile(manifest)
     shard_paths = {
         split: split_shard_paths(manifest, dataset_directory, split)
         for split in ("train", "validation", "test")
@@ -167,7 +182,7 @@ def train_baseline(
         if not shard_paths[split] or not split_counts.get(split, 0):
             raise ValueError(f"{split} split is empty")
 
-    network = NnueNetwork().to(device)
+    network = NnueNetwork(profile).to(device)
     optimizer = torch.optim.AdamW(
         network.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
@@ -179,7 +194,12 @@ def train_baseline(
 
     for epoch in range(1, epochs + 1):
         loader = create_training_loader(
-            shard_paths["train"], batch_size, workers, seed + epoch - 1, device
+            shard_paths["train"],
+            batch_size,
+            workers,
+            seed + epoch - 1,
+            device,
+            profile,
         )
         network.train()
         loss_sum = 0.0
@@ -258,14 +278,17 @@ def train_baseline(
         "architecture": {
             "activation": "clipped_relu",
             "activation_clip": ACTIVATION_CLIP,
-            "bucket_count": KING_BUCKET_COUNT,
-            "feature_count": FEATURE_COUNT,
-            "feature_mapping_version": FORMAT_VERSION,
+            "bucket_count": profile.bucket_count,
+            "feature_count": profile.feature_count,
+            "feature_mapping_version": FEATURE_MAPPING_VERSION,
             "feature_quantization": FEATURE_QUANTIZATION,
             "features_per_bucket": FEATURES_PER_BUCKET,
-            "hidden_width": HIDDEN_SIZE,
+            "hidden_width": profile.hidden_width,
+            "model_byte_size": profile.model_bytes,
             "output_quantization": OUTPUT_QUANTIZATION,
             "perspective_order": ["side_to_move", "opponent"],
+            "profile": profile.name,
+            "training_parameter_count": profile.training_parameter_count,
         },
         "best_epoch": best_epoch,
         "checkpoint_selection": {
@@ -277,6 +300,7 @@ def train_baseline(
             "feature_mapping_version": manifest["feature_mapping_version"],
             "format_version": manifest["format_version"],
             "manifest_path": str(manifest_path.resolve()),
+            "profile": profile.name,
             "split_counts": split_counts,
         },
         "determinism": (
@@ -310,7 +334,7 @@ def train_baseline(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="train the eight bucket width 64 baseline nnue"
+        description="train one configured baseline nnue profile"
     )
     parser.add_argument("data")
     parser.add_argument("out")
