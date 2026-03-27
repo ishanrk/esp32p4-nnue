@@ -1,6 +1,7 @@
 # King Conditioned Features
 
-The baseline is inspired by HalfKP but does not use an exact king-square index.
+The selected 8x64 baseline is inspired by HalfKP but does not use an exact
+king-square index.
 Instead, each perspective conditions its nonking piece-square features on one
 of eight mirrored king buckets.
 
@@ -12,9 +13,12 @@ square are then flipped horizontally with `square xor 7`. The king therefore
 always finishes on normalized files a through d and every feature in that view
 uses the same orientation.
 
-The normalized king file selects zero through three. Four is added when the
-normalized king rank is in the upper half of the board. This produces eight
-buckets: four files times two rank halves.
+The normalized king file selects zero through three. The selected profile adds
+four when the normalized king rank is in the upper half of the board. This
+produces eight buckets: four files times two rank halves. Reproducible 4-bucket
+and 16-bucket experiment profiles use the same files with one full-rank band or
+four two-rank bands. The profile comparison page defines those regions and
+records their measured costs.
 
 For a perspective, pieces of that color use five pawn-through-queen classes and
 opposing pieces use another five. Kings are excluded because the bucket already
@@ -41,6 +45,6 @@ and perspective and returns the complete zero-through-5119 index. The C runtime
 and train/features.py implement these same operations, and both consume the
 expected values in test/nnue_features.txt.
 
-The hidden width remains 64 and activation remains clipped ReLU. Experiments
-with 16 buckets, width 128, intermediate sub-1-MB designs, and SCReLU are
-deliberately outside the current baseline.
+The selected hidden width remains 64 and activation remains clipped ReLU. The
+completed constrained comparison varies only buckets and width. SCReLU and an
+uncontrolled architecture search remain outside the current baseline.

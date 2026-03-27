@@ -44,3 +44,9 @@ values. Its version 2 328096-byte integer network is shared by host inference
 and firmware. Make and undo maintain accumulators through reversible feature
 updates without snapshots. The current implementation is portable scalar C and
 remains the correctness reference for later ESP32 P4 PIE work.
+
+Four compile-time profiles were measured under a 512 KiB ceiling. The selected
+8x64 baseline remains the default because smoke data provided no strength
+evidence for a larger profile, while it retained the smaller model and an
+established balance of accumulator RAM and host speed. Experimental profiles
+remain reproducible without runtime branches.

@@ -1,12 +1,12 @@
 # Testing
 
-The project has one focused C regression binary named p4test and four Python
-tests named p4features, p4data, p4model, and p4training. CTest registers
+The project has one focused C regression binary named p4test and five Python
+tests named p4features, p4data, p4model, p4arena, and p4training. CTest registers
 p4features when a Python interpreter is available. NumPy and python-chess add
 p4data and p4model; p4model receives the built p4eval path and compares Python
 and C integer scores exactly. PyTorch additionally enables the short
-p4training fixture run. Continuous integration installs the light data and
-model-test dependencies but leaves PyTorch training to host environments that
+p4training fixture run. Continuous integration installs the light data, model,
+and arena-test dependencies but leaves PyTorch training to host environments that
 install `train/requirements.txt`. Running p4test directly prints ok on success.
 
 The binary checks:
@@ -70,6 +70,11 @@ padding, and shard boundaries. The data test checks `uint16` feature and
 `int16` label arrays, manifest and file counts, empty input, malformed FEN, and
 cross-split rejection.
 
+The Python feature test also checks the regular 4-, 8-, and 16-bucket regions,
+exact candidate model sizes, parameter counts, accumulator bytes, and the
+512-KiB ceiling. The data test prepares and validates profile-specific shards
+for all four supported bucket and width combinations.
+
 train/test_training.py prepares that same fixture in a temporary directory,
 runs two CPU epochs, checks that a best validation checkpoint exists, and
 verifies the reproducibility manifest, split counts, selection rule, validation
@@ -78,12 +83,18 @@ the temporary directory. The test is deliberately tiny and says nothing about
 network strength.
 
 train/test_model.py exports deterministic floating fixture parameters into a
-temporary 328096-byte model. It requires zero saturation and no hash fields,
+temporary exact-size model for the selected test profile. It requires zero
+saturation and no hash fields,
 then compares Python and C integer evaluation for the initial board, a sparse
 pawn board, and a queen board with both sides to move. Separate cases prove that
 one out-of-range feature weight, accumulator-unsafe feature bias, output weight,
 or output bias fails export, as does a nonfinite parameter. No binary fixture
 model is committed.
+
+train/test_arena.py validates the fixed opening positions, balanced Elo
+calculation, and the rule that fewer than 20 games cannot request an Elo
+estimate. The actual smoke arena invocation remains outside normal CTest so CI
+does not start repeated engine searches.
 
 The sliding test implementation advances file and rank coordinates one square
 at a time, includes the first occupied square, and then stops in that
@@ -117,4 +128,5 @@ host training dependencies and building p4eval:
     python3 train/test_features.py
     python3 train/test_data.py
     P4_EVAL_TOOL=build/p4eval python3 train/test_model.py
+    python3 train/test_arena.py
     python3 train/test_training.py

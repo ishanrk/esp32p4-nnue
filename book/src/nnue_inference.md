@@ -6,12 +6,15 @@ nnue_header_t is a fixed 32-byte header containing magic, version, bucket and
 feature dimensions, hidden width, activation clip, two quantization factors,
 reserved space, total file size, and output bias.
 
-The 328096-byte file stores, in order:
+Every profile file stores, in order:
 
 - the 32-byte header
-- 64 signed 16-bit feature biases
-- 128 signed 16-bit output weights
-- 327680 signed 8-bit feature weights
+- one signed 16-bit feature bias per hidden value
+- two signed 16-bit output weights per hidden value
+- bucket count times 640 times hidden width signed 8-bit feature weights
+
+For the default 8x64 profile these arrays contain 64 biases, 128 output
+weights, and 327680 feature weights, producing exactly 328096 bytes.
 
 Header fields and 16-bit arrays use little-endian representation, matching the
 supported host export and ESP32 P4 target.
@@ -19,10 +22,10 @@ supported host export and ESP32 P4 target.
 Format version 2 identifies the vertically normalized and horizontally
 king-mirrored feature semantics. Version 1 prototype networks are rejected even
 though their dimensions match. The loader requires the exact eight-byte magic,
-version 2, 8 buckets, 640 features per bucket, width 64, activation clip 127,
-both quantization factors equal to 64, zero reserved data, and exact header and
-buffer sizes. It also validates the safe feature-bias range before changing the
-active network.
+version 2, the compile-time bucket count and hidden width, 640 features per
+bucket, activation clip 127, both quantization factors equal to 64, zero
+reserved data, and the corresponding exact header and buffer sizes. It also
+validates the safe feature-bias range before changing the active network.
 
 load_nnue(path) reads and owns a host allocation. bind_nnue(data, size) validates
 and borrows an existing memory image. Borrowed data must be at least two-byte
@@ -39,16 +42,17 @@ automatically, and the UCI load path refreshes its current position explicitly.
 
 Each perspective first places its own side at the bottom by vertically flipping
 the Black view. When the resulting king is on the right half, the entire view is
-also flipped horizontally. Four normalized king files and two rank halves form
-the eight buckets. A bucket contains ten nonking piece classes across 64
-normalized squares, or 640 features. Across all buckets each perspective has
-5,120 sparse features.
+also flipped horizontally. Four normalized king files combine with one, two, or
+four regular rank bands for 4, 8, or 16 buckets. The default uses two four-rank
+bands. A bucket contains ten nonking piece classes across 64 normalized squares,
+or 640 features. The default has 5,120 sparse features per perspective.
 
 refresh_nnue_perspective receives a position and perspective. It finds that
-side's king view, records its bucket and mirror orientation, starts its 64-value
-signed 16-bit accumulator from feature bias, and adds every active nonking
-feature vector. This is the only path that scans all pieces. refresh_nnue
-rebuilds both perspectives and is the correctness oracle used by tests.
+side's king view, records its bucket and mirror orientation, starts its
+compile-time-width signed int16 accumulator from feature bias, and adds every
+active nonking feature vector. This is the only path that scans all pieces.
+refresh_nnue rebuilds both perspectives and is the correctness oracle used by
+tests.
 
 add_nnue_feature and remove_nnue_feature update both perspectives for one
 nonking piece-square change using the cached bucket and mirror state. Normal
@@ -66,21 +70,21 @@ train/export.py applies that bound, and the loader rejects an image outside it.
 
 evaluate_nnue reads the side-to-move accumulator first and the opponent
 accumulator second. Each signed 16-bit value is clipped to the header's
-nonnegative activation range. The two 64-value halves are multiplied by signed
-16-bit output weights, added to the signed 32-bit output bias, and divided by
-the two quantization factors. The complete dot product uses signed int64. Even
-with all 128 activations at 127 and all output weights at an int16 extreme, the
-dot product plus an int32 bias is safe in int64 and the scaled result fits int.
-evaluate_nnue performs no allocation or accumulator copy and returns the
-side-to-move score.
+nonnegative activation range. The two compile-time-width halves are multiplied
+by signed int16 output weights, added to the signed int32 output bias, and
+divided by the two quantization factors. The complete dot product uses signed
+int64. Every supported comparison width is safe in int64 and the scaled result
+fits int. evaluate_nnue performs no allocation or accumulator copy and returns
+the side-to-move score.
 
 ## Export parity tools
 
 `train/integer.py` reads the exported version 2 model directly. Its
-`load_exported_model` function validates the fixed header, byte size, array
-layout, and accumulator-safe feature biases before returning NumPy integer
-arrays. `evaluate_integer` receives those arrays and a FEN, rebuilds sparse
-features through the shared Python mapping, performs signed integer
+`load_exported_model` function validates the fixed header, derives one supported
+profile from its bucket count and width, validates byte size, array layout, and
+accumulator-safe feature biases, and returns NumPy integer arrays with that
+profile. `evaluate_integer` receives those arrays and a FEN, rebuilds sparse
+features through the matching Python mapping, performs signed integer
 accumulation and clipping, keeps the side-to-move perspective first, and uses
 division truncated toward zero to match C. It does not call the floating
 training network.

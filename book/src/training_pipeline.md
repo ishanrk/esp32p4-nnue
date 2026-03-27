@@ -119,20 +119,23 @@ best validation checkpoint has been chosen.
 `train/features.py` is the single Python definition of the version 2 feature
 map. It parses FEN piece placement, vertically normalizes the Black perspective,
 horizontally mirrors every square when the normalized king is on files e
-through h, selects one of eight king buckets, and maps ten nonking piece classes
-over 64 squares. `feature_index` returns one complete index from 0 through 5119.
-The C runtime and Python test read the common expected values in
-`test/nnue_features.txt`.
+through h, selects a regular region from the requested 4-, 8-, or 16-bucket
+profile, and maps ten nonking piece classes over 64 squares. The default
+`feature_index` range is 0 through 5119. The default C runtime and Python test
+read the common expected values in `test/nnue_features.txt`; additional Python
+and exact-export tests cover every profile mapping.
 
 `encode_position(fen)` receives one valid position and returns the side-to-move
-feature list first and the opponent list second. Each perspective contains at
-most 30 nonking features. The function pads both lists to exactly 30 entries
-with sentinel 5120. The feature transformer has a zero row at that sentinel, so
-padding does not affect an accumulator.
+feature list first and the opponent list second. An optional profile selects the
+mapping. Each perspective contains at most 30 nonking features. The function
+pads both lists to exactly 30 entries with the profile's feature count as its
+sentinel. The feature transformer has a zero row at that sentinel, so padding
+does not affect an accumulator.
 
-Indices 0 through 5120 fit in an unsigned 16-bit integer, whose maximum is
-65535. Prepared shards therefore store features as `uint16`. Teacher scores are
-already clamped to the engine's 30000 mate scale, so they safely use `int16`.
+The largest comparison profile uses indices 0 through 10240, which fit in an
+unsigned 16-bit integer whose maximum is 65535. Prepared shards therefore store
+features as `uint16`. Teacher scores are already clamped to the engine's 30000
+mate scale, so they safely use `int16`.
 
 One old encoded position used 60 `int64` IDs and one `float32` label:
 
@@ -154,11 +157,12 @@ allocate a million-position array.
 
 ## Shards and manifest
 
-`prepare_dataset(source_path, output_directory, shard_size, metadata_path)`
-streams labeled JSONL in source order. It requires records for a game to remain
-grouped and rejects any game whose records change split. It keeps at most one
-configured shard buffer per split, writes a buffer as soon as it fills, and
-never loads all labeled positions at once. The default shard size is 100000.
+`prepare_dataset(source_path, output_directory, shard_size, metadata_path,
+profile)` streams labeled JSONL in source order. It requires records for a game
+to remain grouped and rejects any game whose records change split. It keeps at
+most one configured shard buffer per split, writes a buffer as soon as it fills,
+and never loads all labeled positions at once. The default shard size is
+100000, and the default profile is 8x64.
 
 A prepared directory looks like:
 
@@ -200,13 +204,15 @@ split membership.
 ## Baseline training
 
 `NnueNetwork` in `train/net.py` receives side-to-move and opponent feature
-tensors. Its 5121-row embedding reserves the last zero row for padding, adds one
-shared 64-value feature bias to each perspective, applies clipped ReLU, joins
-the perspectives, and returns one score from the linear output layer.
+tensors plus a profile. Its feature-count-plus-one-row embedding reserves the
+last zero row for padding, adds one shared hidden-width feature bias to each
+perspective, applies clipped ReLU, joins the perspectives, and returns one score
+from the linear output layer.
 
-`ShardDataset(shard_paths, seed)` receives the ordered training shard paths and
-an epoch seed. Each data-loader worker takes a disjoint slice of the shuffled
-shard order, opens one shard at a time, and yields its rows in a seeded order.
+`ShardDataset(shard_paths, seed, profile)` receives the ordered training shard
+paths, an epoch seed, and the manifest profile. Each data-loader worker takes a
+disjoint slice of the shuffled shard order, opens one shard at a time, and
+yields its rows in a seeded order.
 Memory is therefore bounded by one loaded shard and the loader's conservative
 prefetch for each worker rather than the complete dataset. Worker count defaults
 to zero and can be increased explicitly after measuring host memory and input
@@ -249,13 +255,14 @@ The useful options and defaults are:
 - `--workers 0`
 - `--weight-decay 0.01`
 
-The checkpoint companion `<checkpoint>.json` records the exact 8-bucket,
-width-64 architecture, seed, PyTorch and NumPy versions, selected device,
-training options, dataset manifest path and split counts, selection rule, best
-epoch, validation metrics, and final test metrics. Initialization and data order
-are seeded. GPU kernels, library versions, and different hardware may still
-produce different results, so GPU runs are not claimed to be bit identical.
-The record intentionally contains no cryptographic hash.
+The checkpoint companion `<checkpoint>.json` records the named architecture,
+exact dimensions, model byte size, training parameter count, seed, PyTorch and
+NumPy versions, selected device, training options, dataset manifest path and
+split counts, selection rule, best epoch, validation metrics, and final test
+metrics. Initialization and data order are seeded. GPU kernels, library
+versions, and different hardware may still produce different results, so GPU
+runs are not claimed to be bit identical. The record intentionally contains no
+cryptographic hash.
 
 Validation loss is the primary selection metric. Validation and test
 centipawn MAE report the mean absolute distance from teacher scores in familiar
@@ -265,11 +272,11 @@ an Elo estimate and does not guarantee a stronger chess engine.
 
 ## Quantization and export
 
-`load_checkpoint_parameters` reconstructs the baseline network and extracts
-the learned arrays. `quantize_parameters` rounds feature weights and the shared
-feature bias by Q1 = 64, output weights by Q2 = 64, and output bias by Q1 times
-Q2. Feature weights become signed int8, feature bias and output weights become
-signed int16, and output bias becomes signed int32.
+`load_checkpoint_parameters` reconstructs the manifest's named profile and
+extracts the learned arrays. `quantize_parameters` rounds feature weights and
+the shared feature bias by Q1 = 64, output weights by Q2 = 64, and output bias
+by Q1 times Q2. Feature weights become signed int8, feature bias and output
+weights become signed int16, and output bias becomes signed int32.
 
 Quantization maps floating parameters onto the exact integer values consumed by
 the C runtime. A value outside its destination range would saturate and change
@@ -280,22 +287,23 @@ to -28928 through 28957, which leaves room for the maximum 30 signed int8
 feature vectors in a legal position without overflowing a signed int16
 accumulator.
 
-`build_model_blob` writes the fixed version 2 header, 64 feature biases, 128
-output weights, and 327680 feature weights in the order expected by
-`src/nnue.c`. `export_parameters` writes only after quantization passes and also
-creates a JSON model manifest. The binary must be exactly 328096 bytes. The
-manifest records runtime and feature format versions, architecture,
+`build_model_blob` writes the fixed version 2 header, hidden-width feature
+biases, twice-hidden-width output weights, and the profile feature table in the
+order expected by `src/nnue.c`. `export_parameters` writes only after
+quantization passes and also creates a JSON model manifest. The binary must
+match the profile's calculated size. The manifest records runtime and feature
+format versions, architecture,
 quantization, byte size, dataset description, training settings and seed, best
 epoch, validation and test metrics, and the four saturation counts. It contains
 no signature or cryptographic hash.
 
 `load_exported_model` in `train/integer.py` validates and parses that binary.
-`evaluate_integer(model, fen)` encodes the two sparse perspectives, adds int8
-feature vectors to the int16-safe bias, clips both 64-value accumulators to 0
-through 127, orders side to move before opponent, computes the integer dot
-product, and divides by Q1 times Q2 with truncation toward zero. This is an
-independent Python implementation of exported integer inference, not a floating
-PyTorch comparison.
+`evaluate_integer(model, fen)` encodes the two sparse perspectives with the
+header-derived profile, adds int8 feature vectors to the int16-safe bias, clips
+both accumulators to 0 through 127, orders side to move before opponent,
+computes the integer dot product, and divides by Q1 times Q2 with truncation
+toward zero. This is an independent Python implementation of exported integer
+inference, not a floating PyTorch comparison.
 
 ## Smoke training and comparison
 
@@ -304,7 +312,8 @@ exercises all three splits and the full train, select, export, and integer
 comparison path quickly on CPU:
 
 ```sh
-python train/prep.py test/training_labels.jsonl build_smoke_data --shard-size 2
+python train/prep.py test/training_labels.jsonl build_smoke_data \
+    --shard-size 2 --profile 8x64
 python train/train.py build_smoke_data build_smoke.pt --epochs 3 --batch 2 \
     --lr 0.001 --seed 7 --score-scale 400 --device cpu --workers 0
 python train/export.py build_smoke.pt build_smoke.bin
@@ -349,7 +358,7 @@ under the ignored `data` directory:
 ```sh
 python train/label.py games.pgn /path/to/stockfish labels.jsonl \
     --nodes 20000 --stride 4 --min-ply 8 --limit 1000000 --seed 7
-python train/prep.py labels.jsonl data --shard-size 100000
+python train/prep.py labels.jsonl data --shard-size 100000 --profile 8x64
 python train/train.py data model.pt --epochs 12 --batch 4096 --lr 0.001 \
     --seed 7 --score-scale 400 --device auto --workers 0 \
     --weight-decay 0.01

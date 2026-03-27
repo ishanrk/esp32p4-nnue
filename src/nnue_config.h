@@ -9,14 +9,11 @@
 #define P4_NNUE_HIDDEN_SIZE 64
 #endif
 
-#if P4_NNUE_BUCKET_COUNT != 4 && \
-    P4_NNUE_BUCKET_COUNT != 8 && \
-    P4_NNUE_BUCKET_COUNT != 16
-#error unsupported nnue bucket count
-#endif
-
-#if P4_NNUE_HIDDEN_SIZE <= 0
-#error invalid nnue hidden size
+#if !((P4_NNUE_BUCKET_COUNT == 4 && P4_NNUE_HIDDEN_SIZE == 128) || \
+      (P4_NNUE_BUCKET_COUNT == 8 && P4_NNUE_HIDDEN_SIZE == 64) || \
+      (P4_NNUE_BUCKET_COUNT == 8 && P4_NNUE_HIDDEN_SIZE == 96) || \
+      (P4_NNUE_BUCKET_COUNT == 16 && P4_NNUE_HIDDEN_SIZE == 48))
+#error unsupported nnue profile
 #endif
 
 #endif

@@ -1,8 +1,16 @@
 # Benchmarks
 
-There is no separate benchmark target in the current repository. This keeps
-the root build limited to the shared core, desktop UCI executable, and
-regression test.
+The host-only p4bench target loads one model matching its compile-time profile.
+It reports exact model, accumulator, position, and undo sizes; times repeated
+integer evaluation across six positions; and runs three fixed search positions
+at one requested depth. Search reports stable result and node fields plus the
+median microsecond time and derived nodes per second:
+
+    build/p4bench nn.bin 500000 5 5
+
+The arguments select evaluation iterations per position, common search depth,
+and search repetitions. The NNUE profile comparison page records the four
+profile measurements made with this tool.
 
 The UCI perft command reports legal-move node count and elapsed milliseconds.
 Normal go commands report depth, nodes, elapsed milliseconds, and nodes per

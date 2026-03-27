@@ -658,62 +658,77 @@ static int compare_ints(const void *left, const void *right) {
 }
 
 static void test_nnue_feature_mapping(void) {
-    FILE *fixtures = fopen(P4_NNUE_FIXTURE_PATH, "r");
-    expect_true("feature fixtures open", fixtures != NULL);
-    if (!fixtures) return;
-    char line[2048];
-    int fixture_count = 0;
-    while (fgets(line, sizeof(line), fixtures)) {
-        if (line[0] == '#' || line[0] == '\n') continue;
-        char *name = strtok(line, "|");
-        char *fen = strtok(NULL, "|");
-        char *perspective_text = strtok(NULL, "|");
-        char *bucket_text = strtok(NULL, "|");
-        char *features_text = strtok(NULL, "\r\n");
-        expect_true("feature fixture fields",
-                    name && fen && perspective_text && bucket_text &&
-                    features_text);
-        if (!name || !fen || !perspective_text || !bucket_text ||
-            !features_text) continue;
+    if (NNUE_BUCKET_COUNT == 8) {
+        FILE *fixtures = fopen(P4_NNUE_FIXTURE_PATH, "r");
+        expect_true("feature fixtures open", fixtures != NULL);
+        if (!fixtures) return;
+        char line[2048];
+        int fixture_count = 0;
+        while (fgets(line, sizeof(line), fixtures)) {
+            if (line[0] == '#' || line[0] == '\n') continue;
+            char *name = strtok(line, "|");
+            char *fen = strtok(NULL, "|");
+            char *perspective_text = strtok(NULL, "|");
+            char *bucket_text = strtok(NULL, "|");
+            char *features_text = strtok(NULL, "\r\n");
+            expect_true("feature fixture fields",
+                        name && fen && perspective_text && bucket_text &&
+                        features_text);
+            if (!name || !fen || !perspective_text || !bucket_text ||
+                !features_text) continue;
 
-        int perspective = atoi(perspective_text);
-        int expected_bucket = atoi(bucket_text);
-        int expected[NNUE_MAX_ACTIVE_FEATURES];
-        int expected_count = 0;
-        for (char *value = strtok(features_text, ",");
-             value && expected_count < NNUE_MAX_ACTIVE_FEATURES;
-             value = strtok(NULL, ",")) {
-            expected[expected_count++] = atoi(value);
-        }
-
-        position_t position;
-        expect_true(name, set_position_fen(&position, fen));
-        int king_square = find_king_square(&position, perspective);
-        expect_u64("fixture king bucket",
-                   (uint64_t)nnue_king_bucket(king_square, perspective),
-                   (uint64_t)expected_bucket);
-        int actual[NNUE_MAX_ACTIVE_FEATURES];
-        int actual_count = 0;
-        for (int piece = 0; piece < PIECE_COUNT; ++piece) {
-            bitboard_t pieces = position.pieces[piece];
-            while (pieces) {
-                int square = pop_first_square(&pieces);
-                int feature = nnue_feature_index(
-                    king_square, piece, square, perspective);
-                if (feature >= 0) actual[actual_count++] = feature;
+            int perspective = atoi(perspective_text);
+            int expected_bucket = atoi(bucket_text);
+            int expected[NNUE_MAX_ACTIVE_FEATURES];
+            int expected_count = 0;
+            for (char *value = strtok(features_text, ",");
+                 value && expected_count < NNUE_MAX_ACTIVE_FEATURES;
+                 value = strtok(NULL, ",")) {
+                expected[expected_count++] = atoi(value);
             }
+
+            position_t position;
+            expect_true(name, set_position_fen(&position, fen));
+            int king_square = find_king_square(&position, perspective);
+            expect_u64("fixture king bucket",
+                       (uint64_t)nnue_king_bucket(king_square, perspective),
+                       (uint64_t)expected_bucket);
+            int actual[NNUE_MAX_ACTIVE_FEATURES];
+            int actual_count = 0;
+            for (int piece = 0; piece < PIECE_COUNT; ++piece) {
+                bitboard_t pieces = position.pieces[piece];
+                while (pieces) {
+                    int square = pop_first_square(&pieces);
+                    int feature = nnue_feature_index(
+                        king_square, piece, square, perspective);
+                    if (feature >= 0) actual[actual_count++] = feature;
+                }
+            }
+            qsort(actual, (size_t)actual_count, sizeof(actual[0]), compare_ints);
+            expect_u64("fixture feature count", (uint64_t)actual_count,
+                       (uint64_t)expected_count);
+            if (actual_count == expected_count) {
+                expect_memory(name, actual, expected,
+                              (size_t)actual_count * sizeof(actual[0]));
+            }
+            ++fixture_count;
         }
-        qsort(actual, (size_t)actual_count, sizeof(actual[0]), compare_ints);
-        expect_u64("fixture feature count", (uint64_t)actual_count,
-                   (uint64_t)expected_count);
-        if (actual_count == expected_count) {
-            expect_memory(name, actual, expected,
-                          (size_t)actual_count * sizeof(actual[0]));
-        }
-        ++fixture_count;
+        fclose(fixtures);
+        expect_u64("feature fixture count", (uint64_t)fixture_count, 10);
     }
-    fclose(fixtures);
-    expect_u64("feature fixture count", (uint64_t)fixture_count, 10);
+    int rank_bands = NNUE_BUCKET_COUNT / 4;
+    for (int square = 0; square < 64; ++square) {
+        int file = square & 7;
+        int rank = square >> 3;
+        int normalized_file = file < 4 ? file : 7 - file;
+        int expected = normalized_file + 4 * (rank * rank_bands / 8);
+        expect_u64("profile king bucket",
+                   (uint64_t)nnue_king_bucket(square, WHITE),
+                   (uint64_t)expected);
+        expect_u64("profile vertical bucket",
+                   (uint64_t)nnue_king_bucket(square ^ 56, BLACK),
+                   (uint64_t)expected);
+    }
     expect_u64("left king bucket", (uint64_t)nnue_king_bucket(3, WHITE), 3);
     expect_u64("right king bucket", (uint64_t)nnue_king_bucket(4, WHITE), 3);
     expect_true("left king not mirrored", !nnue_king_mirror(3, WHITE));
@@ -946,7 +961,7 @@ static void test_focused_incremental_nnue(void) {
         KING_VIEW_SAME);
     test_incremental_move(
         "bucket crossing king", "7k/8/8/8/K7/8/8/8 w - - 0 1", "a4a5",
-        KING_VIEW_CHANGED);
+        NNUE_BUCKET_COUNT == 4 ? KING_VIEW_SAME : KING_VIEW_CHANGED);
     test_incremental_move(
         "mirror crossing king", "7k/8/8/8/8/8/8/3K4 w - - 0 1", "d1e1",
         KING_VIEW_CHANGED);
@@ -1386,7 +1401,8 @@ static void test_search_timeout(void) {
 }
 
 static void test_search_structure_sizes(void) {
-    expect_u64("position size", sizeof(position_t), 2512);
+    expect_u64("position size", sizeof(position_t),
+               2256 + 4 * NNUE_HIDDEN_SIZE);
     expect_u64("undo size", sizeof(undo_t), 24);
     expect_u64("table entry size", sizeof(tt_entry_t), 16);
     expect_u64("search result size", sizeof(search_result_t), 544);
