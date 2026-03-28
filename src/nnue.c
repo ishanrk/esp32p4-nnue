@@ -17,6 +17,7 @@ typedef struct {
 static network_t network;
 static const char network_magic[8] = "P4NNUE1";
 
+_Static_assert(NNUE_FILE_SIZE <= 512 * 1024, "nnue model ceiling");
 _Static_assert(NNUE_ACCUMULATOR_BIAS_MIN +
                NNUE_MAX_ACTIVE_FEATURES * INT8_MIN >= INT16_MIN,
                "nnue accumulator lower bound");

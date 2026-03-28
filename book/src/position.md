@@ -8,7 +8,8 @@ pattern:
 - board[64] provides direct piece lookup with NO_PIECE for an empty square
 - key is the incremental Zobrist key
 - history and history_count support repetition and fifty-move detection
-- accumulator[2][64], king_bucket[2], and king_mirror[2] hold both NNUE views
+- accumulator[2][NNUE_HIDDEN_SIZE], king_bucket[2], and king_mirror[2] hold both
+  NNUE views for the compiled profile
 - halfmove_clock and fullmove_number preserve FEN clocks
 - side_to_move, castling, and en_passant hold reversible game state
 

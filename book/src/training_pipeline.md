@@ -132,10 +132,11 @@ pads both lists to exactly 30 entries with the profile's feature count as its
 sentinel. The feature transformer has a zero row at that sentinel, so padding
 does not affect an accumulator.
 
-The largest comparison profile uses indices 0 through 10240, which fit in an
-unsigned 16-bit integer whose maximum is 65535. Prepared shards therefore store
-features as `uint16`. Teacher scores are already clamped to the engine's 30000
-mate scale, so they safely use `int16`.
+The largest comparison profile uses active indices 0 through 10239 and 10240
+as its padding sentinel. These fit in an unsigned 16-bit integer whose maximum
+is 65535. Prepared shards therefore store features as `uint16`. Teacher scores
+are already clamped to the engine's 30000 mate scale, so they safely use
+`int16`.
 
 One old encoded position used 60 `int64` IDs and one `float32` label:
 
