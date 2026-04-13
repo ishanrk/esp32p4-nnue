@@ -16,14 +16,19 @@ from profiles import (
     FEATURES_PER_BUCKET,
     FEATURE_QUANTIZATION,
     FEATURE_MAPPING_VERSION,
+    MODEL_FORMAT_VERSION,
     MODEL_HEADER_SIZE,
+    MODEL_OUTPUT_BIAS_SIZE,
     NnueProfile,
     OUTPUT_QUANTIZATION,
+    PERSPECTIVE_COUNT,
     profile_from_dimensions,
 )
 
 MAGIC = b"P4NNUE1\0"
 HEADER_SIZE = MODEL_HEADER_SIZE
+OUTPUT_BIAS_OFFSET = HEADER_SIZE
+FEATURE_BIAS_OFFSET = OUTPUT_BIAS_OFFSET + MODEL_OUTPUT_BIAS_SIZE
 FILE_SIZE = DEFAULT_PROFILE.model_bytes
 MODEL_MANIFEST_VERSION = 1
 TRAINING_MANIFEST_VERSION = 1
@@ -110,21 +115,23 @@ def build_model_blob(
     profile: NnueProfile = DEFAULT_PROFILE,
 ) -> bytes:
     header = struct.pack(
-        "<8s8HIi",
+        "<8s8HI",
         MAGIC,
-        FEATURE_MAPPING_VERSION,
+        MODEL_FORMAT_VERSION,
         profile.bucket_count,
         FEATURES_PER_BUCKET,
         profile.hidden_width,
         ACTIVATION_CLIP,
         FEATURE_QUANTIZATION,
         OUTPUT_QUANTIZATION,
-        0,
+        PERSPECTIVE_COUNT,
         profile.model_bytes,
-        quantized["output_bias"],
     )
+    if len(header) != HEADER_SIZE:
+        raise RuntimeError("bad model header size")
     blob = (
         header
+        + struct.pack("<i", quantized["output_bias"])
         + quantized["feature_bias"].astype("<i2", copy=False).tobytes()
         + quantized["output_weights"].astype("<i2", copy=False).tobytes()
         + quantized["feature_weights"].tobytes()
@@ -180,6 +187,7 @@ def validate_training_manifest(manifest: dict[str, Any]) -> NnueProfile:
         "features_per_bucket": FEATURES_PER_BUCKET,
         "hidden_width": profile.hidden_width,
         "model_byte_size": profile.model_bytes,
+        "model_format_version": MODEL_FORMAT_VERSION,
         "output_quantization": OUTPUT_QUANTIZATION,
         "perspective_order": ["side_to_move", "opponent"],
         "profile": profile.name,

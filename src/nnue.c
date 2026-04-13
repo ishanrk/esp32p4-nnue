@@ -5,18 +5,25 @@
 #include <string.h>
 
 typedef struct {
-    nnue_header_t header;
     const int16_t *feature_bias;
     const int16_t *output_weights;
     const int8_t *feature_weights;
+    int32_t output_bias;
     void *memory;
     bool owns_memory;
     bool loaded;
 } network_t;
 
 static network_t network;
-static const char network_magic[8] = "P4NNUE1";
 
+_Static_assert(sizeof(NNUE_MAGIC) == NNUE_MAGIC_SIZE, "nnue magic size");
+_Static_assert(NNUE_HEADER_SIZE == 28, "nnue header size");
+_Static_assert(NNUE_OUTPUT_BIAS_OFFSET == 28, "nnue output bias offset");
+_Static_assert(NNUE_FEATURE_BIAS_OFFSET == 32, "nnue feature bias offset");
+_Static_assert(NNUE_FEATURE_BIAS_OFFSET % _Alignof(int16_t) == 0,
+               "nnue feature bias alignment");
+_Static_assert(NNUE_OUTPUT_WEIGHTS_OFFSET % _Alignof(int16_t) == 0,
+               "nnue output weight alignment");
 _Static_assert(NNUE_FILE_SIZE <= 512 * 1024, "nnue model ceiling");
 _Static_assert(NNUE_ACCUMULATOR_BIAS_MIN +
                NNUE_MAX_ACTIVE_FEATURES * INT8_MIN >= INT16_MIN,
@@ -25,38 +32,67 @@ _Static_assert(NNUE_ACCUMULATOR_BIAS_MAX +
                NNUE_MAX_ACTIVE_FEATURES * INT8_MAX <= INT16_MAX,
                "nnue accumulator upper bound");
 
-static bool bind_network(const void *data, size_t size, bool owns_memory) {
-    if (!data || size < sizeof(nnue_header_t) ||
-        (uintptr_t)data % _Alignof(int16_t)) return false;
-    nnue_header_t header;
-    memcpy(&header, data, sizeof(header));
-    if (memcmp(header.magic, network_magic, sizeof(header.magic)) ||
-        header.version != NNUE_FORMAT_VERSION ||
-        header.bucket_count != NNUE_BUCKET_COUNT ||
-        header.features_per_bucket != NNUE_FEATURES_PER_BUCKET ||
-        header.hidden_size != NNUE_HIDDEN_SIZE ||
-        header.activation_clip != NNUE_ACTIVATION_CLIP ||
-        header.feature_quantization != NNUE_FEATURE_QUANTIZATION ||
-        header.output_quantization != NNUE_OUTPUT_QUANTIZATION ||
-        header.reserved ||
-        header.file_size != NNUE_FILE_SIZE ||
-        size != NNUE_FILE_SIZE ||
-        size != header.file_size) return false;
+static uint16_t read_u16_le(const uint8_t *bytes) {
+    return (uint16_t)((uint16_t)bytes[0] |
+                      (uint16_t)((uint16_t)bytes[1] << 8));
+}
 
+static uint32_t read_u32_le(const uint8_t *bytes) {
+    return (uint32_t)bytes[0] |
+           (uint32_t)bytes[1] << 8 |
+           (uint32_t)bytes[2] << 16 |
+           (uint32_t)bytes[3] << 24;
+}
+
+static int32_t read_i32_le(const uint8_t *bytes) {
+    uint32_t value = read_u32_le(bytes);
+    int64_t signed_value = value <= INT32_MAX
+                               ? (int64_t)value
+                               : (int64_t)value - INT64_C(4294967296);
+    return (int32_t)signed_value;
+}
+
+static bool native_little_endian(void) {
+    const uint16_t one = 1;
+    return *(const uint8_t *)&one == 1;
+}
+
+static bool bind_network(const void *data, size_t size, bool owns_memory) {
+    if (!data || size < NNUE_HEADER_SIZE || !native_little_endian() ||
+        (uintptr_t)data % _Alignof(int16_t)) return false;
     const uint8_t *bytes = data;
+    uint32_t file_size = read_u32_le(bytes + NNUE_FILE_SIZE_OFFSET);
+    if (memcmp(bytes + NNUE_MAGIC_OFFSET, NNUE_MAGIC, NNUE_MAGIC_SIZE) ||
+        read_u16_le(bytes + NNUE_VERSION_OFFSET) != NNUE_FORMAT_VERSION ||
+        read_u16_le(bytes + NNUE_BUCKET_COUNT_OFFSET) != NNUE_BUCKET_COUNT ||
+        read_u16_le(bytes + NNUE_FEATURES_PER_BUCKET_OFFSET) !=
+            NNUE_FEATURES_PER_BUCKET ||
+        read_u16_le(bytes + NNUE_HIDDEN_SIZE_OFFSET) != NNUE_HIDDEN_SIZE ||
+        read_u16_le(bytes + NNUE_ACTIVATION_CLIP_OFFSET) !=
+            NNUE_ACTIVATION_CLIP ||
+        read_u16_le(bytes + NNUE_FEATURE_QUANTIZATION_OFFSET) !=
+            NNUE_FEATURE_QUANTIZATION ||
+        read_u16_le(bytes + NNUE_OUTPUT_QUANTIZATION_OFFSET) !=
+            NNUE_OUTPUT_QUANTIZATION ||
+        read_u16_le(bytes + NNUE_PERSPECTIVE_COUNT_OFFSET) !=
+            NNUE_PERSPECTIVE_COUNT ||
+        file_size != NNUE_FILE_SIZE || size != NNUE_FILE_SIZE ||
+        size != file_size) return false;
+
     const int16_t *feature_bias =
-        (const int16_t *)(bytes + sizeof(header));
+        (const int16_t *)(bytes + NNUE_FEATURE_BIAS_OFFSET);
     for (int i = 0; i < NNUE_HIDDEN_SIZE; ++i) {
         if (feature_bias[i] < NNUE_ACCUMULATOR_BIAS_MIN ||
             feature_bias[i] > NNUE_ACCUMULATOR_BIAS_MAX) return false;
     }
 
     unload_nnue();
-    network.header = header;
     network.feature_bias = feature_bias;
-    network.output_weights = network.feature_bias + NNUE_HIDDEN_SIZE;
+    network.output_weights =
+        (const int16_t *)(bytes + NNUE_OUTPUT_WEIGHTS_OFFSET);
     network.feature_weights =
-        (const int8_t *)(network.output_weights + 2 * NNUE_HIDDEN_SIZE);
+        (const int8_t *)(bytes + NNUE_FEATURE_WEIGHTS_OFFSET);
+    network.output_bias = read_i32_le(bytes + NNUE_OUTPUT_BIAS_OFFSET);
     network.memory = owns_memory ? (void *)data : NULL;
     network.owns_memory = owns_memory;
     network.loaded = true;
@@ -254,8 +290,8 @@ int evaluate_nnue(const position_t *position) {
         position->accumulator[position->side_to_move];
     const int16_t *opponent_accumulator =
         position->accumulator[position->side_to_move ^ 1];
-    int64_t score = network.header.output_bias;
-    int clip = network.header.activation_clip;
+    int64_t score = network.output_bias;
+    int clip = NNUE_ACTIVATION_CLIP;
     for (int i = 0; i < NNUE_HIDDEN_SIZE; ++i) {
         int activation = side_accumulator[i];
         if (activation < 0) activation = 0;
@@ -270,6 +306,6 @@ int evaluate_nnue(const position_t *position) {
                  network.output_weights[NNUE_HIDDEN_SIZE + i];
     }
     return (int)(score /
-                 ((int64_t)network.header.feature_quantization *
-                  network.header.output_quantization));
+                 ((int64_t)NNUE_FEATURE_QUANTIZATION *
+                  NNUE_OUTPUT_QUANTIZATION));
 }

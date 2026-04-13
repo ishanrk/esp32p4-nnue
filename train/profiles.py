@@ -8,9 +8,12 @@ FEATURES_PER_BUCKET = 640
 FEATURE_MAPPING_VERSION = 2
 FEATURE_QUANTIZATION = 64
 MAX_ACTIVE_FEATURES = 30
-MODEL_HEADER_SIZE = 32
+MODEL_FORMAT_VERSION = 3
+MODEL_HEADER_SIZE = 28
+MODEL_OUTPUT_BIAS_SIZE = 4
 MODEL_SIZE_LIMIT = 512 * 1024
 OUTPUT_QUANTIZATION = 64
+PERSPECTIVE_COUNT = 2
 ACCUMULATOR_BIAS_MIN = -28928
 ACCUMULATOR_BIAS_MAX = 28957
 
@@ -33,6 +36,7 @@ class NnueProfile:
     def model_bytes(self) -> int:
         return (
             MODEL_HEADER_SIZE
+            + MODEL_OUTPUT_BIAS_SIZE
             + self.feature_count * self.hidden_width
             + 3 * self.hidden_width * 2
         )

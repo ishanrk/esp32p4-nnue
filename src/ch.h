@@ -49,7 +49,8 @@ enum {
     POSITION_HISTORY_SIZE = 256
 };
 enum {
-    NNUE_FORMAT_VERSION = 2,
+    NNUE_FORMAT_VERSION = 3,
+    NNUE_PERSPECTIVE_COUNT = 2,
     NNUE_BUCKET_COUNT = P4_NNUE_BUCKET_COUNT,
     NNUE_FEATURES_PER_BUCKET = 640,
     NNUE_HIDDEN_SIZE = P4_NNUE_HIDDEN_SIZE,
@@ -61,6 +62,33 @@ enum {
     NNUE_OUTPUT_QUANTIZATION = 64,
     NNUE_ACCUMULATOR_BIAS_MIN = -28928,
     NNUE_ACCUMULATOR_BIAS_MAX = 28957
+};
+
+#define NNUE_MAGIC "P4NNUE1"
+
+enum {
+    NNUE_MAGIC_OFFSET = 0,
+    NNUE_MAGIC_SIZE = 8,
+    NNUE_VERSION_OFFSET = 8,
+    NNUE_BUCKET_COUNT_OFFSET = 10,
+    NNUE_FEATURES_PER_BUCKET_OFFSET = 12,
+    NNUE_HIDDEN_SIZE_OFFSET = 14,
+    NNUE_ACTIVATION_CLIP_OFFSET = 16,
+    NNUE_FEATURE_QUANTIZATION_OFFSET = 18,
+    NNUE_OUTPUT_QUANTIZATION_OFFSET = 20,
+    NNUE_PERSPECTIVE_COUNT_OFFSET = 22,
+    NNUE_FILE_SIZE_OFFSET = 24,
+    NNUE_HEADER_SIZE = 28,
+    NNUE_OUTPUT_BIAS_OFFSET = NNUE_HEADER_SIZE,
+    NNUE_OUTPUT_BIAS_SIZE = 4,
+    NNUE_FEATURE_BIAS_OFFSET =
+        NNUE_OUTPUT_BIAS_OFFSET + NNUE_OUTPUT_BIAS_SIZE,
+    NNUE_OUTPUT_WEIGHTS_OFFSET =
+        NNUE_FEATURE_BIAS_OFFSET + NNUE_HIDDEN_SIZE * 2,
+    NNUE_FEATURE_WEIGHTS_OFFSET =
+        NNUE_OUTPUT_WEIGHTS_OFFSET + 2 * NNUE_HIDDEN_SIZE * 2,
+    NNUE_FILE_SIZE =
+        NNUE_FEATURE_WEIGHTS_OFFSET + NNUE_FEATURE_WEIGHT_COUNT
 };
 
 #define SQUARE_BIT(square) (UINT64_C(1) << (square))
@@ -86,27 +114,6 @@ typedef struct {
     move_t moves[MAX_MOVES];
     int count;
 } move_list_t;
-
-typedef struct {
-    char magic[8];
-    uint16_t version;
-    uint16_t bucket_count;
-    uint16_t features_per_bucket;
-    uint16_t hidden_size;
-    uint16_t activation_clip;
-    uint16_t feature_quantization;
-    uint16_t output_quantization;
-    uint16_t reserved;
-    uint32_t file_size;
-    int32_t output_bias;
-} nnue_header_t;
-
-enum {
-    NNUE_FILE_SIZE = sizeof(nnue_header_t) +
-                     NNUE_HIDDEN_SIZE * (int)sizeof(int16_t) +
-                     2 * NNUE_HIDDEN_SIZE * (int)sizeof(int16_t) +
-                     NNUE_FEATURE_WEIGHT_COUNT
-};
 
 typedef struct {
     bitboard_t pieces[PIECE_COUNT];

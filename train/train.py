@@ -20,6 +20,7 @@ from profiles import (
     FEATURES_PER_BUCKET,
     FEATURE_QUANTIZATION,
     FEATURE_MAPPING_VERSION,
+    MODEL_FORMAT_VERSION,
     NnueProfile,
     OUTPUT_QUANTIZATION,
 )
@@ -285,6 +286,7 @@ def train_baseline(
             "features_per_bucket": FEATURES_PER_BUCKET,
             "hidden_width": profile.hidden_width,
             "model_byte_size": profile.model_bytes,
+            "model_format_version": MODEL_FORMAT_VERSION,
             "output_quantization": OUTPUT_QUANTIZATION,
             "perspective_order": ["side_to_move", "opponent"],
             "profile": profile.name,

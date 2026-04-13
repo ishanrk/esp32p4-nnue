@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 
-from export import HEADER_SIZE, MAGIC
+from export import FEATURE_BIAS_OFFSET, HEADER_SIZE, MAGIC, OUTPUT_BIAS_OFFSET
 from features import encode_feature_indices
 from profiles import (
     ACCUMULATOR_BIAS_MAX,
@@ -16,7 +16,9 @@ from profiles import (
     FEATURES_PER_BUCKET,
     FEATURE_QUANTIZATION,
     FEATURE_MAPPING_VERSION,
+    MODEL_FORMAT_VERSION,
     OUTPUT_QUANTIZATION,
+    PERSPECTIVE_COUNT,
     profile_from_dimensions,
 )
 
@@ -25,23 +27,24 @@ def load_exported_model(path: str | Path) -> dict[str, Any]:
     blob = Path(path).read_bytes()
     if len(blob) < HEADER_SIZE:
         raise ValueError("bad model size")
-    header = struct.unpack("<8s8HIi", blob[:HEADER_SIZE])
+    header = struct.unpack("<8s8HI", blob[:HEADER_SIZE])
     profile = profile_from_dimensions(header[2], header[4])
     expected = (
         MAGIC,
-        FEATURE_MAPPING_VERSION,
+        MODEL_FORMAT_VERSION,
         profile.bucket_count,
         FEATURES_PER_BUCKET,
         profile.hidden_width,
         ACTIVATION_CLIP,
         FEATURE_QUANTIZATION,
         OUTPUT_QUANTIZATION,
-        0,
+        PERSPECTIVE_COUNT,
         profile.model_bytes,
     )
-    if header[:-1] != expected or len(blob) != profile.model_bytes:
+    if header != expected or len(blob) != profile.model_bytes:
         raise ValueError("bad model header")
-    offset = HEADER_SIZE
+    output_bias = struct.unpack_from("<i", blob, OUTPUT_BIAS_OFFSET)[0]
+    offset = FEATURE_BIAS_OFFSET
     feature_bias = np.frombuffer(
         blob, dtype="<i2", count=profile.hidden_width, offset=offset
     ).astype(np.int16, copy=True)
@@ -63,7 +66,7 @@ def load_exported_model(path: str | Path) -> dict[str, Any]:
     return {
         "feature_bias": feature_bias,
         "feature_weights": feature_weights,
-        "output_bias": header[-1],
+        "output_bias": output_bias,
         "output_weights": output_weights,
         "profile": profile,
     }
