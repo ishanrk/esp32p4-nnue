@@ -40,6 +40,13 @@ class TrainingTest(unittest.TestCase):
                 manifest["dataset"]["split_counts"],
                 {"train": 3, "validation": 2, "test": 2},
             )
+            self.assertEqual(
+                manifest["dataset"]["source"]["attribution"],
+                "esp32p4-nnue test fixture",
+            )
+            self.assertEqual(
+                manifest["dataset"]["teacher"]["node_budget"], 100
+            )
             self.assertIn("loss", manifest["validation_metrics"])
             self.assertIn("centipawn_mae", manifest["validation_metrics"])
             self.assertIn("centipawn_mae", manifest["test_metrics"])

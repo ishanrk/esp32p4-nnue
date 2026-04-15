@@ -191,6 +191,11 @@ def prepare_dataset(
         "split_counts": split_counts,
         "split_percent": metadata.get("split_percent"),
         "split_seed": metadata.get("split_seed"),
+        "source": {
+            "attribution": metadata.get("data_attribution"),
+            "description": metadata.get("data_source"),
+            "license": metadata.get("data_license"),
+        },
         "teacher_engine": metadata.get("engine"),
         "teacher_node_budget": metadata.get("node_budget"),
     }

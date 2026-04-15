@@ -3,21 +3,33 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import struct
 import subprocess
 import tempfile
 import unittest
 
 import numpy as np
 
-from export import export_parameters, quantize_parameters
+from export import (
+    FEATURE_BIAS_OFFSET,
+    HEADER_SIZE,
+    MAGIC,
+    OUTPUT_BIAS_OFFSET,
+    build_model_blob,
+    export_parameters,
+    quantize_parameters,
+)
 from profiles import (
+    ACTIVATION_CLIP,
     ACCUMULATOR_BIAS_MAX,
     DEFAULT_PROFILE,
     FEATURES_PER_BUCKET,
     FEATURE_QUANTIZATION,
     FEATURE_MAPPING_VERSION,
+    MODEL_FORMAT_VERSION,
     NnueProfile,
     OUTPUT_QUANTIZATION,
+    PERSPECTIVE_COUNT,
     get_profile,
 )
 from integer import evaluate_integer, load_exported_model
@@ -71,6 +83,7 @@ def fixture_training_manifest(profile: NnueProfile = PROFILE) -> dict:
             "features_per_bucket": FEATURES_PER_BUCKET,
             "hidden_width": profile.hidden_width,
             "model_byte_size": profile.model_bytes,
+            "model_format_version": MODEL_FORMAT_VERSION,
             "output_quantization": OUTPUT_QUANTIZATION,
             "perspective_order": ["side_to_move", "opponent"],
             "profile": profile.name,
@@ -106,6 +119,33 @@ def fixture_training_manifest(profile: NnueProfile = PROFILE) -> dict:
 
 
 class ExportTest(unittest.TestCase):
+    def test_header_layout_and_little_endian_fields(self) -> None:
+        quantized, _ = quantize_parameters(*fixture_parameters(), PROFILE)
+        blob = build_model_blob(quantized, PROFILE)
+        expected_header = b"".join(
+            (
+                MAGIC,
+                struct.pack("<H", MODEL_FORMAT_VERSION),
+                struct.pack("<H", PROFILE.bucket_count),
+                struct.pack("<H", FEATURES_PER_BUCKET),
+                struct.pack("<H", PROFILE.hidden_width),
+                struct.pack("<H", ACTIVATION_CLIP),
+                struct.pack("<H", FEATURE_QUANTIZATION),
+                struct.pack("<H", OUTPUT_QUANTIZATION),
+                struct.pack("<H", PERSPECTIVE_COUNT),
+                struct.pack("<I", PROFILE.model_bytes),
+            )
+        )
+        self.assertEqual(HEADER_SIZE, 28)
+        self.assertEqual(OUTPUT_BIAS_OFFSET, 28)
+        self.assertEqual(FEATURE_BIAS_OFFSET, 32)
+        self.assertEqual(len(expected_header), HEADER_SIZE)
+        self.assertEqual(blob[:HEADER_SIZE], expected_header)
+        self.assertEqual(
+            blob[OUTPUT_BIAS_OFFSET:FEATURE_BIAS_OFFSET],
+            struct.pack("<i", quantized["output_bias"]),
+        )
+
     def test_export_manifest_and_python_c_agreement(self) -> None:
         c_eval_tool = os.environ.get("P4_EVAL_TOOL")
         if not c_eval_tool:
@@ -121,6 +161,9 @@ class ExportTest(unittest.TestCase):
             )
             self.assertEqual(model_path.stat().st_size, PROFILE.model_bytes)
             self.assertEqual(manifest["model_byte_size"], PROFILE.model_bytes)
+            self.assertEqual(
+                manifest["model_format_version"], MODEL_FORMAT_VERSION
+            )
             self.assertEqual(manifest["feature_count"], PROFILE.feature_count)
             self.assertEqual(
                 manifest["export_saturation_counts"],

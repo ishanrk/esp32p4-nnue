@@ -40,7 +40,7 @@ ordering, check extension, and late move reduction.
 
 The NNUE has two vertically normalized perspectives, horizontal king symmetry,
 eight king buckets, 640 nonking piece-square features per bucket, and 64 hidden
-values. Its version 2 328096-byte integer network is shared by host inference
+values. Its version 3 328096-byte integer network is shared by host inference
 and firmware. Make and undo maintain accumulators through reversible feature
 updates without snapshots. The current implementation is portable scalar C and
 remains the correctness reference for later ESP32 P4 PIE work.

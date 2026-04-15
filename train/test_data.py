@@ -178,6 +178,16 @@ class PreparationTest(unittest.TestCase):
                 manifest["teacher_engine"]["name"], "fixture teacher"
             )
             self.assertEqual(manifest["teacher_node_budget"], 100)
+            self.assertEqual(
+                manifest["source"],
+                {
+                    "attribution": "esp32p4-nnue test fixture",
+                    "description": (
+                        "synthetic positions in test/training_labels.jsonl"
+                    ),
+                    "license": None,
+                },
+            )
             total_positions = 0
             labels = []
             training_sizes = []

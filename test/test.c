@@ -47,6 +47,39 @@ static void expect_memory(const char *name,
     test_failed = 1;
 }
 
+static void write_u16_le(uint8_t *bytes, int offset, uint16_t value) {
+    bytes[offset] = (uint8_t)value;
+    bytes[offset + 1] = (uint8_t)(value >> 8);
+}
+
+static void write_u32_le(uint8_t *bytes, int offset, uint32_t value) {
+    bytes[offset] = (uint8_t)value;
+    bytes[offset + 1] = (uint8_t)(value >> 8);
+    bytes[offset + 2] = (uint8_t)(value >> 16);
+    bytes[offset + 3] = (uint8_t)(value >> 24);
+}
+
+static void write_i32_le(uint8_t *bytes, int offset, int32_t value) {
+    write_u32_le(bytes, offset, (uint32_t)value);
+}
+
+static void expect_u16_le(const char *name,
+                          const uint8_t *bytes,
+                          int offset,
+                          uint16_t expected) {
+    expect_u64(name, bytes[offset], expected & 0xffu);
+    expect_u64(name, bytes[offset + 1], expected >> 8);
+}
+
+static void expect_u32_le(const char *name,
+                          const uint8_t *bytes,
+                          int offset,
+                          uint32_t expected) {
+    for (int i = 0; i < 4; ++i) {
+        expect_u64(name, bytes[offset + i], (expected >> (8 * i)) & 0xffu);
+    }
+}
+
 static bitboard_t walk_attacks(int square,
                                bitboard_t occupancy,
                                const int steps[][2],
@@ -741,22 +774,28 @@ static void test_nnue_feature_mapping(void) {
 static void *create_mock_network(void) {
     uint8_t *memory = calloc(1, NNUE_FILE_SIZE);
     if (!memory) return NULL;
-    nnue_header_t *header = (nnue_header_t *)memory;
-    memcpy(header->magic, "P4NNUE1", 8);
-    header->version = NNUE_FORMAT_VERSION;
-    header->bucket_count = NNUE_BUCKET_COUNT;
-    header->features_per_bucket = NNUE_FEATURES_PER_BUCKET;
-    header->hidden_size = NNUE_HIDDEN_SIZE;
-    header->activation_clip = NNUE_ACTIVATION_CLIP;
-    header->feature_quantization = NNUE_FEATURE_QUANTIZATION;
-    header->output_quantization = NNUE_OUTPUT_QUANTIZATION;
-    header->file_size = NNUE_FILE_SIZE;
-    header->output_bias = 123;
+    memcpy(memory + NNUE_MAGIC_OFFSET, NNUE_MAGIC, NNUE_MAGIC_SIZE);
+    write_u16_le(memory, NNUE_VERSION_OFFSET, NNUE_FORMAT_VERSION);
+    write_u16_le(memory, NNUE_BUCKET_COUNT_OFFSET, NNUE_BUCKET_COUNT);
+    write_u16_le(memory, NNUE_FEATURES_PER_BUCKET_OFFSET,
+                 NNUE_FEATURES_PER_BUCKET);
+    write_u16_le(memory, NNUE_HIDDEN_SIZE_OFFSET, NNUE_HIDDEN_SIZE);
+    write_u16_le(memory, NNUE_ACTIVATION_CLIP_OFFSET, NNUE_ACTIVATION_CLIP);
+    write_u16_le(memory, NNUE_FEATURE_QUANTIZATION_OFFSET,
+                 NNUE_FEATURE_QUANTIZATION);
+    write_u16_le(memory, NNUE_OUTPUT_QUANTIZATION_OFFSET,
+                 NNUE_OUTPUT_QUANTIZATION);
+    write_u16_le(memory, NNUE_PERSPECTIVE_COUNT_OFFSET,
+                 NNUE_PERSPECTIVE_COUNT);
+    write_u32_le(memory, NNUE_FILE_SIZE_OFFSET, NNUE_FILE_SIZE);
+    write_i32_le(memory, NNUE_OUTPUT_BIAS_OFFSET, 123);
 
-    int16_t *feature_bias = (int16_t *)(memory + sizeof(*header));
-    int16_t *output_weights = feature_bias + NNUE_HIDDEN_SIZE;
+    int16_t *feature_bias =
+        (int16_t *)(memory + NNUE_FEATURE_BIAS_OFFSET);
+    int16_t *output_weights =
+        (int16_t *)(memory + NNUE_OUTPUT_WEIGHTS_OFFSET);
     int8_t *feature_weights =
-        (int8_t *)(output_weights + 2 * NNUE_HIDDEN_SIZE);
+        (int8_t *)(memory + NNUE_FEATURE_WEIGHTS_OFFSET);
     for (int i = 0; i < NNUE_HIDDEN_SIZE; ++i) {
         feature_bias[i] = (int16_t)(i - 31);
     }
@@ -769,6 +808,49 @@ static void *create_mock_network(void) {
     return memory;
 }
 
+static void test_nnue_format_layout(const uint8_t *memory) {
+    expect_u64("nn magic offset", NNUE_MAGIC_OFFSET, 0);
+    expect_u64("nn version offset", NNUE_VERSION_OFFSET, 8);
+    expect_u64("nn bucket offset", NNUE_BUCKET_COUNT_OFFSET, 10);
+    expect_u64("nn features offset", NNUE_FEATURES_PER_BUCKET_OFFSET, 12);
+    expect_u64("nn width offset", NNUE_HIDDEN_SIZE_OFFSET, 14);
+    expect_u64("nn clip offset", NNUE_ACTIVATION_CLIP_OFFSET, 16);
+    expect_u64("nn feature quantization offset",
+               NNUE_FEATURE_QUANTIZATION_OFFSET, 18);
+    expect_u64("nn output quantization offset",
+               NNUE_OUTPUT_QUANTIZATION_OFFSET, 20);
+    expect_u64("nn perspective offset", NNUE_PERSPECTIVE_COUNT_OFFSET, 22);
+    expect_u64("nn file size offset", NNUE_FILE_SIZE_OFFSET, 24);
+    expect_u64("nn header size", NNUE_HEADER_SIZE, 28);
+    expect_u64("nn output bias offset", NNUE_OUTPUT_BIAS_OFFSET, 28);
+    expect_u64("nn feature bias offset", NNUE_FEATURE_BIAS_OFFSET, 32);
+    expect_memory("nn magic bytes", memory, NNUE_MAGIC, NNUE_MAGIC_SIZE);
+    expect_u16_le("nn version bytes", memory, NNUE_VERSION_OFFSET,
+                  NNUE_FORMAT_VERSION);
+    expect_u16_le("nn bucket bytes", memory, NNUE_BUCKET_COUNT_OFFSET,
+                  NNUE_BUCKET_COUNT);
+    expect_u16_le("nn features bytes", memory,
+                  NNUE_FEATURES_PER_BUCKET_OFFSET,
+                  NNUE_FEATURES_PER_BUCKET);
+    expect_u16_le("nn width bytes", memory, NNUE_HIDDEN_SIZE_OFFSET,
+                  NNUE_HIDDEN_SIZE);
+    expect_u16_le("nn clip bytes", memory, NNUE_ACTIVATION_CLIP_OFFSET,
+                  NNUE_ACTIVATION_CLIP);
+    expect_u16_le("nn feature quantization bytes", memory,
+                  NNUE_FEATURE_QUANTIZATION_OFFSET,
+                  NNUE_FEATURE_QUANTIZATION);
+    expect_u16_le("nn output quantization bytes", memory,
+                  NNUE_OUTPUT_QUANTIZATION_OFFSET,
+                  NNUE_OUTPUT_QUANTIZATION);
+    expect_u16_le("nn perspective bytes", memory,
+                  NNUE_PERSPECTIVE_COUNT_OFFSET,
+                  NNUE_PERSPECTIVE_COUNT);
+    expect_u32_le("nn file size bytes", memory, NNUE_FILE_SIZE_OFFSET,
+                  NNUE_FILE_SIZE);
+    expect_u32_le("nn output bias bytes", memory, NNUE_OUTPUT_BIAS_OFFSET,
+                  123);
+}
+
 static void expect_network_rejected(const char *name,
                                     const void *memory,
                                     size_t size) {
@@ -778,47 +860,48 @@ static void expect_network_rejected(const char *name,
 }
 
 static void test_nnue_loader(void *memory) {
-    nnue_header_t *header = memory;
-    nnue_header_t valid_header = *header;
+    uint8_t *bytes = memory;
+    uint8_t valid_header[NNUE_HEADER_SIZE];
+    memcpy(valid_header, memory, sizeof(valid_header));
     int16_t *feature_bias =
-        (int16_t *)((uint8_t *)memory + sizeof(*header));
+        (int16_t *)(bytes + NNUE_FEATURE_BIAS_OFFSET);
 
     expect_true("valid network bind", bind_nnue(memory, NNUE_FILE_SIZE));
     expect_true("valid network loaded", nnue_is_loaded());
     unload_nnue();
 
-    header->magic[7] = 'x';
+    bytes[NNUE_MAGIC_OFFSET + NNUE_MAGIC_SIZE - 1] = 'x';
     expect_network_rejected("network magic", memory, NNUE_FILE_SIZE);
-    *header = valid_header;
-    ++header->version;
+    memcpy(memory, valid_header, sizeof(valid_header));
+    bytes[NNUE_VERSION_OFFSET] ^= 1u;
     expect_network_rejected("network version", memory, NNUE_FILE_SIZE);
-    *header = valid_header;
-    ++header->bucket_count;
+    memcpy(memory, valid_header, sizeof(valid_header));
+    bytes[NNUE_BUCKET_COUNT_OFFSET] ^= 1u;
     expect_network_rejected("network buckets", memory, NNUE_FILE_SIZE);
-    *header = valid_header;
-    ++header->features_per_bucket;
+    memcpy(memory, valid_header, sizeof(valid_header));
+    bytes[NNUE_FEATURES_PER_BUCKET_OFFSET] ^= 1u;
     expect_network_rejected("network features", memory, NNUE_FILE_SIZE);
-    *header = valid_header;
-    ++header->hidden_size;
+    memcpy(memory, valid_header, sizeof(valid_header));
+    bytes[NNUE_HIDDEN_SIZE_OFFSET] ^= 1u;
     expect_network_rejected("network width", memory, NNUE_FILE_SIZE);
-    *header = valid_header;
-    --header->activation_clip;
+    memcpy(memory, valid_header, sizeof(valid_header));
+    bytes[NNUE_ACTIVATION_CLIP_OFFSET] ^= 1u;
     expect_network_rejected("network clip", memory, NNUE_FILE_SIZE);
-    *header = valid_header;
-    ++header->feature_quantization;
+    memcpy(memory, valid_header, sizeof(valid_header));
+    bytes[NNUE_FEATURE_QUANTIZATION_OFFSET] ^= 1u;
     expect_network_rejected("network feature quantization",
                             memory, NNUE_FILE_SIZE);
-    *header = valid_header;
-    ++header->output_quantization;
+    memcpy(memory, valid_header, sizeof(valid_header));
+    bytes[NNUE_OUTPUT_QUANTIZATION_OFFSET] ^= 1u;
     expect_network_rejected("network output quantization",
                             memory, NNUE_FILE_SIZE);
-    *header = valid_header;
-    header->reserved = 1;
-    expect_network_rejected("network reserved", memory, NNUE_FILE_SIZE);
-    *header = valid_header;
-    --header->file_size;
+    memcpy(memory, valid_header, sizeof(valid_header));
+    bytes[NNUE_PERSPECTIVE_COUNT_OFFSET] ^= 1u;
+    expect_network_rejected("network perspectives", memory, NNUE_FILE_SIZE);
+    memcpy(memory, valid_header, sizeof(valid_header));
+    bytes[NNUE_FILE_SIZE_OFFSET] ^= 1u;
     expect_network_rejected("network header size", memory, NNUE_FILE_SIZE);
-    *header = valid_header;
+    memcpy(memory, valid_header, sizeof(valid_header));
     expect_network_rejected("network data size", memory, NNUE_FILE_SIZE - 1);
 
     int16_t saved_bias = feature_bias[0];
@@ -1060,19 +1143,20 @@ static void test_incremental_nnue_sequence(void) {
 }
 
 static void clear_network_parameters(void *memory) {
-    nnue_header_t *header = memory;
-    header->output_bias = 0;
-    memset((uint8_t *)memory + sizeof(*header), 0,
-           NNUE_FILE_SIZE - sizeof(*header));
+    uint8_t *bytes = memory;
+    write_i32_le(bytes, NNUE_OUTPUT_BIAS_OFFSET, 0);
+    memset(bytes + NNUE_FEATURE_BIAS_OFFSET, 0,
+           NNUE_FILE_SIZE - NNUE_FEATURE_BIAS_OFFSET);
 }
 
 static void test_nnue_evaluation(void *memory) {
-    nnue_header_t *header = memory;
+    uint8_t *bytes = memory;
     int16_t *feature_bias =
-        (int16_t *)((uint8_t *)memory + sizeof(*header));
-    int16_t *output_weights = feature_bias + NNUE_HIDDEN_SIZE;
+        (int16_t *)(bytes + NNUE_FEATURE_BIAS_OFFSET);
+    int16_t *output_weights =
+        (int16_t *)(bytes + NNUE_OUTPUT_WEIGHTS_OFFSET);
     int8_t *feature_weights =
-        (int8_t *)(output_weights + 2 * NNUE_HIDDEN_SIZE);
+        (int8_t *)(bytes + NNUE_FEATURE_WEIGHTS_OFFSET);
     position_t position;
 
     unload_nnue();
@@ -1410,7 +1494,6 @@ static void test_search_structure_sizes(void) {
 
 int main(void) {
     initialize_chess();
-    expect_true("nn header", sizeof(nnue_header_t) == 32);
     test_search_structure_sizes();
     test_attacks();
     test_fen_loading();
@@ -1453,6 +1536,7 @@ int main(void) {
     void *network = create_mock_network();
     expect_true("net alloc", network != NULL);
     if (!network) return 1;
+    test_nnue_format_layout(network);
     test_nnue_loader(network);
     check_incremental_nnue(
         "inc start",

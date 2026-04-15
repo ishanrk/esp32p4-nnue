@@ -303,7 +303,12 @@ def train_baseline(
             "format_version": manifest["format_version"],
             "manifest_path": str(manifest_path.resolve()),
             "profile": profile.name,
+            "source": manifest["source"],
             "split_counts": split_counts,
+            "teacher": {
+                "engine": manifest["teacher_engine"],
+                "node_budget": manifest["teacher_node_budget"],
+            },
         },
         "determinism": (
             "parameter initialization and shard row order are seeded "

@@ -50,8 +50,9 @@ numbers must not be presented as device performance.
 ## Incremental NNUE make and undo
 
 The runtime comparison uses the kiwipete position at depth seven with a loaded
-328096-byte zero-parameter network. Version 1 is loaded by the starting binary
-and the semantically equivalent version 2 image by the snapshot-free binary.
+328096-byte zero-parameter network. The compared images had equivalent integer
+parameters; the current version 3 loader no longer accepts those historical
+prototype headers.
 Both searches return e2a6 at score zero after exactly 412398 nodes. Five paired
 GCC release runs on the same x86-64 host produced:
 

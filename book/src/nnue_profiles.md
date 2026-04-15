@@ -15,12 +15,12 @@ against 16x48 near 480 KiB. Every candidate is below the ceiling.
 ## Where the bytes go
 
 Let `B` be bucket count and `H` be hidden width. Each bucket has 640 nonking
-piece-square features. The serialized file contains a 32-byte header, `H`
-signed int16 feature biases, `2H` signed int16 output weights, and `640BH`
-signed int8 feature weights:
+piece-square features. The serialized file contains a 28-byte header, one
+signed int32 output bias, `H` signed int16 feature biases, `2H` signed int16
+output weights, and `640BH` signed int8 feature weights:
 
 ```text
-model bytes = 32 + 6H + 640BH
+model bytes = 28 + 4 + 6H + 640BH
 ```
 
 The `640BH` term dominates. More buckets give the same piece-square relation

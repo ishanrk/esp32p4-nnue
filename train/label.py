@@ -146,6 +146,9 @@ def main() -> None:
     parser.add_argument("--max-ply", type=int)
     parser.add_argument("--validation-percent", type=int, default=5)
     parser.add_argument("--test-percent", type=int, default=5)
+    parser.add_argument("--data-source")
+    parser.add_argument("--data-license")
+    parser.add_argument("--data-attribution")
     args = parser.parse_args()
     if args.nodes <= 0:
         parser.error("nodes must be positive")
@@ -168,6 +171,9 @@ def main() -> None:
     finally:
         engine.quit()
     metadata = {
+        "data_attribution": args.data_attribution,
+        "data_license": args.data_license,
+        "data_source": args.data_source,
         "engine": engine_identity,
         "game_count": stats["game_count"],
         "game_split_counts": stats["game_split_counts"],

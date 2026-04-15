@@ -5,6 +5,8 @@ __pycache__/
 *.py[cod]
 *.bin
 *.bin.json
+*.nnue
+*.nnue.json
 *.npz
 *.csv
 *.jsonl

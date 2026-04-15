@@ -11,7 +11,7 @@ install `train/requirements.txt`. Running p4test directly prints ok on success.
 
 The binary checks:
 
-- the fixed 32-byte NNUE header
+- every fixed NNUE header offset field width and little-endian byte sequence
 - coordinate-generated pawn, knight, and king attacks for every source square
 - bishop, rook, and composed queen attacks against an independent square-walking implementation
 - sliding attacks with empty, full, edge, center, adjacent-blocker, distant-blocker, multiple-blocker, and fixed-seed occupancies
@@ -28,7 +28,7 @@ The binary checks:
 - six canonical perft positions through practical release and sanitizer depths
 - position validity after every perft depth
 - incremental NNUE accumulators against full refresh after every legal root move
-- version 2 loader magic, dimensions, quantization, size, alignment, and bias bounds
+- version 3 loader magic, dimensions, quantization, size, alignment, and bias bounds
 - borrowed binding and owned file-loading behavior
 - shared C feature fixtures for both perspectives, king symmetry, buckets, classes, and edges
 - quiet and double pawns, knight, bishop, rook, queen, capture, and en passant updates
@@ -83,8 +83,9 @@ the temporary directory. The test is deliberately tiny and says nothing about
 network strength.
 
 train/test_model.py exports deterministic floating fixture parameters into a
-temporary exact-size model for the selected test profile. It requires zero
-saturation and no hash fields,
+temporary exact-size model for the selected test profile. It checks the
+28-byte header and output-bias bytes field by field, requires zero saturation
+and no hash fields,
 then compares Python and C integer evaluation for the initial board, a sparse
 pawn board, and a queen board with both sides to move. Separate cases prove that
 one out-of-range feature weight, accumulator-unsafe feature bias, output weight,

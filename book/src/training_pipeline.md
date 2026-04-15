@@ -288,9 +288,9 @@ to -28928 through 28957, which leaves room for the maximum 30 signed int8
 feature vectors in a legal position without overflowing a signed int16
 accumulator.
 
-`build_model_blob` writes the fixed version 2 header, hidden-width feature
-biases, twice-hidden-width output weights, and the profile feature table in the
-order expected by `src/nnue.c`. `export_parameters` writes only after
+`build_model_blob` writes the fixed version 3 little-endian header, output bias,
+hidden-width feature biases, twice-hidden-width output weights, and the profile
+feature table in the order expected by `src/nnue.c`. `export_parameters` writes only after
 quantization passes and also creates a JSON model manifest. The binary must
 match the profile's calculated size. The manifest records runtime and feature
 format versions, architecture,

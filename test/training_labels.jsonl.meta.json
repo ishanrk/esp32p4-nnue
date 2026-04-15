@@ -1,4 +1,7 @@
 {
+  "data_attribution": "esp32p4-nnue test fixture",
+  "data_license": null,
+  "data_source": "synthetic positions in test/training_labels.jsonl",
   "engine": {
     "author": "tests",
     "name": "fixture teacher"

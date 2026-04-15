@@ -2,30 +2,46 @@
 
 ## Network layout
 
-nnue_header_t is a fixed 32-byte header containing magic, version, bucket and
-feature dimensions, hidden width, activation clip, two quantization factors,
-reserved space, total file size, and output bias.
+Model format 3 has a 28-byte header followed by fixed-order integer parameters.
+Every multibyte integer is little endian. Named byte offsets in `src/ch.h` and
+explicit readers in `src/nnue.c` define the format; no serialized C structure or
+compiler padding participates.
 
-Every profile file stores, in order:
+| offset | bytes | field | required value for 8x64 |
+| ---: | ---: | --- | ---: |
+| 0 | 8 | magic | `P4NNUE1` plus trailing zero |
+| 8 | 2 | model format version | 3 |
+| 10 | 2 | king bucket count | 8 |
+| 12 | 2 | features per bucket | 640 |
+| 14 | 2 | hidden width | 64 |
+| 16 | 2 | activation clip | 127 |
+| 18 | 2 | feature quantization | 64 |
+| 20 | 2 | output quantization | 64 |
+| 22 | 2 | perspective count | 2 |
+| 24 | 4 | complete file size | 328096 |
 
-- the 32-byte header
-- one signed 16-bit feature bias per hidden value
-- two signed 16-bit output weights per hidden value
-- bucket count times 640 times hidden width signed 8-bit feature weights
+The parameter payload starts immediately after the header:
 
-For the default 8x64 profile these arrays contain 64 biases, 128 output
-weights, and 327680 feature weights, producing exactly 328096 bytes.
+| offset | bytes for 8x64 | array |
+| ---: | ---: | --- |
+| 28 | 4 | signed int32 output bias |
+| 32 | 128 | 64 signed int16 feature biases |
+| 160 | 256 | 128 signed int16 output weights |
+| 416 | 327680 | 5120 by 64 signed int8 feature weights |
 
-Header fields and 16-bit arrays use little-endian representation, matching the
-supported host export and ESP32 P4 target.
+The last byte is at offset 328095, producing exactly 328096 bytes. Signed int16
+values are also little endian. Feature weights need no byte-order conversion.
+The host and ESP32 P4 are little endian; the loader explicitly rejects a
+big-endian runtime because inference keeps aligned read-only pointers into the
+two signed int16 arrays.
 
-Format version 2 identifies the vertically normalized and horizontally
-king-mirrored feature semantics. Version 1 prototype networks are rejected even
-though their dimensions match. The loader requires the exact eight-byte magic,
-version 2, the compile-time bucket count and hidden width, 640 features per
-bucket, activation clip 127, both quantization factors equal to 64, zero
-reserved data, and the corresponding exact header and buffer sizes. It also
-validates the safe feature-bias range before changing the active network.
+Format version 3 freezes the vertically normalized, horizontally king-mirrored
+feature semantics and the layout above. Older prototype and comparison files
+are rejected. The loader requires the exact magic, version, compile-time bucket
+count and hidden width, 640 features per bucket, two perspectives, activation
+clip 127, both quantization factors equal to 64, and exact header and buffer
+sizes. It also validates the safe feature-bias range before changing the active
+network.
 
 load_nnue(path) reads and owns a host allocation. bind_nnue(data, size) validates
 and borrows an existing memory image. Borrowed data must be at least two-byte
@@ -79,7 +95,7 @@ the side-to-move score.
 
 ## Export parity tools
 
-`train/integer.py` reads the exported version 2 model directly. Its
+`train/integer.py` reads the exported version 3 model directly. Its
 `load_exported_model` function validates the fixed header, derives one supported
 profile from its bucket count and width, validates byte size, array layout, and
 accumulator-safe feature biases, and returns NumPy integer arrays with that
