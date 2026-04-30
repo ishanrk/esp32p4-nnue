@@ -189,9 +189,10 @@ unchanged source and shard size.
 `manifest.json` records dataset format version, feature mapping version, king
 buckets, features per bucket, hidden width, padding feature, feature and label
 dtypes, score perspective and clamp rule, requested shard size, filenames,
-per-split position and shard counts, UCI teacher identity, teacher node budget,
-stride, minimum and maximum ply, split percentages, and split seed. It contains
-metadata rather than file hashes.
+per-split position and shard counts, source description, license, attribution,
+UCI teacher identity, teacher node budget, stride, minimum and maximum ply,
+split percentages, and split seed. It contains metadata rather than file
+hashes.
 
 `load_dataset_manifest` rejects a dataset whose mapping, dimensions, dtypes,
 padding, score perspective, or format version do not match the current profile.
@@ -290,13 +291,13 @@ accumulator.
 
 `build_model_blob` writes the fixed version 3 little-endian header, output bias,
 hidden-width feature biases, twice-hidden-width output weights, and the profile
-feature table in the order expected by `src/nnue.c`. `export_parameters` writes only after
-quantization passes and also creates a JSON model manifest. The binary must
-match the profile's calculated size. The manifest records runtime and feature
-format versions, architecture,
-quantization, byte size, dataset description, training settings and seed, best
-epoch, validation and test metrics, and the four saturation counts. It contains
-no signature or cryptographic hash.
+feature table in the order expected by `src/nnue.c`. `export_parameters` writes
+only after quantization passes and also creates a JSON model manifest. The
+binary must match the profile's calculated size. The manifest records model and
+feature format versions, architecture, quantization, byte size, source license
+and attribution, teacher identity and node budget, training settings and seed,
+best epoch, validation and test metrics, and the four saturation counts. It
+contains no signature or cryptographic hash.
 
 `load_exported_model` in `train/integer.py` validates and parses that binary.
 `evaluate_integer(model, fen)` encodes the two sparse perspectives with the

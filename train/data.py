@@ -94,6 +94,13 @@ def load_dataset_manifest(
     for field, value in expected.items():
         if manifest.get(field) != value:
             raise ValueError(f"incompatible manifest field {field}")
+    source = manifest.get("source")
+    if not isinstance(source, dict) or set(source) != {
+        "attribution",
+        "description",
+        "license",
+    }:
+        raise ValueError("manifest has no valid data source")
     if set(manifest.get("shards", {})) != set(SPLITS):
         raise ValueError("manifest must list every split")
     return manifest, manifest_path.parent

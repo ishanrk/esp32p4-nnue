@@ -211,6 +211,22 @@ def validate_training_manifest(manifest: dict[str, Any]) -> NnueProfile:
     ):
         if field not in manifest:
             raise ValueError(f"training manifest missing {field}")
+    dataset = manifest["dataset"]
+    if not isinstance(dataset, dict):
+        raise ValueError("training manifest has no valid dataset")
+    source = dataset.get("source")
+    teacher = dataset.get("teacher")
+    if not isinstance(source, dict) or set(source) != {
+        "attribution",
+        "description",
+        "license",
+    }:
+        raise ValueError("training manifest has no valid data source")
+    if not isinstance(teacher, dict) or set(teacher) != {
+        "engine",
+        "node_budget",
+    }:
+        raise ValueError("training manifest has no valid teacher")
     return profile
 
 

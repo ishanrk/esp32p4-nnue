@@ -69,10 +69,11 @@ def write_labeled_positions(
     game_count = 0
     split_counts = {split: 0 for split in SPLITS}
     game_split_counts = {split: 0 for split in SPLITS}
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with Path(pgn_path).open(encoding="utf-8", errors="strict") as source, Path(
-        output_path
-    ).open("w", encoding="utf-8") as destination:
+    with Path(pgn_path).open(encoding="utf-8", errors="strict") as source, \
+         output_path.open("w", encoding="utf-8") as destination:
         while position_count < limit:
             game = chess.pgn.read_game(source)
             if game is None:

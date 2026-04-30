@@ -90,7 +90,7 @@ class LabelingTest(unittest.TestCase):
         self.assertTrue(saw_promotion)
 
         with tempfile.TemporaryDirectory() as temporary:
-            first_path = Path(temporary) / "first.jsonl"
+            first_path = Path(temporary) / "nested" / "first.jsonl"
             second_path = Path(temporary) / "second.jsonl"
             options = {
                 "stride": 1,

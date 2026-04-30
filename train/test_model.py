@@ -96,7 +96,16 @@ def fixture_training_manifest(profile: NnueProfile = PROFILE) -> dict:
         },
         "dataset": {
             "description": "deterministic integer fixture",
+            "source": {
+                "attribution": "esp32p4-nnue test fixture",
+                "description": "deterministic integer fixture",
+                "license": None,
+            },
             "split_counts": {"train": 3, "validation": 2, "test": 2},
+            "teacher": {
+                "engine": {"author": "tests", "name": "fixture teacher"},
+                "node_budget": 100,
+            },
         },
         "device": {"name": "test", "type": "cpu"},
         "determinism": "deterministic fixture",
