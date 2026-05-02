@@ -1161,6 +1161,15 @@ static void test_nnue_evaluation(void *memory) {
 
     unload_nnue();
     clear_network_parameters(memory);
+    write_i32_le(bytes, NNUE_OUTPUT_BIAS_OFFSET,
+                 -NNUE_FEATURE_QUANTIZATION * NNUE_OUTPUT_QUANTIZATION);
+    expect_true("negative bias network", bind_nnue(memory, NNUE_FILE_SIZE));
+    expect_true("negative bias fen", set_position_fen(
+        &position, "7k/8/8/8/8/8/8/K7 w - - 0 1"));
+    expect_true("negative bias output", evaluate_nnue(&position) == -1);
+
+    unload_nnue();
+    clear_network_parameters(memory);
     feature_bias[0] = -20;
     feature_bias[1] = 200;
     output_weights[0] = INT16_MAX;

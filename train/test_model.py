@@ -154,6 +154,13 @@ class ExportTest(unittest.TestCase):
             blob[OUTPUT_BIAS_OFFSET:FEATURE_BIAS_OFFSET],
             struct.pack("<i", quantized["output_bias"]),
         )
+        negative_bias = dict(quantized)
+        negative_bias["output_bias"] = -2
+        negative_blob = build_model_blob(negative_bias, PROFILE)
+        self.assertEqual(
+            negative_blob[OUTPUT_BIAS_OFFSET:FEATURE_BIAS_OFFSET],
+            b"\xfe\xff\xff\xff",
+        )
 
     def test_export_manifest_and_python_c_agreement(self) -> None:
         c_eval_tool = os.environ.get("P4_EVAL_TOOL")
