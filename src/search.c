@@ -18,16 +18,22 @@ typedef struct {
     bool stop;
 } search_context_t;
 
-bool resize_transposition_table(transposition_table_t *table, size_t megabytes) {
+bool resize_transposition_table_bytes(transposition_table_t *table,
+                                      size_t bytes) {
     free_transposition_table(table);
-    if (!megabytes) return true;
-    size_t requested = (megabytes << 20) / sizeof(tt_entry_t);
+    size_t requested = bytes / sizeof(tt_entry_t);
+    if (!requested) return true;
     size_t count = 1;
     while ((count << 1) <= requested) count <<= 1;
     table->entries = calloc(count, sizeof(*table->entries));
     if (!table->entries) return false;
     table->count = count;
     return true;
+}
+
+bool resize_transposition_table(transposition_table_t *table,
+                                size_t megabytes) {
+    return resize_transposition_table_bytes(table, megabytes << 20);
 }
 
 void free_transposition_table(transposition_table_t *table) {

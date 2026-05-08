@@ -65,11 +65,14 @@ signed eight-bit field after check extensions. The direct-mapped 16-byte entry
 replaces a collision. For the same key only a deeper entry blocks a shallower
 nonexact replacement; an exact entry may replace it.
 
-resize_transposition_table rounds the requested megabytes down to a power-of-two
-entry count so indexing is `key & (count - 1)`. It releases the old allocation
-first, and a zero request leaves a valid empty table. clear_transposition_table
-keeps the allocation and zeroes every entry. free_transposition_table releases
-the entries and resets both public fields.
+resize_transposition_table_bytes receives a table and byte budget. It releases
+the old allocation, rounds the budget down to a power-of-two entry count, and
+allocates zeroed entries so indexing remains `key & (count - 1)`. A budget below
+one entry leaves a valid empty table. The firmware passes 262144 bytes directly,
+which produces 16384 entries. resize_transposition_table receives a MiB count
+for the desktop UCI option and forwards the converted budget to the byte form.
+clear_transposition_table keeps the allocation and zeroes every entry.
+free_transposition_table releases the entries and resets both public fields.
 
 The completed root move seeds the displayed principal variation. After the
 recursive stack has unwound, reconstruct_principal_variation copies the root

@@ -54,6 +54,13 @@ state but cannot find existing positions, so a caller must refresh any position
 that will be evaluated after a successful bind. FEN construction refreshes
 automatically, and the UCI load path refreshes its current position explicitly.
 
+Firmware uses the borrowed path. ESP-IDF links the generated smoke image into
+flash `.rodata`, and app_main passes its start address and exact linker-derived
+length to bind_nnue. The model weights remain in mapped read-only flash; only
+the small network descriptor and position accumulators use RAM. The generated
+all-zero payload validates the firmware path but is not trained and is not the
+public reference network.
+
 ## Features and accumulators
 
 Each perspective first places its own side at the bottom by vertically flipping

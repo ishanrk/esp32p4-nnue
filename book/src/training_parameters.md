@@ -86,17 +86,18 @@ input but is not the complete search-stack requirement.
 
 ## Transposition table RAM
 
-One `tt_entry_t` is 16 bytes. `resize_transposition_table` converts requested
-MiB to an entry count, rounds down to a power of two, and allocates:
+One `tt_entry_t` is 16 bytes. `resize_transposition_table_bytes` converts a byte
+budget to an entry count, rounds down to a power of two, and allocates:
 
 ```text
-requested entries = floor(requested MiB * 1048576 / 16)
+requested entries = floor(requested bytes / 16)
 allocated entries = largest power of two not above requested entries
 table bytes = allocated entries * 16
 ```
 
-A one-MiB request produces 65536 entries and exactly 1048576 table bytes. A
-power-of-two MiB request is exact; other requests may round down. This allocation
+`resize_transposition_table` remains the desktop MiB convenience function. A
+one-MiB request produces 65536 entries and exactly 1048576 table bytes. The
+firmware's explicit 262144-byte budget produces 16384 entries. This allocation
 is separate from the 328096 model bytes and per-position state.
 
 ## Frozen reference profile

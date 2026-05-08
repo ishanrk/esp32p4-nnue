@@ -131,3 +131,18 @@ host training dependencies and building p4eval:
     P4_EVAL_TOOL=build/p4eval python3 train/test_model.py
     python3 train/test_arena.py
     python3 train/test_training.py
+
+The pre-hardware ESP32-P4 check uses the pinned ESP-IDF environment:
+
+    . /home/ishan/esp-idf/export.sh
+    cd esp
+    idf.py fullclean
+    idf.py set-target esp32p4
+    idf.py build
+    idf.py size
+    idf.py merge-bin -o esp32p4_nnue_merged.bin
+
+This compiles and links the shared core for ESP32 P4, validates image and
+partition sizes, and creates a merged image for later emulator or board work.
+It does not execute firmware boot, serial commands, search, or inference on an
+ESP32 P4. No physical flash or monitor operation is part of this check.

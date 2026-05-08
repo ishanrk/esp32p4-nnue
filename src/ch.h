@@ -10,6 +10,16 @@
 typedef uint64_t bitboard_t;
 typedef uint32_t move_t;
 
+_Static_assert(sizeof(uint8_t) == 1, "uint8 size");
+_Static_assert(sizeof(int8_t) == 1, "int8 size");
+_Static_assert(sizeof(uint16_t) == 2, "uint16 size");
+_Static_assert(sizeof(int16_t) == 2, "int16 size");
+_Static_assert(sizeof(uint32_t) == 4, "uint32 size");
+_Static_assert(sizeof(int32_t) == 4, "int32 size");
+_Static_assert(sizeof(uint64_t) == 8, "uint64 size");
+_Static_assert(sizeof(bitboard_t) == 8, "bitboard size");
+_Static_assert(sizeof(move_t) == 4, "move size");
+
 enum { WHITE, BLACK, COLOR_COUNT };
 enum { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, PIECE_TYPE_COUNT };
 enum {
@@ -153,6 +163,8 @@ typedef struct {
     uint8_t flag;
 } tt_entry_t;
 
+_Static_assert(sizeof(tt_entry_t) == 16, "transposition entry size");
+
 typedef struct {
     tt_entry_t *entries;
     size_t count;
@@ -222,6 +234,7 @@ int evaluate_nnue(const position_t *position);
 int evaluate(const position_t *position);
 
 bool resize_transposition_table(transposition_table_t *table, size_t megabytes);
+bool resize_transposition_table_bytes(transposition_table_t *table, size_t bytes);
 void free_transposition_table(transposition_table_t *table);
 void clear_transposition_table(transposition_table_t *table);
 search_result_t search_position(position_t *position,
@@ -231,6 +244,6 @@ search_result_t search_position(position_t *position,
                                 void *context);
 
 uint64_t current_time_ms(void);
-void run_uci_loop(void);
+void run_uci_loop(transposition_table_t *table);
 
 #endif

@@ -29,8 +29,12 @@ that exposes the moving king. search_position uses this same make and undo
 path. evaluate selects NNUE when a network is loaded and otherwise uses the
 classical fallback.
 
-The desktop main and ESP app_main both initialize the tables and enter
-run_uci_loop. Only their process and serial startup differ.
+The desktop main initializes a one MiB transposition table and passes it to
+run_uci_loop. ESP app_main initializes the same chess tables, binds the
+flash-mapped smoke model, allocates its fixed 256 KiB table, prints the firmware
+banner, and passes the table to the same loop. run_uci_loop owns the current
+position and command parsing while each entry point owns the table and active
+network lifetime.
 
 ## Chosen baseline
 

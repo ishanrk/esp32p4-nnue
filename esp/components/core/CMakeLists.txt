@@ -13,11 +13,10 @@ idf_component_register(
 )
 
 target_compile_options(${COMPONENT_LIB} PRIVATE
-    -O3
-    -flto
     -Wall
     -Wextra
     -Wshadow
+    -Wstrict-prototypes
     -Wconversion
     -Wno-sign-conversion
     -fno-math-errno

@@ -96,11 +96,9 @@ static search_limits_t parse_search_limits(position_t *position, char *line) {
     return limits;
 }
 
-void run_uci_loop(void) {
+void run_uci_loop(transposition_table_t *table) {
     position_t position;
-    transposition_table_t table = {0};
     set_start_position(&position);
-    resize_transposition_table(&table, 1);
 
     char line[4096];
     while (fgets(line, sizeof(line), stdin)) {
@@ -108,19 +106,22 @@ void run_uci_loop(void) {
             !strcmp(line, "uci")) {
             puts("id name esp32p4 nnue");
             puts("id author ishan kumthekar");
+#ifndef ESP_PLATFORM
             puts("option name Hash type spin default 1 min 1 max 256");
             puts("option name EvalFile type string default nn.bin");
+#endif
             puts("uciok");
         } else if (!strncmp(line, "isready", 7)) {
             puts("readyok");
         } else if (!strncmp(line, "ucinewgame", 10)) {
             set_start_position(&position);
-            clear_transposition_table(&table);
+            clear_transposition_table(table);
         } else if (!strncmp(line, "position ", 9)) {
             set_uci_position(&position, line);
+#ifndef ESP_PLATFORM
         } else if (!strncmp(line, "setoption name Hash value ", 26)) {
             size_t megabytes = strtoul(line + 26, NULL, 10);
-            if (!resize_transposition_table(&table, megabytes)) {
+            if (!resize_transposition_table(table, megabytes)) {
                 puts("info string hash alloc failed");
             }
         } else if (!strncmp(line, "setoption name EvalFile value ", 30)) {
@@ -132,6 +133,7 @@ void run_uci_loop(void) {
             } else {
                 puts("info string nn load failed");
             }
+#endif
         } else if (!strncmp(line, "go ", 3) ||
                    !strcmp(line, "go\n") ||
                    !strcmp(line, "go\r\n")) {
@@ -140,7 +142,7 @@ void run_uci_loop(void) {
             copy[sizeof(copy) - 1] = '\0';
             search_limits_t limits = parse_search_limits(&position, copy);
             search_result_t result = search_position(
-                &position, &table, limits, print_search_info, NULL);
+                &position, table, limits, print_search_info, NULL);
             if (result.best_move) {
                 char uci_move[6];
                 move_to_uci(result.best_move, uci_move);
@@ -163,7 +165,4 @@ void run_uci_loop(void) {
         }
         fflush(stdout);
     }
-
-    free_transposition_table(&table);
-    unload_nnue();
 }

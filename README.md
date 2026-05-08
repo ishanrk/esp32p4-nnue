@@ -20,7 +20,7 @@ explicit little-endian layout and is shared by the host and firmware runtime.
 - [Train and export your network](book/src/train_model.md)
 - [Choose training parameters and estimate RAM](book/src/training_parameters.md)
 - [Test your network and engine](book/src/testing.md)
-- [Build the firmware next](book/src/build.md#firmware-build)
+- [Build the ESP32 P4 firmware](book/src/firmware.md)
 
 The repository does not yet contain a distributable reference model. The
 committed data is deliberately small test material, not substantive training
@@ -57,17 +57,22 @@ exported networks are ignored.
 
 ## ESP32 P4
 
-Install ESP-IDF, then build from the firmware directory:
+The firmware is pinned to ESP-IDF 6.0.2. Install its ESP32-P4 tools, activate
+the environment, then build from the firmware directory:
 
+    . /home/ishan/esp-idf/export.sh
     cd esp
     idf.py set-target esp32p4
     idf.py build
-    idf.py -p PORT flash monitor
+    idf.py size
+    idf.py merge-bin -o esp32p4_nnue_merged.bin
 
 `esp/components/core/CMakeLists.txt` references the shared files in `src`
-directly. The firmware wrapper configures serial I/O and starts the same UCI
-loop used by the desktop executable. Physical performance measurements and PIE
-kernels remain later stages.
+directly. The firmware wrapper binds a generated deterministic smoke network
+from flash, allocates a fixed 256 KiB transposition table, and starts the same
+UCI loop used by the desktop executable. The smoke network is not the public
+reference model and has no strength. This stage is compiled for ESP32 P4 but
+has not been flashed to or tested on physical hardware.
 
 ## Repository layout
 

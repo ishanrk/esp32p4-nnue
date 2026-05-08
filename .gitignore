@@ -1,5 +1,7 @@
 /build*/
 /esp/build/
+/esp/sdkconfig
+/esp/sdkconfig.old
 /book/book/
 __pycache__/
 *.py[cod]

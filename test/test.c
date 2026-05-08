@@ -1394,6 +1394,9 @@ static void test_transposition_table_search(void) {
         &position, NULL, limits, NULL, NULL);
 
     transposition_table_t table = {0};
+    expect_true("byte table allocation",
+                resize_transposition_table_bytes(&table, 256u * 1024u));
+    expect_u64("byte table count", table.count, 16384);
     expect_true("table allocation", resize_transposition_table(&table, 1));
     expect_true("table power of two",
                 table.count && !(table.count & (table.count - 1)));

@@ -26,7 +26,7 @@ Python interpreter is available.
 
 ## Compile-time NNUE profile
 
-`P4_NNUE_PROFILE` is the one host build selection point for experimental NNUE
+`P4_NNUE_PROFILE` is the host build selection point for experimental NNUE
 dimensions. The default is the chosen `8x64` profile. The supported comparison
 values are `4x128`, `8x64`, `8x96`, and `16x48`:
 
@@ -36,9 +36,9 @@ values are `4x128`, `8x64`, `8x96`, and `16x48`:
 
 CMake passes the selected bucket count and hidden width as public compile-time
 definitions to the core and its host executables. `src/nnue_config.h` supplies
-the 8x64 default for builds outside root CMake, including the current firmware
-build. There is no runtime profile branch in inference or incremental updates.
-A binary rejects a model whose header does not match its compiled profile.
+the fixed 8x64 selection used by firmware. There is no runtime profile branch
+in inference or incremental updates. A binary rejects a model whose header does
+not match its compiled profile.
 
 ## Sanitizer and compiler checks
 
@@ -56,14 +56,9 @@ To check Clang explicitly, set CMAKE_C_COMPILER in a separate build directory:
 
 ## Firmware build
 
-The ESP-IDF component in esp/components/core/CMakeLists.txt lists the same core
-source files as the root build and adds src/uci.c. The firmware entry point only
-configures unbuffered serial I/O before calling initialize_chess and
-run_uci_loop.
-
-    cd esp
-    idf.py set-target esp32p4
-    idf.py build
+The firmware uses ESP-IDF 6.0.2 and the `esp32p4` target. The full toolchain,
+configuration, embedding, artifacts, and current size report are described in
+[ESP32 P4 Firmware](firmware.md).
 
 ## Book build
 

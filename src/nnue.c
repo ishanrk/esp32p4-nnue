@@ -17,6 +17,11 @@ typedef struct {
 static network_t network;
 
 _Static_assert(sizeof(NNUE_MAGIC) == NNUE_MAGIC_SIZE, "nnue magic size");
+_Static_assert((int)NNUE_PERSPECTIVE_COUNT == (int)COLOR_COUNT,
+               "nnue perspective count");
+_Static_assert((int)NNUE_FEATURES_PER_BUCKET ==
+               ((int)PIECE_TYPE_COUNT - 1) * (int)COLOR_COUNT * 64,
+               "nnue features per bucket");
 _Static_assert(NNUE_HEADER_SIZE == 28, "nnue header size");
 _Static_assert(NNUE_OUTPUT_BIAS_OFFSET == 28, "nnue output bias offset");
 _Static_assert(NNUE_FEATURE_BIAS_OFFSET == 32, "nnue feature bias offset");

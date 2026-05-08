@@ -2,6 +2,7 @@
 
 - [Overview](overview.md)
 - [Build](build.md)
+- [ESP32 P4 Firmware](firmware.md)
 - [Bitboards](bitboards.md)
 - [Move Encoding](move_encoding.md)
 - [Position](position.md)
