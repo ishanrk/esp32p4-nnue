@@ -208,6 +208,7 @@ def validate_training_manifest(manifest: dict[str, Any]) -> NnueProfile:
         "device",
         "numpy_version",
         "pytorch_version",
+        "quantization_range_constraints",
     ):
         if field not in manifest:
             raise ValueError(f"training manifest missing {field}")
@@ -262,6 +263,9 @@ def build_model_manifest(
             "pytorch_version": training_manifest.get("pytorch_version"),
         },
         "training_parameters": training_manifest["training_parameters"],
+        "quantization_range_constraints": training_manifest[
+            "quantization_range_constraints"
+        ],
         "training_seed": training_manifest["seed"],
         "training_parameter_count": profile.training_parameter_count,
         "validation_metrics": training_manifest["validation_metrics"],

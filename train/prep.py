@@ -82,9 +82,12 @@ def prepare_dataset(
     shard_size: int = 100000,
     metadata_path: str | Path | None = None,
     profile: NnueProfile = DEFAULT_PROFILE,
+    limit: int | None = None,
 ) -> dict[str, Any]:
     if shard_size <= 0:
         raise ValueError("shard size must be positive")
+    if limit is not None and limit <= 0:
+        raise ValueError("limit must be positive")
     source_path = Path(source_path)
     output_directory = Path(output_directory)
     if output_directory.exists() and any(output_directory.iterdir()):
@@ -148,6 +151,8 @@ def prepare_dataset(
                         buffer,
                     )
                 )
+            if limit is not None and position_count >= limit:
+                break
 
     if not position_count:
         raise ValueError("empty labeled data")
@@ -175,6 +180,7 @@ def prepare_dataset(
         "min_ply": metadata.get("min_ply"),
         "padding_feature": profile.padding_feature,
         "position_count": position_count,
+        "position_limit": limit,
         "profile": profile.name,
         "sampling_stride": metadata.get("stride"),
         "score_clip": {
@@ -199,6 +205,32 @@ def prepare_dataset(
         "teacher_engine": metadata.get("engine"),
         "teacher_node_budget": metadata.get("node_budget"),
     }
+    if metadata.get("import_format_version") is not None:
+        manifest["evaluation_import"] = {
+            field: metadata.get(field)
+            for field in (
+                "accepted_records",
+                "depth_distribution",
+                "eligible_records",
+                "evaluation_selection_rule",
+                "import_format_version",
+                "knode_distribution",
+                "mate_fraction",
+                "minimum_depth",
+                "piece_count_distribution",
+                "records_scanned",
+                "rejection_counts",
+                "score_distribution",
+                "score_perspective_conversion",
+                "selection_denominator",
+                "selection_rule",
+                "selection_seed",
+                "side_to_move_counts",
+                "source_advertised_positions",
+                "source_date",
+                "usable_records",
+            )
+        }
     (output_directory / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -214,6 +246,7 @@ def main() -> None:
     parser.add_argument("out")
     parser.add_argument("--shard-size", type=int, default=100000)
     parser.add_argument("--metadata")
+    parser.add_argument("--limit", type=int)
     parser.add_argument(
         "--profile", choices=tuple(PROFILE_BY_NAME), default=DEFAULT_PROFILE.name
     )
@@ -224,6 +257,7 @@ def main() -> None:
         shard_size=args.shard_size,
         metadata_path=args.metadata,
         profile=get_profile(args.profile),
+        limit=args.limit,
     )
     print(sum(manifest["split_counts"].values()))
 

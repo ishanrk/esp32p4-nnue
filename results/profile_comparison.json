@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "measurement_scope": {
+    "training": "cpu training on the same 10000000 position corpus",
+    "host": "intel core i7 13700h release builds with native instructions",
+    "hardware": "physical esp32 p4 measurements pending"
+  },
+  "common_training": {
+    "train_positions": 9000455,
+    "validation_positions": 500453,
+    "test_positions": 499092,
+    "epochs": 12,
+    "batch_size": 4096,
+    "learning_rate": 0.001,
+    "weight_decay": 0.01,
+    "score_scale": 400,
+    "optimizer": "adamw",
+    "checkpoint_rule": "minimum validation transformed smooth l1",
+    "test_used_for_selection": false
+  },
+  "profiles": [
+    {
+      "name": "4x128",
+      "bucket_count": 4,
+      "hidden_width": 128,
+      "parameter_count": 328193,
+      "model_bytes": 328480,
+      "accumulator_bytes": 512,
+      "dataset_bytes": 387437842,
+      "seed_7": {"best_epoch": 12, "validation_loss": 0.06631719, "validation_cp_mae": 4512.89},
+      "validation_seeds": [
+        {"seed": 7, "loss": 0.06631719, "cp_mae": 4512.89},
+        {"seed": 17, "loss": 0.06636357, "cp_mae": 4513.03},
+        {"seed": 29, "loss": 0.06652224, "cp_mae": 4513.54}
+      ],
+      "validation_loss_summary": {"mean": 0.06640100, "median": 0.06636357, "spread": 0.00020505},
+      "host": {
+        "integer_evaluations_per_second": 25417051,
+        "position_bytes": 2768,
+        "undo_bytes": 24,
+        "search": {
+          "start": {"nodes": 11241, "microseconds": 1500, "nodes_per_second": 7494000},
+          "kiwipete": {"nodes": 76354, "microseconds": 21398, "nodes_per_second": 3568277},
+          "middlegame": {"nodes": 46180, "microseconds": 14164, "nodes_per_second": 3260378}
+        }
+      },
+      "versus_8x64_depth_4": {"games": 256, "wins": 66, "draws": 147, "losses": 43, "score_percent": 54.49, "elo": 31.30, "elo_uncertainty_95": 27.79}
+    },
+    {
+      "name": "8x64",
+      "bucket_count": 8,
+      "hidden_width": 64,
+      "parameter_count": 327937,
+      "model_bytes": 328096,
+      "accumulator_bytes": 256,
+      "dataset_bytes": 390866017,
+      "seed_7": {"best_epoch": 12, "validation_loss": 0.06715742, "validation_cp_mae": 4517.70},
+      "host": {
+        "integer_evaluations_per_second": 45364503,
+        "position_bytes": 2512,
+        "undo_bytes": 24,
+        "search": {
+          "start": {"nodes": 8084, "microseconds": 1045, "nodes_per_second": 7735885},
+          "kiwipete": {"nodes": 54446, "microseconds": 13188, "nodes_per_second": 4128450},
+          "middlegame": {"nodes": 50484, "microseconds": 9121, "nodes_per_second": 5534919}
+        }
+      },
+      "versus_8x64_depth_4": {"games": 0, "note": "comparison baseline"}
+    },
+    {
+      "name": "8x96",
+      "bucket_count": 8,
+      "hidden_width": 96,
+      "parameter_count": 491905,
+      "model_bytes": 492128,
+      "accumulator_bytes": 384,
+      "dataset_bytes": 390866017,
+      "seed_7": {"best_epoch": 12, "validation_loss": 0.06623187, "validation_cp_mae": 4513.59},
+      "validation_seeds": [
+        {"seed": 7, "loss": 0.06623187, "cp_mae": 4513.59},
+        {"seed": 17, "loss": 0.06637391, "cp_mae": 4514.61},
+        {"seed": 29, "loss": 0.06641640, "cp_mae": 4514.70}
+      ],
+      "validation_loss_summary": {"mean": 0.06634073, "median": 0.06637391, "spread": 0.00018452},
+      "host": {
+        "integer_evaluations_per_second": 30601940,
+        "position_bytes": 2640,
+        "undo_bytes": 24,
+        "search": {
+          "start": {"nodes": 8885, "microseconds": 1174, "nodes_per_second": 7568143},
+          "kiwipete": {"nodes": 48560, "microseconds": 14463, "nodes_per_second": 3357533},
+          "middlegame": {"nodes": 52553, "microseconds": 11542, "nodes_per_second": 4553197}
+        }
+      },
+      "versus_8x64_depth_4": {"games": 256, "wins": 73, "draws": 131, "losses": 52, "score_percent": 54.10, "elo": 28.56, "elo_uncertainty_95": 29.79}
+    },
+    {
+      "name": "16x48",
+      "bucket_count": 16,
+      "hidden_width": 48,
+      "parameter_count": 491713,
+      "model_bytes": 491840,
+      "accumulator_bytes": 192,
+      "dataset_bytes": 400216965,
+      "seed_7": {"best_epoch": 12, "validation_loss": 0.06729667, "validation_cp_mae": 4519.63},
+      "host": {
+        "integer_evaluations_per_second": 62309178,
+        "position_bytes": 2448,
+        "undo_bytes": 24,
+        "search": {
+          "start": {"nodes": 8977, "microseconds": 1007, "nodes_per_second": 8914597},
+          "kiwipete": {"nodes": 70497, "microseconds": 15893, "nodes_per_second": 4435726},
+          "middlegame": {"nodes": 44833, "microseconds": 7615, "nodes_per_second": 5887458}
+        }
+      },
+      "versus_8x64_depth_4": {"games": 256, "wins": 36, "draws": 165, "losses": 55, "score_percent": 46.29, "elo": -25.83, "elo_uncertainty_95": 25.37}
+    }
+  ],
+  "finalist_match": {
+    "profiles": ["4x128", "8x96"],
+    "depth_4": {"games": 256, "wins_4x128": 49, "draws": 155, "losses_4x128": 52, "score_percent_4x128": 49.41, "elo_4x128": -4.07, "elo_uncertainty_95": 26.78},
+    "depth_5": {"games": 256, "wins_4x128": 61, "draws": 140, "losses_4x128": 55, "score_percent_4x128": 51.17, "elo_4x128": 8.14, "elo_uncertainty_95": 28.70}
+  },
+  "selection": {
+    "profile": "4x128",
+    "checkpoint_seed": 7,
+    "reason": "the finalists were statistically indistinguishable in direct play and validation while 4x128 used 163648 fewer model bytes",
+    "provisional_until_physical_hardware": true
+  }
+}

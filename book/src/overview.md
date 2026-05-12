@@ -43,14 +43,15 @@ with quiescence, a fixed-size transposition table, killer moves, history
 ordering, check extension, and late move reduction.
 
 The NNUE has two vertically normalized perspectives, horizontal king symmetry,
-eight king buckets, 640 nonking piece-square features per bucket, and 64 hidden
-values. Its version 3 328096-byte integer network is shared by host inference
+four king buckets, 640 nonking piece-square features per bucket, and 128 hidden
+values. Its version 3 328480-byte integer network is shared by host inference
 and firmware. Make and undo maintain accumulators through reversible feature
 updates without snapshots. The current implementation is portable scalar C and
 remains the correctness reference for later ESP32 P4 PIE work.
 
-Four compile-time profiles were measured under a 512 KiB ceiling. The selected
-8x64 baseline remains the default because smoke data provided no strength
-evidence for a larger profile, while it retained the smaller model and an
-established balance of accumulator RAM and host speed. Experimental profiles
-remain reproducible without runtime branches.
+Four compile-time profiles were trained on the same ten-million-position corpus
+and measured under a 512 KiB ceiling. The selected 4x128 baseline matched the
+larger 8x96 finalist over 512 games and produced comparable validation results
+across three seeds while using 163648 fewer serialized bytes. Experimental
+profiles remain reproducible without runtime branches. Physical ESP32 P4 timing
+may revise this pre-hardware choice.

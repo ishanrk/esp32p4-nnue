@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
-from arena import OPENINGS, elo_summary, opening_board, run_match
+from arena import OPENINGS, elo_summary, load_openings, opening_board, run_match
 
 
 class ArenaTest(unittest.TestCase):
@@ -18,6 +19,12 @@ class ArenaTest(unittest.TestCase):
         summary = elo_summary([1.0, 0.0] * 10)
         self.assertEqual(summary["estimate"], 0.0)
         self.assertGreater(summary["uncertainty_95"], 0.0)
+
+    def test_repository_opening_suite(self) -> None:
+        path = Path(__file__).parents[1] / "test" / "openings.json"
+        openings = load_openings(path)
+        self.assertEqual(len(openings), 128)
+        self.assertEqual(len({item["fen"] for item in openings}), 128)
 
     def test_small_match_rejects_elo_estimate(self) -> None:
         with self.assertRaisesRegex(ValueError, "at least 20 games"):

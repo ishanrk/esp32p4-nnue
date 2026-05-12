@@ -1,0 +1,77 @@
+{
+  "manifest_version": 1,
+  "profile": "4x128",
+  "model_format_version": 3,
+  "feature_mapping_version": 2,
+  "bucket_count": 4,
+  "hidden_width": 128,
+  "features_per_bucket": 640,
+  "feature_count": 2560,
+  "training_parameter_count": 328193,
+  "model_byte_size": 328480,
+  "activation": {"name": "clipped_relu", "clip": 127},
+  "quantization": {"feature": 64, "output": 64, "feature_weights": "signed int8", "accumulators": "signed int16", "output_weights": "signed int16"},
+  "dataset": {
+    "source": "lichess stockfish evaluation database",
+    "url": "https://database.lichess.org/lichess_db_eval.jsonl.zst",
+    "source_date": "2026-08-02",
+    "license": "CC0",
+    "records_scanned": 47836886,
+    "accepted_positions": 10000000,
+    "train_positions": 9000455,
+    "validation_positions": 500453,
+    "test_positions": 499092,
+    "minimum_depth": 20,
+    "selection_rule": "seeded one in 4 acceptance after depth filtering",
+    "selection_seed": 7,
+    "evaluation_rule": "greatest depth and first principal variation",
+    "score_conversion": "lichess white point of view negated when black moves",
+    "mate_score": 30000,
+    "split_note": "seeded per position split rather than whole game separation"
+  },
+  "perspective_check": {
+    "positions": 100,
+    "stockfish": "stockfish 18",
+    "node_budget": 50000,
+    "white_pov_then_side_to_move_pearson": 0.934689,
+    "raw_as_side_to_move_pearson": -0.183512,
+    "white_pov_sign_agreement_percent": 99,
+    "conclusion": "lichess scores use white point of view"
+  },
+  "training": {
+    "seed": 7,
+    "epochs_completed": 12,
+    "best_epoch": 12,
+    "optimizer": "adamw",
+    "batch_size": 4096,
+    "learning_rate": 0.001,
+    "weight_decay": 0.01,
+    "score_scale": 400,
+    "checkpoint_rule": "minimum validation transformed smooth l1"
+  },
+  "validation": {"positions": 500453, "transformed_loss": 0.06631719, "centipawn_mae": 4512.89},
+  "test": {"positions": 499092, "transformed_loss": 0.06664835, "centipawn_mae": 4529.96, "evaluated_after_selection": true},
+  "export_saturation_counts": {"feature_weights": 0, "feature_bias": 0, "output_weights": 0, "output_bias": 0},
+  "integer_parity": {"positions": 1000, "mismatches": 0},
+  "arena_summary": {
+    "versus_8x64_depth_4_score_percent": 54.49,
+    "versus_8x96_depth_4_score_percent": 49.41,
+    "versus_8x96_depth_5_score_percent": 51.17,
+    "versus_classic_depth_4_score_percent": 55.66
+  },
+  "host_benchmark": {
+    "cpu": "intel core i7 13700h",
+    "integer_evaluations_per_second": 25417051,
+    "position_bytes": 2768,
+    "undo_bytes": 24,
+    "accumulator_bytes": 512,
+    "start_position_nodes_per_second": 7494000,
+    "kiwipete_nodes_per_second": 3568277,
+    "middlegame_nodes_per_second": 3260378,
+    "not_esp32_p4_measurements": true
+  },
+  "selection": {
+    "reason": "statistically indistinguishable from 8x96 in direct play and validation with 163648 fewer model bytes",
+    "provisional_until_physical_esp32_p4": true
+  }
+}

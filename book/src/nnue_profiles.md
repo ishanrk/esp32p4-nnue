@@ -1,188 +1,108 @@
 # NNUE Profile Comparison
 
-## Engineering question
+## Controlled question
 
-This experiment asks whether a constrained embedded NNUE should spend capacity
-on more king localization or greater hidden width. It holds two perspectives,
-ten nonking piece classes, perspective normalization, horizontal king symmetry,
-clipped ReLU, quantization, training objective, optimizer, seed, epoch budget,
-and checkpoint selection constant. Only king bucket count and hidden width vary.
+The substantive sweep compares the existing `4x128`, `8x64`, `8x96`, and
+`16x48` profiles under a 512 KiB model ceiling. Every run used the same ten
+million accepted positions, split assignment, AdamW optimizer, transformed
+smooth-L1 objective, batch size 4096, learning rate 0.001, weight decay 0.01,
+score scale 400, validation checkpoint rule, and twelve-epoch budget. Seed 7
+was common to the four-way sweep. Test data was not evaluated during selection.
 
-The working model-file ceiling is 512 KiB, or 524288 bytes. The four profiles
-form two close-budget comparisons: 4x128 against 8x64 near 320 KiB, and 8x96
-against 16x48 near 480 KiB. Every candidate is below the ceiling.
-
-## Where the bytes go
-
-Let `B` be bucket count and `H` be hidden width. Each bucket has 640 nonking
-piece-square features. The serialized file contains a 28-byte header, one
-signed int32 output bias, `H` signed int16 feature biases, `2H` signed int16
-output weights, and `640BH` signed int8 feature weights:
+The profile name is bucket count by hidden width. With `B` buckets and width
+`H`, the version 3 format uses:
 
 ```text
-model bytes = 28 + 4 + 6H + 640BH
-```
-
-The `640BH` term dominates. More buckets give the same piece-square relation
-different weights in more king regions. This can represent king-localized
-patterns more precisely, but each added bucket multiplies the feature table.
-More hidden values let every active feature contribute to a wider learned
-representation, but every position must maintain, clip, and consume those
-additional accumulator lanes.
-
-Training includes one zero padding embedding row that is not serialized. The
-reported PyTorch parameter count is:
-
-```text
+model bytes = 32 + 6H + 640BH
+accumulator bytes = 4H
 training parameters = (640B + 4)H + 1
 ```
 
-A position keeps one signed int16 accumulator per perspective, so its direct
-accumulator cost is `2 * H * 2`, or `4H` bytes. Bucket count changes model flash
-but does not directly enlarge the accumulator. Hidden width changes model flash,
-accumulator RAM, `position_t`, refresh work, incremental update work, and output
-work together.
+## Training results
 
-| profile | model bytes | training parameters | accumulator bytes | `position_t` bytes | `undo_t` bytes |
+All four profiles trained on 9,000,455 positions and selected epoch 12 using
+500,453 validation positions. Export produced the exact expected byte count and
+zero saturation in feature weights, feature bias, output weights, and output
+bias.
+
+| profile | model bytes | parameters | accumulator bytes | seed 7 validation loss | validation MAE |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 4x128 | 328480 | 328193 | 512 | 2768 | 24 |
-| 8x64 | 328096 | 327937 | 256 | 2512 | 24 |
-| 8x96 | 492128 | 491905 | 384 | 2640 | 24 |
-| 16x48 | 491840 | 491713 | 192 | 2448 | 24 |
+| 4x128 | 328480 | 328193 | 512 | 0.06631719 | 4512.89 cp |
+| 8x64 | 328096 | 327937 | 256 | 0.06715742 | 4517.70 cp |
+| 8x96 | 492128 | 491905 | 384 | 0.06623187 | 4513.59 cp |
+| 16x48 | 491840 | 491713 | 192 | 0.06729667 | 4519.63 cp |
 
-## King regions
+The first sweep advanced `4x128` and `8x96`. Repeating each with seeds 17 and
+29 produced:
 
-All profiles first put the perspective side at the bottom and mirror files e
-through h onto files d through a. The normalized king therefore has four files.
-The 4-bucket profile uses those four files without a rank split. The default
-8-bucket profile combines four files with two four-rank bands. The 16-bucket
-profile combines four files with four two-rank bands. These are regular regions,
-not learned or irregular buckets.
+| profile | seed losses 7 17 29 | mean | median | spread |
+| --- | --- | ---: | ---: | ---: |
+| 4x128 | 0.06631719 0.06636357 0.06652224 | 0.06640100 | 0.06636357 | 0.00020505 |
+| 8x96 | 0.06623187 0.06637391 0.06641640 | 0.06634073 | 0.06637391 | 0.00018452 |
 
-`P4_NNUE_PROFILE` selects one of `4x128`, `8x64`, `8x96`, or `16x48` while
-configuring CMake. It becomes compile-time bucket and width constants. The
-inference loops and position layout stay statically sized, and a binary accepts
-only the matching model header. Python datasets and model manifests carry the
-same named profile.
+The means differ by only 0.00006027 and their median ordering reverses. This is
+not enough evidence to treat one validation result as a decisive strength
+difference.
 
-## Smoke training results
+## Engine matches
 
-No substantive prepared dataset was available for this experiment. Every row
-below uses the same seven-position committed fixture, split membership, seed 7,
-three epochs, batch size 2, learning rate 0.001, score scale 400, AdamW weight
-decay 0.01, CPU device, and minimum validation transformed-loss checkpoint
-rule. Every run selected epoch 1. The fixture contains extreme labels and is far
-too small for architecture or strength conclusions.
+The suite contains 128 unique positions after twelve plies of legal standard
+games from the official CC0 Lichess January 2013 rated-game export. Each pairing
+plays both colors for 256 games. Architecture-isolating matches use the seed 7
+checkpoint for every profile.
 
-| profile | validation loss | validation MAE | test loss | test MAE | saturation FW FB OW OB |
-| --- | ---: | ---: | ---: | ---: | --- |
-| 4x128 | 0.265013 | 15049.99 cp | 0.053366 | 100.00 cp | 0 0 0 0 |
-| 8x64 | 0.264954 | 15049.99 cp | 0.053413 | 100.05 cp | 0 0 0 0 |
-| 8x96 | 0.265044 | 15050.01 cp | 0.053361 | 99.99 cp | 0 0 0 0 |
-| 16x48 | 0.264962 | 15049.99 cp | 0.053398 | 100.02 cp | 0 0 0 0 |
+| engine A | engine B | depth | A wins draws losses | A score | Elo and 95 percent uncertainty |
+| --- | --- | ---: | --- | ---: | ---: |
+| 4x128 | 8x64 | 4 | 66 147 43 | 54.49 percent | +31.30 plus or minus 27.79 |
+| 8x96 | 8x64 | 4 | 73 131 52 | 54.10 percent | +28.56 plus or minus 29.79 |
+| 16x48 | 8x64 | 4 | 36 165 55 | 46.29 percent | -25.83 plus or minus 25.37 |
+| 4x128 | 8x96 | 4 | 49 155 52 | 49.41 percent | -4.07 plus or minus 26.78 |
+| 4x128 | 8x96 | 5 | 61 140 55 | 51.17 percent | +8.14 plus or minus 28.70 |
 
-The near-identical values are fixture noise. They do not rank the profiles and
-must not be interpreted as Elo. All four trained smoke models quantized to zero
-evaluations on the comparison positions, although each exact-size model still
-passed Python and matching C inference checks.
+The finalist matches are statistically inconclusive. The selected `4x128`
+network also scored 81 wins, 123 draws, and 52 losses against the unchanged
+classic evaluator at depth 4, or 55.66 percent and an estimated +39.53 Elo plus
+or minus 30.75.
 
 ## Host measurements
 
-The host run used GCC 11.4 release builds. Integer throughput measures 3,000,000
-calls across six fixed positions. Search uses a one-megabyte transposition table,
-requests depth 5 on the same three positions, clears the table before each run,
-and reports the median of five runs from the microsecond host timer. These are
-x86-64 directional measurements, not ESP32 P4 performance.
+These x86-64 GCC release results are directional and are not ESP32 P4 timing.
+`p4bench` ran 500,000 evaluations on each of six positions and reported the
+median of five depth-5 searches.
 
-| profile | integer evaluations per second |
-| --- | ---: |
-| 4x128 | 8,059,706 |
-| 8x64 | 15,810,276 |
-| 8x96 | 10,774,391 |
-| 16x48 | 20,886,274 |
+| profile | evals per second | start nps | kiwipete nps | middlegame nps | position bytes | undo bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4x128 | 25417051 | 7494000 | 3568277 | 3260378 | 2768 | 24 |
+| 8x64 | 45364503 | 7735885 | 4128450 | 5534919 | 2512 | 24 |
+| 8x96 | 30601940 | 7568143 | 3357533 | 4553197 | 2640 | 24 |
+| 16x48 | 62309178 | 8914597 | 4435726 | 5887458 | 2448 | 24 |
 
-Every search returned score zero because the smoke models quantized to zero.
-The stable results were `a2a3` after 4,346 nodes from start, `e2a6` after 36,344
-nodes from kiwipete, and `d4c5` after 24,141 nodes from the midgame position.
+## Reference selection
 
-| profile | position | median time | nodes per second |
-| --- | --- | ---: | ---: |
-| 4x128 | start | 772 us | 5,629,533 |
-| 4x128 | kiwipete | 11,661 us | 3,116,713 |
-| 4x128 | midgame | 6,493 us | 3,718,004 |
-| 8x64 | start | 553 us | 7,858,951 |
-| 8x64 | kiwipete | 8,649 us | 4,202,104 |
-| 8x64 | midgame | 4,792 us | 5,037,771 |
-| 8x96 | start | 634 us | 6,854,889 |
-| 8x96 | kiwipete | 10,192 us | 3,565,934 |
-| 8x96 | midgame | 5,711 us | 4,227,105 |
-| 16x48 | start | 503 us | 8,640,159 |
-| 16x48 | kiwipete | 8,117 us | 4,477,516 |
-| 16x48 | midgame | 4,416 us | 5,466,711 |
+`4x128` is the provisional pre-hardware reference. Its validation distribution
+and direct play are indistinguishable from `8x96`, while its model is 163648
+bytes smaller. Seed 7 had the selected architecture's best validation loss, so
+that checkpoint was exported. Only after selection, the untouched 499,092
+position test split measured transformed loss 0.06664835 and centipawn MAE
+4529.96. Python and C integer inference agreed exactly on 1,000 deterministic
+test positions.
 
-Narrower profiles evaluate faster on this host. Search gains are smaller because
-move generation, make and undo, table access, and ordering also consume time.
-Equal node counts show that the zero-valued smoke models searched the same trees.
-
-## Match harness result
-
-`train/arena.py` drives two matching profile binaries through UCI at fixed depth,
-uses four fixed openings, and reverses colors for eight games. The smoke check
-used depth 2 and at most 60 played plies. Against each of 4x128, 8x96, and 16x48,
-8x64 scored one win, six draws, and one loss for 50 percent. The win and loss
-were the same color-reversed deterministic queen's-gambit game; six games hit
-the smoke ply limit.
-
-No Elo was calculated. The models provide identical zero evaluations, eight
-games are insufficient, and this run validates orchestration rather than chess
-strength. A substantive run should use at least 20 games before requesting the
-script's simple Elo estimate and 95 percent uncertainty, and substantially more
-games before treating the estimate as stable.
-
-## Reference choice
-
-The default remains 8x64. At the lower budget it is 384 bytes smaller than
-4x128, halves accumulator RAM, and measured about twice the integer throughput.
-The 8x96 profile spends roughly 50 percent more model storage and accumulator
-RAM without substantive quality evidence. The 16x48 profile is the fastest and
-uses the least accumulator RAM, but its model is roughly 50 percent larger than
-8x64 and the smoke data cannot establish whether its extra king localization
-compensates for narrower hidden capacity.
-
-Keeping the established 8x64 default is the conservative evidence-based choice
-until a substantive fixed dataset can measure validation, test, and match
-strength. Physical ESP32 P4 measurements may still favor a different tradeoff:
-RV32 memory access, flash placement, cache behavior, compiler code generation,
-and later PIE kernels can change the host ranking.
+`results/profile_comparison.json` is the machine-readable source for the full
+comparison. `models/reference.json` describes the selected artifact. Physical
+ESP32 P4 memory, timing, and playing measurements can still revise this
+provisional choice.
 
 ## Reproduction
 
-Calculate static sizes:
+Prepare one labeled corpus into each profile, keeping the split assignments
+unchanged, then train with the common command:
 
-    python3 train/profiles.py
-
-For each profile, prepare the same labeled source and train with identical
-options:
-
-    python3 train/prep.py labels.jsonl data-8x64 --profile 8x64
-    python3 train/train.py data-8x64 model-8x64.pt \
+    python3 train/prep.py data/reference_labels.jsonl data/reference_4x128 \
+        --shard-size 250000 --profile 4x128
+    python3 train/train.py data/reference_4x128 model_4x128_seed7.pt \
         --epochs 12 --batch 4096 --lr 0.001 --seed 7 \
         --score-scale 400 --device auto --workers 0 --weight-decay 0.01
-    python3 train/export.py model-8x64.pt model-8x64.bin
+    python3 train/export.py model_4x128_seed7.pt model_4x128_seed7.nnue
 
-Build and measure the matching C profile:
-
-    cmake -S . -B build-8x64 -DCMAKE_BUILD_TYPE=Release \
-        -DP4_NNUE_PROFILE=8x64
-    cmake --build build-8x64 --parallel
-    build-8x64/p4bench model-8x64.bin 500000 5 5
-
-Run a color-reversed match only after preparing compatible models and binaries:
-
-    python3 train/arena.py build-8x64/p4nnue model-8x64.bin \
-        build-16x48/p4nnue model-16x48.bin \
-        --depth 6 --max-plies 240 --opening-count 4
-
-Repeat those commands for every candidate with the same data, training options,
-benchmark depths, and openings. Large checkpoints, models, and logs remain
-outside source control.
+Repeat for all profiles with the same seed, and for finalist seeds 17 and 29.
+After selection, evaluate the test split once with `train/evaluate.py`.

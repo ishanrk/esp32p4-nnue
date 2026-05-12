@@ -8,10 +8,10 @@ The engine combines bitboards with a 64-square lookup array, incremental make
 and undo, incremental Zobrist hashing, iterative-deepening principal variation
 search, quiescence, and a compact king-conditioned NNUE.
 
-The selected first public NNUE profile is `8x64`: two perspectives, eight
-regular mirrored king buckets, 5120 sparse features per perspective, hidden
-width 64, signed int8 feature weights, signed int16 accumulators and output
-weights, clipped ReLU, and 328096 serialized bytes. Model format 3 has an
+The selected first public NNUE profile is `4x128`: two perspectives, four
+mirrored king buckets, 2560 sparse features per perspective, hidden width 128,
+signed int8 feature weights, signed int16 accumulators and output weights,
+clipped ReLU, and 328480 serialized bytes. Model format 3 has an
 explicit little-endian layout and is shared by the host and firmware runtime.
 
 ## Start here
@@ -22,9 +22,11 @@ explicit little-endian layout and is shared by the host and firmware runtime.
 - [Test your network and engine](book/src/testing.md)
 - [Build the ESP32 P4 firmware](book/src/firmware.md)
 
-The repository does not yet contain a distributable reference model. The
-committed data is deliberately small test material, not substantive training
-data or strength evidence.
+The substantively trained reference model is in `models/reference.nnue`; its
+manifest is `models/reference.json`. Compact real measurements live under
+`results`. The model was trained from ten million accepted positions in the
+official CC0 Lichess Stockfish evaluation database. Physical ESP32 P4 timing is
+still pending.
 
 ## Host build
 
@@ -53,7 +55,7 @@ Example UCI input:
     quit
 
 Host build trees, generated book HTML, datasets, caches, checkpoints, and
-exported networks are ignored.
+non-reference exported networks are ignored.
 
 ## ESP32 P4
 
@@ -68,11 +70,11 @@ the environment, then build from the firmware directory:
     idf.py merge-bin -o esp32p4_nnue_merged.bin
 
 `esp/components/core/CMakeLists.txt` references the shared files in `src`
-directly. The firmware wrapper binds a generated deterministic smoke network
-from flash, allocates a fixed 256 KiB transposition table, and starts the same
-UCI loop used by the desktop executable. The smoke network is not the public
-reference model and has no strength. This stage is compiled for ESP32 P4 but
-has not been flashed to or tested on physical hardware.
+directly. The firmware build still binds a generated deterministic smoke
+network for compile and flash-layout checks, allocates a fixed 256 KiB
+transposition table, and starts the same UCI loop used by the desktop
+executable. Integrating the trained reference binary into a physical-board run
+is deliberately left for the firmware stage.
 
 ## Repository layout
 

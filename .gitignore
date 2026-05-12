@@ -9,6 +9,7 @@ __pycache__/
 *.bin.json
 *.nnue
 *.nnue.json
+!/models/reference.nnue
 *.npz
 *.csv
 *.jsonl

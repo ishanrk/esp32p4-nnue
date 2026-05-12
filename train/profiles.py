@@ -57,7 +57,7 @@ PROFILES = (
     NnueProfile("16x48", 16, 48),
 )
 PROFILE_BY_NAME = {profile.name: profile for profile in PROFILES}
-DEFAULT_PROFILE = PROFILE_BY_NAME["8x64"]
+DEFAULT_PROFILE = PROFILE_BY_NAME["4x128"]
 
 
 def get_profile(name: str) -> NnueProfile:

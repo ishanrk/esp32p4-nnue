@@ -7,29 +7,29 @@ Every multibyte integer is little endian. Named byte offsets in `src/ch.h` and
 explicit readers in `src/nnue.c` define the format; no serialized C structure or
 compiler padding participates.
 
-| offset | bytes | field | required value for 8x64 |
+| offset | bytes | field | required value for 4x128 |
 | ---: | ---: | --- | ---: |
 | 0 | 8 | magic | `P4NNUE1` plus trailing zero |
 | 8 | 2 | model format version | 3 |
-| 10 | 2 | king bucket count | 8 |
+| 10 | 2 | king bucket count | 4 |
 | 12 | 2 | features per bucket | 640 |
-| 14 | 2 | hidden width | 64 |
+| 14 | 2 | hidden width | 128 |
 | 16 | 2 | activation clip | 127 |
 | 18 | 2 | feature quantization | 64 |
 | 20 | 2 | output quantization | 64 |
 | 22 | 2 | perspective count | 2 |
-| 24 | 4 | complete file size | 328096 |
+| 24 | 4 | complete file size | 328480 |
 
 The parameter payload starts immediately after the header:
 
-| offset | bytes for 8x64 | array |
+| offset | bytes for 4x128 | array |
 | ---: | ---: | --- |
 | 28 | 4 | signed int32 output bias |
-| 32 | 128 | 64 signed int16 feature biases |
-| 160 | 256 | 128 signed int16 output weights |
-| 416 | 327680 | 5120 by 64 signed int8 feature weights |
+| 32 | 256 | 128 signed int16 feature biases |
+| 288 | 512 | 256 signed int16 output weights |
+| 800 | 327680 | 2560 by 128 signed int8 feature weights |
 
-The last byte is at offset 328095, producing exactly 328096 bytes. Signed int16
+The last byte is at offset 328479, producing exactly 328480 bytes. Signed int16
 values are also little endian. Feature weights need no byte-order conversion.
 The host and ESP32 P4 are little endian; the loader explicitly rejects a
 big-endian runtime because inference keeps aligned read-only pointers into the
@@ -66,15 +66,15 @@ public reference network.
 Each perspective first places its own side at the bottom by vertically flipping
 the Black view. When the resulting king is on the right half, the entire view is
 also flipped horizontally. Four normalized king files combine with one, two, or
-four regular rank bands for 4, 8, or 16 buckets. The default uses two four-rank
-bands. A bucket contains ten nonking piece classes across 64 normalized squares,
-or 640 features. The default has 5,120 sparse features per perspective.
+four regular rank bands for 4, 8, or 16 buckets. The default uses one full-rank
+band. A bucket contains ten nonking piece classes across 64 normalized squares,
+or 640 features. The default has 2,560 sparse features per perspective.
 
 refresh_nnue_perspective receives a position and perspective. It finds that
 side's king view, records its bucket and mirror orientation, starts its
 compile-time-width signed int16 accumulator from feature bias, and adds every
 active nonking feature vector. This is the only path that scans all pieces.
-refresh_nnue rebuilds both perspectives and is the correctness oracle used by
+refresh_nnue rebuilds both perspectives and is the full refresh check used by
 tests.
 
 add_nnue_feature and remove_nnue_feature update both perspectives for one
@@ -113,9 +113,10 @@ division truncated toward zero to match C. It does not call the floating
 training network.
 
 `p4eval` is the narrow C comparison executable. It receives an exported model
-path and one quoted FEN, initializes the chess tables, loads and validates the
-model through `load_nnue`, builds the position through `set_position_fen`, and
-prints `evaluate_nnue`. The two commands below must print the same integer:
+path and either one quoted FEN or newline-separated FENs on standard input. It
+initializes the chess tables, loads and validates the model through `load_nnue`,
+builds each position through `set_position_fen`, and prints `evaluate_nnue`.
+The two commands below must print the same integer:
 
     python train/integer.py nn.bin "FEN"
     ./build/p4eval nn.bin "FEN"

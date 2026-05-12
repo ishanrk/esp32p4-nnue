@@ -49,10 +49,10 @@ model bytes = 28 + 4 + 2H + 4H + 640BH
             = 32 + 6H + 640BH
 ```
 
-For the reference `8x64` profile:
+For the reference `4x128` profile:
 
 ```text
-32 + 6 * 64 + 640 * 8 * 64 = 328096 bytes
+32 + 6 * 128 + 640 * 4 * 128 = 328480 bytes
 ```
 
 The working ceiling is 512 KiB or 524288 bytes. The C runtime rejects profiles
@@ -67,11 +67,11 @@ Each position stores one signed int16 accumulator for each of two perspectives:
 accumulator bytes = 2 perspectives * H values * 2 bytes = 4H
 ```
 
-At width 64 this is 256 bytes. On the tested host ABI the complete position is:
+At width 128 this is 512 bytes. On the tested host ABI the complete position is:
 
 ```text
 position_t bytes = 2256 + 4H
-                 = 2512 bytes at width 64
+                 = 2768 bytes at width 128
 ```
 
 The 2256-byte remainder contains piece and occupancy bitboards, Zobrist history,
@@ -98,13 +98,13 @@ table bytes = allocated entries * 16
 `resize_transposition_table` remains the desktop MiB convenience function. A
 one-MiB request produces 65536 entries and exactly 1048576 table bytes. The
 firmware's explicit 262144-byte budget produces 16384 entries. This allocation
-is separate from the 328096 model bytes and per-position state.
+is separate from the 328480 model bytes and per-position state.
 
 ## Frozen reference profile
 
-The first public profile has two perspectives, eight king buckets arranged as
-four horizontally normalized files by two four-rank bands, 5120 sparse features
-per perspective, hidden width 64, signed int8 feature weights, signed int16
+The first public profile has two perspectives, four king buckets arranged as
+four horizontally normalized files, 2560 sparse features per perspective,
+hidden width 128, signed int8 feature weights, signed int16
 accumulators and output weights, signed int32 output bias, clipped ReLU from zero
-through 127, feature and output quantization factors of 64, 256 accumulator
-bytes per position, and a 328096-byte format-version-3 model.
+through 127, feature and output quantization factors of 64, 512 accumulator
+bytes per position, and a 328480-byte format-version-3 model.

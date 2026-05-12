@@ -8,7 +8,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 option(P4_NATIVE "use host cpu flags" OFF)
 option(P4_SAN "use sanitizers" OFF)
 
-set(P4_NNUE_PROFILE "8x64" CACHE STRING "compile time nnue profile")
+set(P4_NNUE_PROFILE "4x128" CACHE STRING "compile time nnue profile")
 set_property(CACHE P4_NNUE_PROFILE PROPERTY STRINGS 4x128 8x64 8x96 16x48)
 if(P4_NNUE_PROFILE STREQUAL "4x128")
     set(P4_NNUE_BUCKETS 4)

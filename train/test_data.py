@@ -21,6 +21,7 @@ from data import (
     split_shard_paths,
 )
 from features import MAX_ACTIVE_FEATURES, PADDING_FEATURE, encode_position
+from import_evals import import_evaluations, parse_evaluation_record
 from label import analyse_with_teacher, write_labeled_positions
 from prep import prepare_dataset
 from profiles import PROFILES
@@ -32,6 +33,98 @@ LABEL_FIXTURE = ROOT / "test" / "training_labels.jsonl"
 
 
 class LabelingTest(unittest.TestCase):
+    def test_lichess_evaluation_selection_and_perspective(self) -> None:
+        white = parse_evaluation_record(
+            {
+                "fen": "7k/8/8/8/8/8/P7/K7 w - -",
+                "evals": [
+                    {"depth": 21, "knodes": 80, "pvs": [{"cp": 120}]},
+                    {
+                        "depth": 28,
+                        "knodes": 400,
+                        "pvs": [{"cp": 230}, {"cp": -900}],
+                    },
+                ],
+            }
+        )
+        self.assertEqual(white.score, 230)
+        self.assertEqual(white.depth, 28)
+        self.assertEqual(white.knodes, 400)
+        self.assertEqual(white.score_kind, "cp")
+
+        black = parse_evaluation_record(
+            {
+                "fen": "7k/8/8/8/8/8/P7/K7 b - -",
+                "evals": [
+                    {"depth": 24, "pvs": [{"cp": 230}]},
+                ],
+            }
+        )
+        self.assertEqual(black.score, -230)
+
+        black_mate = parse_evaluation_record(
+            {
+                "fen": "7k/8/8/8/8/8/P7/K7 b - -",
+                "evals": [
+                    {"depth": 30, "pvs": [{"mate": -4}]},
+                ],
+            }
+        )
+        self.assertEqual(black_mate.score, SCORE_LIMIT)
+        self.assertEqual(black_mate.score_kind, "mate")
+
+    def test_lichess_streaming_import_metadata(self) -> None:
+        records = [
+            {
+                "fen": "7k/8/8/8/8/8/P7/K7 w - -",
+                "evals": [
+                    {"depth": 24, "knodes": 200, "pvs": [{"cp": 120}]}
+                ],
+            },
+            {
+                "fen": "7k/8/8/8/8/8/P7/K7 b - -",
+                "evals": [
+                    {"depth": 26, "knodes": 300, "pvs": [{"cp": -80}]}
+                ],
+            },
+            {
+                "fen": "7k/8/8/8/8/8/P7/K7 w - -",
+                "evals": [
+                    {"depth": 30, "knodes": 500, "pvs": [{"mate": 3}]}
+                ],
+            },
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            source = directory / "evals.jsonl"
+            source.write_text(
+                "".join(json.dumps(record) + "\n" for record in records),
+                encoding="utf-8",
+            )
+            output = directory / "labels.jsonl"
+            metadata = import_evaluations(
+                str(source),
+                output,
+                limit=3,
+                min_depth=20,
+                selection_denominator=1,
+                seed=7,
+                validation_percent=33,
+                test_percent=33,
+            )
+            self.assertEqual(metadata["records_scanned"], 3)
+            self.assertEqual(metadata["accepted_records"], 3)
+            self.assertEqual(
+                metadata["evaluation_selection_rule"],
+                "greatest depth and first principal variation",
+            )
+            prepared = prepare_dataset(
+                output, directory / "prepared", shard_size=2
+            )
+            self.assertEqual(
+                prepared["evaluation_import"]["records_scanned"], 3
+            )
+
     def test_split_assignment_is_deterministic(self) -> None:
         first = [assign_game_split(game_id, 23) for game_id in range(200)]
         second = [assign_game_split(game_id, 23) for game_id in range(200)]

@@ -54,7 +54,7 @@ incremental tests compare meaningful accumulator and evaluation changes without
 checking in a binary model. A separate purpose-built model isolates activation
 clipping and side-to-move ordering.
 
-test/nnue_features.txt is the common mapping oracle. p4test evaluates it through
+test/nnue_features.txt is the common mapping fixture. p4test evaluates it through
 nnue_king_bucket and nnue_feature_index. train/test_features.py evaluates the
 same rows through train/features.py and additionally checks vertical and
 horizontal symmetric pairs. This prevents the runtime and training encoders
@@ -64,6 +64,9 @@ test/training_games.pgn contains eight short legal games with different lengths,
 a Black-to-move setup, castling, captures, and promotions. train/test_data.py
 uses a deterministic fake score callback, never an engine process, to check that
 repeated labeling produces identical JSONL and that every game has one split.
+It also covers greatest-depth Lichess evaluation selection, White-to-move and
+Black-to-move score conversion, finite mate conversion, seeded streaming
+selection, and imported provenance metadata.
 test/training_labels.jsonl is a separate prewritten preparation fixture. Its
 seven positions cover all three splits, both score clip boundaries, sparse
 padding, and shard boundaries. The data test checks `uint16` feature and
@@ -92,10 +95,16 @@ one out-of-range feature weight, accumulator-unsafe feature bias, output weight,
 or output bias fails export, as does a nonfinite parameter. No binary fixture
 model is committed.
 
-train/test_arena.py validates the fixed opening positions, balanced Elo
-calculation, and the rule that fewer than 20 games cannot request an Elo
-estimate. The actual smoke arena invocation remains outside normal CTest so CI
-does not start repeated engine searches.
+train/test_arena.py validates the fixed fixture openings, the 128-position
+repository opening suite, balanced Elo calculation, and the rule that fewer
+than 20 games cannot request an Elo estimate. The actual substantive arena
+invocations remain outside normal CTest so CI does not start repeated engine
+searches.
+
+`train/compare.py` sends a deterministic held-out batch to one `p4eval`
+process and compares every score with `train/integer.py`. The selected reference
+model is checked over 1000 positions with exact equality. This retains a useful
+batch evaluator without paying one process launch per FEN.
 
 The sliding test implementation advances file and rank coordinates one square
 at a time, includes the first occupied square, and then stops in that

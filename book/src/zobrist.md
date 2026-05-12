@@ -6,7 +6,7 @@ Using a fixed SplitMix64 seed makes keys stable across host and firmware builds.
 
 calculate_position_hash(position) receives a read-only position and returns a
 key rebuilt from piece bitboards and reversible state. It is used when loading
-FEN and as the correctness oracle inside position_is_valid.
+FEN and as the full recomputation check inside position_is_valid.
 
 make_move updates position.key incrementally. Piece placement and removal xor
 piece-square keys. The function removes the old castling and en passant keys,

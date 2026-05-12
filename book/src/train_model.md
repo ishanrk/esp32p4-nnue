@@ -5,7 +5,7 @@ to a model loaded by the C engine. The first example deliberately uses the
 small committed PGN fixture so every stage finishes quickly. It verifies the
 workflow but does not produce a useful chess model.
 
-The selected public profile is `8x64`. Use that profile throughout labeling,
+The selected public profile is `4x128`. Use that profile throughout labeling,
 preparation, training, export, and the C build. A model compiled for another
 profile is intentionally rejected.
 
@@ -20,7 +20,7 @@ dependencies with:
 Build the matching host tools:
 
     cmake -S . -B build-guide-engine -DCMAKE_BUILD_TYPE=Release \
-        -DP4_NNUE_PROFILE=8x64
+        -DP4_NNUE_PROFILE=4x128
     cmake --build build-guide-engine --parallel
 
 `P4_NNUE_PROFILE` fixes the bucket count and hidden width at compile time. The
@@ -57,7 +57,7 @@ leakage.
 
     python3 train/prep.py \
         build-guide/labels.jsonl build-guide/data \
-        --shard-size 8 --profile 8x64
+        --shard-size 8 --profile 4x128
 
 `--shard-size 8` keeps the fixture visibly split across several small NPZ
 files. A real run normally uses much larger shards. Preparation encodes both
@@ -71,7 +71,8 @@ manifest.
     python3 train/train.py \
         build-guide/data build-guide/model.pt \
         --epochs 2 --batch 8 --lr 0.001 --seed 7 \
-        --score-scale 400 --device cpu --workers 0 --weight-decay 0.01
+        --score-scale 400 --device cpu --workers 0 --weight-decay 0.01 \
+        --evaluate-test
 
 Two epochs and a batch of eight keep this fixture run short. The learning rate,
 score scale, optimizer, seed, and weight decay otherwise match the baseline
@@ -88,7 +89,7 @@ teacher, options, environment, validation metrics, and final test metrics in
 
 Export reads the training manifest beside the checkpoint. It rejects wrong
 dimensions, unsupported profile values, nonfinite parameters, unsafe feature
-biases, and any quantization saturation. The result is the exact 328096-byte
+biases, and any quantization saturation. The result is the exact 328480-byte
 format-version-3 model plus `build-guide/model.nnue.json`. The JSON sidecar is
 human metadata; it is not embedded in the binary.
 
@@ -97,7 +98,7 @@ Confirm the byte count and inspect the manifest:
     python3 -c 'from pathlib import Path; print(Path("build-guide/model.nnue").stat().st_size)'
     python3 -m json.tool build-guide/model.nnue.json
 
-The first command must print `328096` for `8x64`.
+The first command must print `328480` for `4x128`.
 
 ## 5 compare Python and C exactly
 
@@ -109,7 +110,7 @@ Use a quoted six-field FEN for both evaluators:
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 The integer scores must match exactly. `train/integer.py` is the readable
-format and arithmetic oracle; `p4eval` exercises the same loader and evaluator
+format and arithmetic reference implementation; `p4eval` exercises the same loader and evaluator
 used by the engine core.
 
 ## 6 load through UCI and search
@@ -127,33 +128,45 @@ The output must contain `info string nn loaded`, one integer evaluation, search
 information through depth three, and a legal `bestmove`. Timing and nodes per
 second describe only the host that ran this command, not the ESP32 P4.
 
-## Using the Lichess open database
+## Substantive Lichess workflow
 
-The official [Lichess open database](https://database.lichess.org/) provides
-monthly standard-rated game exports as compressed PGN. Those standard game
-exports are released under CC0. Download a manageable month, decompress it with
-a Zstandard tool, and feed the resulting PGN to the same label command. This is
-a larger-scale template and is not part of the quick fixture validation:
+The official [Lichess open database](https://database.lichess.org/) publishes a
+CC0 Stockfish evaluation stream. The reference run used the live dump dated
+2026-08-02. It chose depth 20 after a pilot, scanned nearly 48 million records,
+and used a seeded one-in-four decision to accept ten million positions:
 
-    zstd -d lichess_db_standard_rated_YYYY-MM.pgn.zst -o games.pgn
-    python3 train/label.py games.pgn /path/to/stockfish labels.jsonl \
-        --nodes 20000 --stride 4 --limit 1000000 --min-ply 8 \
-        --seed 7 --validation-percent 5 --test-percent 5 \
-        --data-source "lichess standard rated games YYYY-MM" \
-        --data-license "CC0-1.0" \
-        --data-attribution "lichess open database"
+    python3 train/import_evals.py \
+        https://database.lichess.org/lichess_db_eval.jsonl.zst \
+        data/reference_labels.jsonl \
+        --limit 10000000 --min-depth 20 \
+        --selection-denominator 4 --seed 7 \
+        --validation-percent 5 --test-percent 5 --workers 12
 
-Replace `YYYY-MM` with the downloaded filename and preserve the source page and
-license in the metadata. Lichess broadcast exports use different licensing, so
-do not describe them as standard-rated CC0 data. The repository does not ingest
-the separate Lichess evaluation dump directly because its scores are not the
-fixed-budget side-to-move teacher contract used here.
+Encode that one normalized corpus separately for every profile so split
+membership remains identical:
+
+    python3 train/prep.py data/reference_labels.jsonl data/reference_4x128 \
+        --shard-size 250000 --profile 4x128
+
+Train a sweep without reading test labels:
+
+    python3 train/train.py data/reference_4x128 model_4x128_seed7.pt \
+        --epochs 12 --batch 4096 --lr 0.001 --seed 7 \
+        --score-scale 400 --device auto --workers 0 --weight-decay 0.01
+
+Repeat preparation and training for every supported profile with the same
+options. Choose architectures and checkpoints using validation, matches, and
+resource measurements. Only after that selection evaluate the chosen test
+split and export again so the manifest contains the one final result:
+
+    python3 train/evaluate.py data/reference_4x128 model_4x128_seed7.pt
+    python3 train/export.py model_4x128_seed7.pt reference.nnue
 
 ## Reference artifact status
 
-There is no distributable reference model yet. The repository contains only
-smoke fixtures, and their metrics do not establish chess strength. Consequently
-there is no `models/reference.nnue` or `models/reference.json`. A later training
-run may add those two files only after a substantive dataset, validation and
-test metrics, match evidence, source license and attribution, teacher identity,
-training configuration, and zero-saturation export are all recorded.
+The repository reference is the substantive `4x128` seed 7 checkpoint.
+`models/reference.nnue` contains the exact version 3 integer network and
+`models/reference.json` records the ten-million-position corpus, training
+parameters, validation-only checkpoint selection, final untouched test result,
+zero saturation counts, integer parity, matches, and host benchmarks. The model
+was not retrained after the test result was observed.

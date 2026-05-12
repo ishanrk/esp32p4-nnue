@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 from prep import prepare_dataset
+from evaluate import evaluate_test_split
 from train import CHECKPOINT_SELECTION_RULE, train_baseline
 
 
@@ -50,6 +51,10 @@ class TrainingTest(unittest.TestCase):
             self.assertIn("loss", manifest["validation_metrics"])
             self.assertIn("centipawn_mae", manifest["validation_metrics"])
             self.assertIn("centipawn_mae", manifest["test_metrics"])
+            self.assertIn(
+                "feature_weights",
+                manifest["quantization_range_constraints"]["events"],
+            )
             saved = json.loads(
                 Path(str(checkpoint_path) + ".json").read_text(
                     encoding="utf-8"
@@ -57,6 +62,30 @@ class TrainingTest(unittest.TestCase):
             )
             self.assertEqual(saved, manifest)
             self.assertNotIn("hash", json.dumps(saved).lower())
+
+            held_out_checkpoint = directory / "held_out.pt"
+            held_out = train_baseline(
+                data_path,
+                held_out_checkpoint,
+                epochs=1,
+                batch_size=2,
+                learning_rate=0.001,
+                seed=7,
+                score_scale=400.0,
+                requested_device="cpu",
+                workers=0,
+                weight_decay=0.01,
+                evaluate_test=False,
+            )
+            self.assertIsNone(held_out["test_metrics"])
+            metrics = evaluate_test_split(
+                data_path, held_out_checkpoint, requested_device="cpu"
+            )
+            self.assertIn("centipawn_mae", metrics)
+            with self.assertRaisesRegex(ValueError, "already been evaluated"):
+                evaluate_test_split(
+                    data_path, held_out_checkpoint, requested_device="cpu"
+                )
 
 
 if __name__ == "__main__":

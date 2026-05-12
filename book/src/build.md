@@ -27,7 +27,7 @@ Python interpreter is available.
 ## Compile-time NNUE profile
 
 `P4_NNUE_PROFILE` is the host build selection point for experimental NNUE
-dimensions. The default is the chosen `8x64` profile. The supported comparison
+dimensions. The default is the chosen `4x128` profile. The supported comparison
 values are `4x128`, `8x64`, `8x96`, and `16x48`:
 
     cmake -S . -B build-16x48 -DCMAKE_BUILD_TYPE=Release \
@@ -36,7 +36,7 @@ values are `4x128`, `8x64`, `8x96`, and `16x48`:
 
 CMake passes the selected bucket count and hidden width as public compile-time
 definitions to the core and its host executables. `src/nnue_config.h` supplies
-the fixed 8x64 selection used by firmware. There is no runtime profile branch
+the fixed 4x128 selection used by firmware. There is no runtime profile branch
 in inference or incremental updates. A binary rejects a model whose header does
 not match its compiled profile.
 

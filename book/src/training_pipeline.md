@@ -1,14 +1,14 @@
 # Training Pipeline
 
 Training runs on a host and produces the integer network consumed by
-`src/nnue.c`. This repository does not contain a final trained network or a
-large dataset. It provides a reproducible path from source games through the
-exported runtime model:
+`src/nnue.c`. The committed reference network was trained from ten million
+positions streamed from the official Lichess Stockfish evaluation database.
+The original PGN plus local Stockfish path remains available for experiments
+that need a fixed teacher version and node budget.
 
 ```text
-pgn games
-  -> sampled positions
-  -> fixed-node stockfish labels
+lichess evaluation stream or pgn games plus stockfish
+  -> normalized side-to-move labels
   -> compact sparse features
   -> train validation and test shards
   -> dataset manifest
@@ -25,24 +25,37 @@ scores, so repeated board text does not consume training storage.
 
 ## Choosing source data
 
-Any legal standard-chess PGN can feed the reference labeler. Personal games,
-engine matches, curated tournament games, and a filtered public corpus are all
-reasonable sources. A mix of game phases and styles is more useful than many
-near-duplicate games. The pipeline deliberately does not prescribe one magic
-number of positions.
+`train/import_evals.py` is the substantive reference-data path. It streams the
+official Zstandard JSONL dump, rejects malformed and illegal positions, chooses
+the greatest-depth evaluation and its first principal variation, converts mate
+scores to finite plus or minus 30000 labels, and writes a compact labeled JSONL
+without holding the corpus in memory. A seeded one-in-N acceptance decision
+spreads the sample through the stream. A separate seeded decision assigns each
+accepted record to train, validation, or test.
 
 The official [Lichess open database](https://database.lichess.org/) publishes
 monthly standard-game PGN archives under CC0. The same page has an Evaluations
 section with a streaming JSONL Zstandard dump of Stockfish-evaluated positions.
-Those public evaluations have different node counts and depths. The current
-repository documents them but does not import them: the official schema does
-not state the score perspective clearly enough to convert scores to this
-engine's side-to-move contract without an authoritative validation case. Do not
-feed raw public evaluation scores into this pipeline by guessing their sign.
+Those public evaluations have different node counts and depths. The reference
+import chose depth 20 after a 100000-position pilot and selected ten million
+positions while scanning 47836886 source records with seeded one-in-four
+acceptance. The resulting fixed split contains 9000455 training, 500453
+validation, and 499092 test positions. Unlike the PGN path, this record-level
+split cannot keep positions from a source game together because the evaluation
+dump has no corresponding game identity. Its leakage properties are therefore
+different from the whole-game PGN split described below.
 
-Nothing in the scripts automatically downloads either database. Large PGN,
-JSONL, Zstandard, NPZ, checkpoint, and network files are ignored so source data
-does not accidentally enter Git.
+The score sign was measured instead of guessed. Stockfish 18 searched 100
+balanced nonmate positions at 50000 nodes each. Treating Lichess scores as White
+point of view and negating them when Black moves gave 100 percent nontrivial
+sign agreement and Pearson correlation 0.934689. Treating the raw sign as side
+to move gave 49.49 percent sign agreement and correlation -0.183512. The
+importer therefore emits the engine's required side-to-move perspective.
+
+The importer accepts the official HTTPS URL directly, a local compressed dump,
+an uncompressed local file, or standard input. Large PGN, JSONL, Zstandard,
+NPZ, checkpoint, and temporary network files are ignored so source data does
+not accidentally enter Git.
 
 ## Teacher labeling
 
@@ -163,7 +176,7 @@ profile)` streams labeled JSONL in source order. It requires records for a game
 to remain grouped and rejects any game whose records change split. It keeps at
 most one configured shard buffer per split, writes a buffer as soon as it fills,
 and never loads all labeled positions at once. The default shard size is
-100000, and the default profile is 8x64.
+100000, and the default profile is 4x128.
 
 A prepared directory looks like:
 
@@ -233,8 +246,11 @@ and raw centipawn mean absolute error. It does not update the network.
 `train_baseline` validates that every split is nonempty, seeds initialization
 and row order, optimizes with AdamW, and evaluates validation after every epoch.
 It replaces the saved checkpoint only when validation transformed loss reaches
-a new minimum. After all epochs it reloads that checkpoint and evaluates the
-test split for the first and only time. Training loss never selects a model.
+a new minimum. The command-line sweep path skips test evaluation by default.
+After the architecture and checkpoint are fixed, `train/evaluate.py` reads the
+test split once, records its metrics beside the checkpoint, and rejects a
+second evaluation. `--evaluate-test` remains available for isolated workflows
+that are not selecting among experiments. Training loss never selects a model.
 
 An epoch is one pass over every training position. More epochs allow more
 updates but eventually risk fitting the training set instead of improving held
@@ -257,11 +273,17 @@ The useful options and defaults are:
 - `--workers 0`
 - `--weight-decay 0.01`
 
+After every epoch, `constrain_quantized_parameters` projects the floating
+parameters into the exact representable ranges before validation and checkpoint
+selection. It records every affected value by parameter group and keeps the
+padding embedding row at zero. Export still performs an independent range
+check and fails on any saturation rather than clipping a checkpoint.
+
 The checkpoint companion `<checkpoint>.json` records the named architecture,
 exact dimensions, model byte size, training parameter count, seed, PyTorch and
 NumPy versions, selected device, training options, dataset manifest path and
-split counts, selection rule, best epoch, validation metrics, and final test
-metrics. Initialization and data order are seeded. GPU kernels, library
+split counts, selection rule, best epoch, validation metrics, optional test
+metrics, and quantization constraint events. Initialization and data order are seeded. GPU kernels, library
 versions, and different hardware may still produce different results, so GPU
 runs are not claimed to be bit identical. The record intentionally contains no
 cryptographic hash.
@@ -315,7 +337,7 @@ comparison path quickly on CPU:
 
 ```sh
 python train/prep.py test/training_labels.jsonl build_smoke_data \
-    --shard-size 2 --profile 8x64
+    --shard-size 2 --profile 4x128
 python train/train.py build_smoke_data build_smoke.pt --epochs 3 --batch 2 \
     --lr 0.001 --seed 7 --score-scale 400 --device cpu --workers 0
 python train/export.py build_smoke.pt build_smoke.bin
@@ -360,7 +382,7 @@ under the ignored `data` directory:
 ```sh
 python train/label.py games.pgn /path/to/stockfish labels.jsonl \
     --nodes 20000 --stride 4 --min-ply 8 --limit 1000000 --seed 7
-python train/prep.py labels.jsonl data --shard-size 100000 --profile 8x64
+python train/prep.py labels.jsonl data --shard-size 100000 --profile 4x128
 python train/train.py data model.pt --epochs 12 --batch 4096 --lr 0.001 \
     --seed 7 --score-scale 400 --device auto --workers 0 \
     --weight-decay 0.01

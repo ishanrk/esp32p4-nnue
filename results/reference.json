@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "profile": "4x128",
+  "selection": "provisional pre hardware reference",
+  "test_used_for_selection": false,
+  "final_test": {"positions": 499092, "transformed_loss": 0.06664835, "centipawn_mae": 4529.96},
+  "integer_parity": {"positions": 1000, "mismatches": 0},
+  "arena": {
+    "opening_count": 128,
+    "color_reversal": true,
+    "versus_8x64_depth_4": {"games": 256, "wins": 66, "draws": 147, "losses": 43, "score_percent": 54.49, "elo": 31.30, "elo_uncertainty_95": 27.79},
+    "versus_8x96_depth_4": {"games": 256, "wins": 49, "draws": 155, "losses": 52, "score_percent": 49.41, "elo": -4.07, "elo_uncertainty_95": 26.78},
+    "versus_8x96_depth_5": {"games": 256, "wins": 61, "draws": 140, "losses": 55, "score_percent": 51.17, "elo": 8.14, "elo_uncertainty_95": 28.70},
+    "versus_classic_depth_4": {"games": 256, "wins": 81, "draws": 123, "losses": 52, "score_percent": 55.66, "elo": 39.53, "elo_uncertainty_95": 30.75}
+  },
+  "hardware": {"esp32_p4": "physical measurements pending"}
+}

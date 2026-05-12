@@ -18,10 +18,36 @@ OPENINGS = (
 )
 
 
+def load_openings(path: str | Path) -> list[dict[str, str]]:
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, list) or not data:
+        raise ValueError("opening suite must be a nonempty list")
+    openings = []
+    positions = set()
+    for index, item in enumerate(data):
+        if not isinstance(item, dict):
+            raise ValueError(f"opening {index + 1} must be an object")
+        name = item.get("name")
+        fen = item.get("fen")
+        if not isinstance(name, str) or not isinstance(fen, str):
+            raise ValueError(f"opening {index + 1} needs a name and fen")
+        board = chess.Board(fen)
+        if not board.is_valid() or board.is_game_over(claim_draw=True):
+            raise ValueError(f"opening {name} is not a playable legal position")
+        key = " ".join(board.fen(en_passant="fen").split()[:4])
+        if key in positions:
+            raise ValueError(f"duplicate opening {name}")
+        positions.add(key)
+        openings.append({"name": name, "fen": board.fen(en_passant="fen")})
+    return openings
+
+
 class UciEngine:
-    def __init__(self, executable: str | Path, model: str | Path) -> None:
+    def __init__(
+        self, executable: str | Path, model: str | Path | None
+    ) -> None:
         self.executable = str(Path(executable).resolve())
-        self.model = str(Path(model).resolve())
+        self.model = str(Path(model).resolve()) if model is not None else None
         self.process = subprocess.Popen(
             [self.executable],
             stdin=subprocess.PIPE,
@@ -34,10 +60,11 @@ class UciEngine:
             self._send("uci")
             self._read_until("uciok")
             self._send("setoption name Hash value 1")
-            self._send(f"setoption name EvalFile value {self.model}")
+            if self.model is not None:
+                self._send(f"setoption name EvalFile value {self.model}")
             self._send("isready")
             lines = self._read_until("readyok")
-            if "info string nn loaded" not in lines:
+            if self.model is not None and "info string nn loaded" not in lines:
                 raise RuntimeError(f"model load failed for {self.model}")
         except Exception:
             self.close()
@@ -105,11 +132,15 @@ def opening_board(moves: tuple[str, ...]) -> chess.Board:
 def play_game(
     white: UciEngine,
     black: UciEngine,
-    opening: tuple[str, ...],
+    opening: tuple[str, ...] | str,
     depth: int,
     max_plies: int,
 ) -> tuple[chess.Color | None, str, int]:
-    board = opening_board(opening)
+    board = (
+        chess.Board(opening)
+        if isinstance(opening, str)
+        else opening_board(opening)
+    )
     white.new_game()
     black.new_game()
     played = 0
@@ -140,18 +171,30 @@ def elo_summary(scores: list[float]) -> dict[str, float | None]:
 
 def run_match(
     engine_a_path: str | Path,
-    model_a_path: str | Path,
+    model_a_path: str | Path | None,
     engine_b_path: str | Path,
-    model_b_path: str | Path,
+    model_b_path: str | Path | None,
     *,
     depth: int,
     max_plies: int,
     opening_count: int,
     estimate_elo: bool,
+    openings: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     if depth <= 0 or max_plies <= 0:
         raise ValueError("depth and max plies must be positive")
-    if not 1 <= opening_count <= len(OPENINGS):
+    opening_suite = (
+        openings
+        if openings is not None
+        else [
+            {
+                "name": name,
+                "fen": opening_board(moves).fen(en_passant="fen"),
+            }
+            for name, moves in OPENINGS
+        ]
+    )
+    if not 1 <= opening_count <= len(opening_suite):
         raise ValueError("bad opening count")
     if estimate_elo and opening_count * 2 < 20:
         raise ValueError("at least 20 games are required for elo estimation")
@@ -161,7 +204,9 @@ def run_match(
     try:
         engine_b = UciEngine(engine_b_path, model_b_path)
         try:
-            for opening_name, opening in OPENINGS[:opening_count]:
+            for item in opening_suite[:opening_count]:
+                opening_name = item["name"]
+                opening = item["fen"]
                 for engine_a_white in (True, False):
                     white = engine_a if engine_a_white else engine_b
                     black = engine_b if engine_a_white else engine_a
@@ -200,8 +245,12 @@ def run_match(
             "engine_a": str(Path(engine_a_path).resolve()),
             "engine_b": str(Path(engine_b_path).resolve()),
             "max_plies": max_plies,
-            "model_a": str(Path(model_a_path).resolve()),
-            "model_b": str(Path(model_b_path).resolve()),
+            "model_a": (
+                str(Path(model_a_path).resolve()) if model_a_path else None
+            ),
+            "model_b": (
+                str(Path(model_b_path).resolve()) if model_b_path else None
+            ),
             "opening_count": opening_count,
         },
         "games": games,
@@ -227,19 +276,27 @@ def main() -> None:
     parser.add_argument("model_b")
     parser.add_argument("--depth", type=int, default=2)
     parser.add_argument("--max-plies", type=int, default=120)
-    parser.add_argument("--opening-count", type=int, default=len(OPENINGS))
+    parser.add_argument("--openings")
+    parser.add_argument("--opening-count", type=int)
     parser.add_argument("--estimate-elo", action="store_true")
     args = parser.parse_args()
     try:
+        openings = load_openings(args.openings) if args.openings else None
+        opening_count = (
+            args.opening_count
+            if args.opening_count is not None
+            else len(openings) if openings is not None else len(OPENINGS)
+        )
         result = run_match(
             args.engine_a,
-            args.model_a,
+            None if args.model_a in ("-", "classic") else args.model_a,
             args.engine_b,
-            args.model_b,
+            None if args.model_b in ("-", "classic") else args.model_b,
             depth=args.depth,
             max_plies=args.max_plies,
-            opening_count=args.opening_count,
+            opening_count=opening_count,
             estimate_elo=args.estimate_elo,
+            openings=openings,
         )
     except (OSError, RuntimeError, ValueError) as error:
         parser.error(str(error))

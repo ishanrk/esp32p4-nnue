@@ -16,6 +16,8 @@ from data import (
     split_shard_paths,
 )
 from profiles import (
+    ACCUMULATOR_BIAS_MAX,
+    ACCUMULATOR_BIAS_MIN,
     ACTIVATION_CLIP,
     FEATURES_PER_BUCKET,
     FEATURE_QUANTIZATION,
@@ -28,6 +30,46 @@ from net import NnueNetwork
 
 TRAINING_MANIFEST_VERSION = 1
 CHECKPOINT_SELECTION_RULE = "minimum validation transformed smooth l1"
+
+
+def constrain_quantized_parameters(
+    network: NnueNetwork,
+) -> dict[str, int]:
+    limits = {
+        "feature_weights": (
+            network.feature_transformer.weight,
+            -128 / FEATURE_QUANTIZATION,
+            127 / FEATURE_QUANTIZATION,
+        ),
+        "feature_bias": (
+            network.feature_bias,
+            ACCUMULATOR_BIAS_MIN / FEATURE_QUANTIZATION,
+            ACCUMULATOR_BIAS_MAX / FEATURE_QUANTIZATION,
+        ),
+        "output_weights": (
+            network.output.weight,
+            -32768 / OUTPUT_QUANTIZATION,
+            32767 / OUTPUT_QUANTIZATION,
+        ),
+        "output_bias": (
+            network.output.bias,
+            -(2**31) / (FEATURE_QUANTIZATION * OUTPUT_QUANTIZATION),
+            (2**31 - 1) / (FEATURE_QUANTIZATION * OUTPUT_QUANTIZATION),
+        ),
+    }
+    counts = {}
+    with torch.no_grad():
+        for name, (parameter, minimum, maximum) in limits.items():
+            counts[name] = int(
+                torch.count_nonzero(
+                    (parameter < minimum) | (parameter > maximum)
+                ).item()
+            )
+            parameter.clamp_(minimum, maximum)
+        network.feature_transformer.weight[
+            network.profile.padding_feature
+        ].zero_()
+    return counts
 
 
 class ShardDataset(torch.utils.data.IterableDataset):
@@ -150,6 +192,26 @@ def create_training_loader(
     return torch.utils.data.DataLoader(**arguments)
 
 
+def training_batches(
+    shard_paths: Sequence[Path],
+    batch_size: int,
+    seed: int,
+    profile: NnueProfile,
+) -> Iterator[tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    seed_parts = [seed & 0xFFFFFFFF, (seed >> 32) & 0xFFFFFFFF]
+    shard_random = np.random.default_rng(np.random.SeedSequence(seed_parts))
+    for shard_index in shard_random.permutation(len(shard_paths)):
+        index = int(shard_index)
+        side, opponent, score = load_shard(shard_paths[index], profile)
+        row_random = np.random.default_rng(
+            np.random.SeedSequence(seed_parts + [index])
+        )
+        order = row_random.permutation(len(score))
+        for start in range(0, len(order), batch_size):
+            rows = order[start : start + batch_size]
+            yield side[rows], opponent[rows], score[rows]
+
+
 def train_baseline(
     data_path: str | Path,
     output_path: str | Path,
@@ -162,6 +224,7 @@ def train_baseline(
     requested_device: str,
     workers: int,
     weight_decay: float,
+    evaluate_test: bool = True,
 ) -> dict[str, Any]:
     if epochs <= 0 or batch_size <= 0 or learning_rate <= 0:
         raise ValueError("epochs batch size and learning rate must be positive")
@@ -192,23 +255,42 @@ def train_baseline(
     best_epoch = 0
     best_validation: dict[str, float] | None = None
     last_training_loss = 0.0
+    constraint_events = {
+        "feature_weights": 0,
+        "feature_bias": 0,
+        "output_weights": 0,
+        "output_bias": 0,
+    }
 
     for epoch in range(1, epochs + 1):
-        loader = create_training_loader(
-            shard_paths["train"],
-            batch_size,
-            workers,
-            seed + epoch - 1,
-            device,
-            profile,
-        )
+        epoch_seed = seed + epoch - 1
+        loader: Any
+        if workers:
+            loader = create_training_loader(
+                shard_paths["train"],
+                batch_size,
+                workers,
+                epoch_seed,
+                device,
+                profile,
+            )
+        else:
+            loader = training_batches(
+                shard_paths["train"], batch_size, epoch_seed, profile
+            )
         network.train()
         loss_sum = 0.0
         training_count = 0
-        for side, opponent, score in loader:
-            side = side.to(device=device, dtype=torch.long)
-            opponent = opponent.to(device=device, dtype=torch.long)
-            target = score.to(device=device, dtype=torch.float32)
+        for side_values, opponent_values, score_values in loader:
+            side = torch.as_tensor(
+                side_values, device=device, dtype=torch.long
+            )
+            opponent = torch.as_tensor(
+                opponent_values, device=device, dtype=torch.long
+            )
+            target = torch.as_tensor(
+                score_values, device=device, dtype=torch.float32
+            )
             prediction = network(side, opponent)
             loss = transformed_loss(prediction, target, score_scale)
             optimizer.zero_grad(set_to_none=True)
@@ -219,6 +301,9 @@ def train_baseline(
         if training_count != split_counts["train"]:
             raise RuntimeError("training loader count mismatch")
         last_training_loss = loss_sum / training_count
+        epoch_constraints = constrain_quantized_parameters(network)
+        for name, count in epoch_constraints.items():
+            constraint_events[name] += count
         validation = evaluate_shards(
             network,
             shard_paths["validation"],
@@ -240,7 +325,8 @@ def train_baseline(
         print(
             f"epoch {epoch} train_loss {last_training_loss:.6f} "
             f"validation_loss {validation['loss']:.6f} "
-            f"validation_mae {validation['centipawn_mae']:.2f}{marker}"
+            f"validation_mae {validation['centipawn_mae']:.2f} "
+            f"constraint_hits {sum(epoch_constraints.values())}{marker}"
         )
 
     if best_validation is None or not best_epoch:
@@ -248,19 +334,23 @@ def train_baseline(
     network.load_state_dict(
         torch.load(output_path, map_location=device, weights_only=True)
     )
-    test_metrics = evaluate_shards(
-        network,
-        shard_paths["test"],
-        batch_size,
-        score_scale,
-        device,
-    )
-    if test_metrics is None:
-        raise RuntimeError("test split is empty")
-    print(
-        f"best_epoch {best_epoch} test_loss {test_metrics['loss']:.6f} "
-        f"test_mae {test_metrics['centipawn_mae']:.2f}"
-    )
+    test_metrics = None
+    if evaluate_test:
+        test_metrics = evaluate_shards(
+            network,
+            shard_paths["test"],
+            batch_size,
+            score_scale,
+            device,
+        )
+        if test_metrics is None:
+            raise RuntimeError("test split is empty")
+        print(
+            f"best_epoch {best_epoch} test_loss {test_metrics['loss']:.6f} "
+            f"test_mae {test_metrics['centipawn_mae']:.2f}"
+        )
+    else:
+        print(f"best_epoch {best_epoch} test_skipped")
 
     manifest_path = (
         Path(data_path) / "manifest.json"
@@ -299,9 +389,10 @@ def train_baseline(
         },
         "dataset": {
             "description": "prepared sharded teacher centipawn dataset",
+            "evaluation_import": manifest.get("evaluation_import"),
             "feature_mapping_version": manifest["feature_mapping_version"],
             "format_version": manifest["format_version"],
-            "manifest_path": str(manifest_path.resolve()),
+            "manifest_path": manifest_path.name,
             "profile": profile.name,
             "source": manifest["source"],
             "split_counts": split_counts,
@@ -320,6 +411,11 @@ def train_baseline(
         "numpy_version": np.__version__,
         "pytorch_version": str(torch.__version__),
         "seed": seed,
+        "test_evaluation": (
+            "evaluated after validation selection"
+            if evaluate_test
+            else "skipped during architecture selection"
+        ),
         "test_metrics": test_metrics,
         "training_parameters": {
             "batch_size": batch_size,
@@ -329,6 +425,27 @@ def train_baseline(
             "score_scale": score_scale,
             "weight_decay": weight_decay,
             "workers": workers,
+        },
+        "quantization_range_constraints": {
+            "application": "after each training epoch before validation",
+            "events": constraint_events,
+            "feature_bias": [
+                ACCUMULATOR_BIAS_MIN / FEATURE_QUANTIZATION,
+                ACCUMULATOR_BIAS_MAX / FEATURE_QUANTIZATION,
+            ],
+            "feature_weights": [
+                -128 / FEATURE_QUANTIZATION,
+                127 / FEATURE_QUANTIZATION,
+            ],
+            "output_bias": [
+                -(2**31) / (FEATURE_QUANTIZATION * OUTPUT_QUANTIZATION),
+                (2**31 - 1)
+                / (FEATURE_QUANTIZATION * OUTPUT_QUANTIZATION),
+            ],
+            "output_weights": [
+                -32768 / OUTPUT_QUANTIZATION,
+                32767 / OUTPUT_QUANTIZATION,
+            ],
         },
         "validation_metrics": best_validation,
     }
@@ -353,6 +470,7 @@ def main() -> None:
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--weight-decay", type=float, default=0.01)
+    parser.add_argument("--evaluate-test", action="store_true")
     args = parser.parse_args()
     try:
         train_baseline(
@@ -366,6 +484,7 @@ def main() -> None:
             requested_device=args.device,
             workers=args.workers,
             weight_decay=args.weight_decay,
+            evaluate_test=args.evaluate_test,
         )
     except ValueError as error:
         parser.error(str(error))

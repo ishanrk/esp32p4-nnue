@@ -35,12 +35,12 @@ WiFi, Bluetooth, display, web server, or filesystem initialization is present.
 
 ## Model embedding
 
-The repository has no substantive reference network yet. For firmware build
-and binding checks, `esp/generate_smoke_model.py` reads the selected profile
-constants from `train/profiles.py` and writes a deterministic format-version-3
-8x64 image with the required header and an all-zero parameter payload. It is
-328096 bytes because the runtime format has fixed dense dimensions. This smoke
-network has no chess strength and is not the public reference model.
+The repository reference is the substantive `models/reference.nnue` 4x128
+network. Firmware build and binding checks still use
+`esp/generate_smoke_model.py` to create a deterministic format-version-3 4x128
+image with the required header and an all-zero parameter payload. It is 328480
+bytes because the runtime format has fixed dense dimensions. This smoke network
+has no chess strength and is not a second reference artifact.
 
 `esp/CMakeLists.txt` generates the file in the ignored build directory and uses
 ESP-IDF `target_add_binary_data` to link it into flash read-only data. app_main
@@ -67,15 +67,15 @@ The inspected ESP-IDF size report was:
 
 | memory | bytes | detail |
 | --- | ---: | --- |
-| flash | 435598 | 355884 rodata and 79242 text plus small metadata sections |
+| flash | 435996 | 356268 rodata and 79256 text plus small metadata sections |
 | DIRAM | 68388 | 43632 text 16776 bss and 7980 data |
 | HP core RAM | 582 | 514 text and 68 data |
 | LP RAM | 24 | reserved data |
-| total image sections | 487592 | before binary padding |
+| total image sections | 487990 | before binary padding |
 
-The application binary is 487920 bytes or `0x771f0`. It leaves 560656 bytes,
+The application binary is 488304 bytes or `0x77370`. It leaves 560272 bytes,
 53 percent, free in the one MiB factory partition. The bootloader is 23872
-bytes. The merged raw image is 553456 bytes and starts at flash offset zero.
+bytes. The merged raw image is 553840 bytes and starts at flash offset zero.
 
 ## Build artifacts
 

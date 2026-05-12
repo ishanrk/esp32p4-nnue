@@ -9,8 +9,9 @@ median microsecond time and derived nodes per second:
     build/p4bench nn.bin 500000 5 5
 
 The arguments select evaluation iterations per position, common search depth,
-and search repetitions. The NNUE profile comparison page records the four
-profile measurements made with this tool.
+and search repetitions. The NNUE profile comparison page records substantive
+measurements for all four trained profiles. The compact source data is
+`results/profile_comparison.json`.
 
 The UCI perft command reports legal-move node count and elapsed milliseconds.
 Normal go commands report depth, nodes, elapsed milliseconds, and nodes per

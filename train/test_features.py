@@ -6,7 +6,6 @@ import unittest
 from features import (
     ACCUMULATOR_BIAS_MAX,
     ACCUMULATOR_BIAS_MIN,
-    FEATURE_COUNT,
     MAX_ACTIVE_FEATURES,
     active_feature_indices,
     encode_feature_indices,
@@ -14,7 +13,7 @@ from features import (
     king_bucket,
     king_mirror,
 )
-from profiles import MODEL_SIZE_LIMIT, PROFILES
+from profiles import MODEL_SIZE_LIMIT, PROFILES, get_profile
 
 
 FIXTURES = Path(__file__).parents[1] / "test" / "nnue_features.txt"
@@ -22,6 +21,7 @@ FIXTURES = Path(__file__).parents[1] / "test" / "nnue_features.txt"
 
 class FeatureMappingTest(unittest.TestCase):
     def test_shared_fixtures(self) -> None:
+        fixture_profile = get_profile("8x64")
         fixture_count = 0
         for raw_line in FIXTURES.read_text(encoding="utf-8").splitlines():
             if not raw_line or raw_line.startswith("#"):
@@ -31,10 +31,17 @@ class FeatureMappingTest(unittest.TestCase):
             )
             perspective = int(perspective_text)
             expected = sorted(int(value) for value in features_text.split(","))
-            bucket, actual = active_feature_indices(fen, perspective)
+            bucket, actual = active_feature_indices(
+                fen, perspective, fixture_profile
+            )
             self.assertEqual(bucket, int(bucket_text), name)
             self.assertEqual(sorted(actual), expected, name)
-            self.assertTrue(all(0 <= index < FEATURE_COUNT for index in actual))
+            self.assertTrue(
+                all(
+                    0 <= index < fixture_profile.feature_count
+                    for index in actual
+                )
+            )
             fixture_count += 1
         self.assertEqual(fixture_count, 10)
 

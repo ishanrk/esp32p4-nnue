@@ -1,0 +1,9 @@
+{
+  "games_read": 131,
+  "games_rejected": 2,
+  "license": "CC0",
+  "month": "2013-01",
+  "positions": 128,
+  "selection_rule": "first 128 unique legal standard initial-position games after 12 plies skipping short invalid and finished games",
+  "source": "https://database.lichess.org/standard/lichess_db_standard_rated_2013-01.pgn.zst"
+}
