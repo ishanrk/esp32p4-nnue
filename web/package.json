@@ -1,0 +1,25 @@
+{
+  "name": "esp32p4-nnue-guide",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run sync && vite",
+    "sync": "node scripts/sync-data.mjs",
+    "check": "npm run sync && tsc --noEmit && tsx src/site.test.ts",
+    "build": "npm run sync && vite build && node scripts/postbuild.mjs && node scripts/validate.mjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "6.1.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "vite": "8.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "tsx": "4.23.12",
+    "typescript": "7.0.2"
+  }
+}

@@ -2,7 +2,6 @@
 /esp/build/
 /esp/sdkconfig
 /esp/sdkconfig.old
-/book/book/
 __pycache__/
 *.py[cod]
 *.bin
@@ -23,3 +22,6 @@ __pycache__/
 !/test/training_labels.jsonl
 !/test/training_labels.jsonl.meta.json
 /.vscode/
+/web/node_modules/
+/web/dist/
+/web/public/generated/
