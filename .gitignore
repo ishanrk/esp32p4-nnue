@@ -10,7 +10,6 @@ __pycache__/
 *.nnue.json
 !/models/reference.nnue
 *.npz
-*.csv
 *.jsonl
 *.jsonl.meta.json
 *.pgn

@@ -209,7 +209,6 @@ class ExportTest(unittest.TestCase):
                 "4k3/8/8/8/7q/8/Q7/4K3 w - - 0 1",
                 "4k3/8/8/8/7q/8/Q7/4K3 b - - 0 1",
             )
-            python_scores = []
             python_scores = [evaluate_integer(loaded, fen) for fen in fens]
             result = subprocess.run(
                 [c_eval_tool, str(model_path)],

@@ -1,23 +1,12 @@
 from __future__ import annotations
 
 from profiles import (
-    ACCUMULATOR_BIAS_MAX,
-    ACCUMULATOR_BIAS_MIN,
-    ACTIVATION_CLIP,
     DEFAULT_PROFILE,
     FEATURES_PER_BUCKET,
-    FEATURE_MAPPING_VERSION,
-    FEATURE_QUANTIZATION,
     MAX_ACTIVE_FEATURES,
     NnueProfile,
-    OUTPUT_QUANTIZATION,
 )
 
-KING_BUCKET_COUNT = DEFAULT_PROFILE.bucket_count
-HIDDEN_SIZE = DEFAULT_PROFILE.hidden_width
-FEATURE_COUNT = DEFAULT_PROFILE.feature_count
-PADDING_FEATURE = DEFAULT_PROFILE.padding_feature
-FORMAT_VERSION = FEATURE_MAPPING_VERSION
 PIECE_INDEX = {symbol: index for index, symbol in enumerate("PNBRQKpnbrqk")}
 
 

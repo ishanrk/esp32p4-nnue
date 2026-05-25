@@ -4,16 +4,20 @@ from pathlib import Path
 import unittest
 
 from features import (
-    ACCUMULATOR_BIAS_MAX,
-    ACCUMULATOR_BIAS_MIN,
-    MAX_ACTIVE_FEATURES,
     active_feature_indices,
     encode_feature_indices,
     feature_index,
     king_bucket,
     king_mirror,
 )
-from profiles import MODEL_SIZE_LIMIT, PROFILES, get_profile
+from profiles import (
+    ACCUMULATOR_BIAS_MAX,
+    ACCUMULATOR_BIAS_MIN,
+    MAX_ACTIVE_FEATURES,
+    MODEL_SIZE_LIMIT,
+    PROFILES,
+    get_profile,
+)
 
 
 FIXTURES = Path(__file__).parents[1] / "test" / "nnue_features.txt"

@@ -11,12 +11,10 @@
   --panel-strong: #101710;
   --lime: #cfff45;
   --lime-hover: #ddff78;
-  --lime-muted: #84a62f;
   --ink: #edf6e4;
   --muted: #a6b09d;
   --line: #33422c;
   --line-strong: #6c8b40;
-  --key-depth: #40531f;
   --display: "Block Blueprint", Impact, sans-serif;
   --mono: "Courier New", ui-monospace, monospace;
   font-family: Arial, Helvetica, sans-serif;
@@ -28,9 +26,9 @@
 html { min-width: 320px; scroll-behavior: smooth; scroll-padding-top: 92px; }
 body { min-width: 320px; min-height: 100vh; margin: 0; color: var(--ink); background: var(--black); }
 a { color: inherit; }
-button, input { font: inherit; }
-button, a, input { -webkit-tap-highlight-color: transparent; }
-a:focus-visible, button:focus-visible, input:focus-visible, [tabindex="0"]:focus-visible {
+input { font: inherit; }
+a, input { -webkit-tap-highlight-color: transparent; }
+a:focus-visible, input:focus-visible, [tabindex="0"]:focus-visible {
   outline: 3px solid var(--lime);
   outline-offset: 4px;
 }

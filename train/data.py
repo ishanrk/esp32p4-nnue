@@ -6,12 +6,14 @@ from typing import Any
 
 import numpy as np
 
-from features import (
+from profiles import (
+    DEFAULT_PROFILE,
     FEATURES_PER_BUCKET,
-    FORMAT_VERSION,
+    FEATURE_MAPPING_VERSION,
     MAX_ACTIVE_FEATURES,
+    NnueProfile,
+    profile_from_dimensions,
 )
-from profiles import DEFAULT_PROFILE, NnueProfile, profile_from_dimensions
 
 DATASET_FORMAT_VERSION = 1
 SCORE_LIMIT = 30000
@@ -75,7 +77,7 @@ def load_dataset_manifest(
     profile = dataset_profile(manifest)
     expected = {
         "format_version": DATASET_FORMAT_VERSION,
-        "feature_mapping_version": FORMAT_VERSION,
+        "feature_mapping_version": FEATURE_MAPPING_VERSION,
         "king_buckets": profile.bucket_count,
         "features_per_bucket": FEATURES_PER_BUCKET,
         "feature_count": profile.feature_count,

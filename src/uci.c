@@ -77,7 +77,6 @@ static search_limits_t parse_search_limits(position_t *position, char *line) {
             white_increment = strtoull(value, NULL, 10);
         } else if (!strcmp(token, "binc")) {
             black_increment = strtoull(value, NULL, 10);
-        } else if (!strcmp(token, "nodes")) {
         }
     }
     if (!limits.move_time_ms && (white_time || black_time)) {

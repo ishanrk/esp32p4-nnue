@@ -16,13 +16,16 @@ from data import (
     SPLITS,
     clip_score,
 )
-from features import (
+from features import encode_position
+from profiles import (
+    DEFAULT_PROFILE,
     FEATURES_PER_BUCKET,
-    FORMAT_VERSION,
+    FEATURE_MAPPING_VERSION,
     MAX_ACTIVE_FEATURES,
-    encode_position,
+    PROFILE_BY_NAME,
+    NnueProfile,
+    get_profile,
 )
-from profiles import DEFAULT_PROFILE, PROFILE_BY_NAME, NnueProfile, get_profile
 
 
 def _write_shard(
@@ -170,7 +173,7 @@ def prepare_dataset(
     manifest = {
         "feature_dtype": FEATURE_DTYPE.name,
         "feature_count": profile.feature_count,
-        "feature_mapping_version": FORMAT_VERSION,
+        "feature_mapping_version": FEATURE_MAPPING_VERSION,
         "features_per_bucket": FEATURES_PER_BUCKET,
         "format_version": DATASET_FORMAT_VERSION,
         "hidden_width": profile.hidden_width,

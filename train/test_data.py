@@ -20,11 +20,11 @@ from data import (
     load_shard,
     split_shard_paths,
 )
-from features import MAX_ACTIVE_FEATURES, PADDING_FEATURE, encode_position
+from features import encode_position
 from import_evals import import_evaluations, parse_evaluation_record
 from label import analyse_with_teacher, write_labeled_positions
 from prep import prepare_dataset
-from profiles import PROFILES
+from profiles import DEFAULT_PROFILE, MAX_ACTIVE_FEATURES, PROFILES
 
 
 ROOT = Path(__file__).parents[1]
@@ -311,7 +311,12 @@ class PreparationTest(unittest.TestCase):
 
             first_train = load_shard(output / "train_00000.npz")[0][0]
             self.assertEqual(
-                int(np.count_nonzero(first_train == PADDING_FEATURE)), 29
+                int(
+                    np.count_nonzero(
+                        first_train == DEFAULT_PROFILE.padding_feature
+                    )
+                ),
+                29,
             )
 
     def test_padding_and_malformed_fen(self) -> None:
@@ -320,8 +325,8 @@ class PreparationTest(unittest.TestCase):
         )
         self.assertEqual(len(side), MAX_ACTIVE_FEATURES)
         self.assertEqual(len(opponent), MAX_ACTIVE_FEATURES)
-        self.assertEqual(side.count(PADDING_FEATURE), 29)
-        self.assertEqual(opponent.count(PADDING_FEATURE), 29)
+        self.assertEqual(side.count(DEFAULT_PROFILE.padding_feature), 29)
+        self.assertEqual(opponent.count(DEFAULT_PROFILE.padding_feature), 29)
 
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / "bad.jsonl"

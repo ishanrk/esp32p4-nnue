@@ -7,12 +7,7 @@ from profiles import (
     DEFAULT_PROFILE,
     FEATURE_QUANTIZATION,
     NnueProfile,
-    OUTPUT_QUANTIZATION,
 )
-
-Q1 = FEATURE_QUANTIZATION
-Q2 = OUTPUT_QUANTIZATION
-CLIP = ACTIVATION_CLIP
 
 
 class NnueNetwork(torch.nn.Module):
@@ -39,7 +34,7 @@ class NnueNetwork(torch.nn.Module):
         opponent = (
             self.feature_transformer(opponent_features).sum(1) + self.feature_bias
         )
-        clip = CLIP / Q1
+        clip = ACTIVATION_CLIP / FEATURE_QUANTIZATION
         side = torch.clamp(side, 0.0, clip)
         opponent = torch.clamp(opponent, 0.0, clip)
         return self.output(torch.cat((side, opponent), 1)).squeeze(1)
