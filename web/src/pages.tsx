@@ -599,7 +599,7 @@ cmake --build build --parallel
 printf '%s\\n' uci \\
   'setoption name EvalFile value models/reference.nnue' \\
   isready 'position startpos' eval 'go depth 5' quit | build/p4nnue`}</Code>
-        <Notice pending>Firmware embedding of the trained artifact and all physical P4 measurements belong to the next hardware stage.</Notice>
+        <Notice>The ESP32 P4 firmware embeds this exact artifact in mapped read-only flash without copying it into heap RAM.</Notice>
       </Section>
     </main>
   );
@@ -636,9 +636,9 @@ idf.py build
 idf.py size
 idf.py merge-bin -o esp32p4_nnue_merged.bin`}</Code>
         <p>
-          ESP-IDF 6.0 with RISC-V GCC 15.2 built the 4×128 smoke-bound image.
-          The application binary was 488,304 bytes with 53% of the one-MiB
-          factory partition free. The merged raw image was 553,840 bytes.
+          ESP-IDF 6.0.2 with RISC-V GCC 15.2 built the 4×128 reference-model image.
+          The application binary was 488,320 bytes with 53% of the one-MiB
+          factory partition free. The merged raw image was 553,856 bytes.
           Those are compile and layout checks, not board runtime measurements.
         </p>
       </Section>
@@ -647,16 +647,20 @@ idf.py merge-bin -o esp32p4_nnue_merged.bin`}</Code>
         <p>
           Firmware is single-core, the main task stack is 32,768 bytes, PSRAM is
           not assumed, and the 262,144-byte transposition table is allocated from
-          normal heap. The NNUE image is borrowed from mapped read-only flash;
-          only the descriptor and position accumulators use runtime RAM. The
-          build smoke image validates binding but has no chess strength.
+          normal heap. The linker places the 328,480-byte NNUE at
+          <code>0x40020120</code> through <code>0x40070440</code> in mapped
+          <code>.flash.rodata</code>. The size report records 79,256 bytes of flash
+          text, 356,276 bytes of flash read-only data, 7,980 bytes of internal
+          data, and 16,776 bytes of internal BSS. Only the network descriptor and
+          position accumulators use runtime RAM; the trained reference model
+          supplies the published chess evaluation.
         </p>
       </Section>
 
       <Section id="hardware" index="03" title="Next physical measurements">
         <Notice pending><strong>physical esp32 p4 results pending</strong></Notice>
         <ul>
-          <li>boot and UART UCI behavior with the trained reference model</li>
+          <li>boot and UART UCI behavior</li>
           <li>real table allocation and stack headroom</li>
           <li>integer evaluations per second and fixed-depth search throughput</li>
           <li>native 64-bit bitboards against explicit 32-bit halves</li>
