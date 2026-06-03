@@ -74,7 +74,7 @@ export function HomePage({ data }: { data: SiteData }) {
       <section className="signal-strip" aria-label="Project status">
         <span>host engine complete</span>
         <span>real reference trained</span>
-        <span>esp32 p4 timing pending</span>
+        <span>board protocol compiled</span>
       </section>
 
       <section className="home-grid">
@@ -245,8 +245,11 @@ printf '%s\\n' uci \\
         <p>
           <code>p4test</code> covers canonical perft, legal edge cases, make and
           undo restoration, incremental Zobrist state, incremental NNUE against
-          full refresh, and search smoke. Python covers mapping, import, data,
-          training, export, integer comparison, and arena orchestration.
+          full refresh, and search smoke. <code>p4protocol</code> covers framed
+          parsing, upload state, validation errors, position, and search results;
+          <code>p4boardclient</code> independently checks the Python codec. Python
+          also covers mapping, import, data, training, export, integer comparison,
+          and arena orchestration.
         </p>
       </Section>
 
@@ -399,11 +402,11 @@ bits 19..31  reserved`}</Code>
           </table>
         </div>
         <p>
-          All multibyte values are little endian. <code>load_nnue</code> owns a host
-          allocation; <code>bind_nnue</code> borrows aligned read-only storage for
-          firmware. Both validate dimensions, constants, exact size, and safe bias
-          range before changing the active network. Failed loads preserve the
-          previous valid network.
+          All multibyte values are little endian. <code>validate_nnue</code> checks
+          dimensions, constants, exact size, alignment, and safe bias range without
+          changing the active network. <code>load_nnue</code> owns a host allocation;
+          <code>bind_nnue</code> validates then borrows aligned read-only storage for
+          firmware. Failed loads preserve the previous valid network.
         </p>
       </Section>
     </main>
@@ -599,7 +602,7 @@ cmake --build build --parallel
 printf '%s\\n' uci \\
   'setoption name EvalFile value models/reference.nnue' \\
   isready 'position startpos' eval 'go depth 5' quit | build/p4nnue`}</Code>
-        <Notice>The ESP32 P4 firmware embeds this exact artifact in mapped read-only flash without copying it into heap RAM.</Notice>
+        <Notice>The ESP32 P4 firmware embeds this exact artifact as its mapped read-only fallback and also accepts a validated user model from a dedicated flash partition.</Notice>
       </Section>
     </main>
   );
@@ -611,12 +614,13 @@ export function StatusPage() {
       <PageTitle
         index="status / current boundary"
         title="Firmware compiles · hardware evidence pending"
-        lead="The thin ESP-IDF wrapper shares the core, binds flash-mapped NNUE storage, and exposes UCI. No physical-board claim is made yet."
+        lead="The thin ESP-IDF wrapper shares the core, safely selects mapped NNUE storage, and exposes a versioned binary board protocol. No physical-board claim is made yet."
       />
       <section className="status-line" aria-label="Implementation status">
         <div className="complete"><span>complete</span><strong>shared C core</strong></div>
         <div className="complete"><span>complete</span><strong>reference NNUE</strong></div>
         <div className="complete"><span>complete</span><strong>ESP-IDF build</strong></div>
+        <div className="complete"><span>complete</span><strong>protocol v1</strong></div>
         <div className="pending"><span>pending</span><strong>physical P4 run</strong></div>
       </section>
 
@@ -624,8 +628,9 @@ export function StatusPage() {
         <p>
           <code>esp/components/core/CMakeLists.txt</code> compiles the engine files
           directly from <code>src</code>; there is no firmware copy. <code>app_main</code>
-          configures unbuffered UART I/O, initializes chess, binds a flash image,
-          allocates a fixed 256 KiB table, and enters <code>run_uci_loop</code>.
+          configures unbuffered UART I/O, initializes chess, selects a valid
+          flash-mapped network, allocates a fixed 256 KiB table, and enters the
+          board protocol loop.
           Wi-Fi, Bluetooth, display, filesystem, server, and authentication are absent.
         </p>
         <Code>{`. /path/to/esp-idf/export.sh
@@ -637,30 +642,65 @@ idf.py size
 idf.py merge-bin -o esp32p4_nnue_merged.bin`}</Code>
         <p>
           ESP-IDF 6.0.2 with RISC-V GCC 15.2 built the 4×128 reference-model image.
-          The application binary was 488,320 bytes with 53% of the one-MiB
-          factory partition free. The merged raw image was 553,856 bytes.
-          Those are compile and layout checks, not board runtime measurements.
+          Firmware version 1.1.0 produced a 492,736-byte application binary with
+          53% of the one-MiB factory partition free and a 558,272-byte merged raw
+          image. Both grew 4,416 bytes from the previous firmware commit. Those are
+          compile and layout checks, not board runtime measurements.
         </p>
       </Section>
 
-      <Section id="memory" index="02" title="Current memory policy">
+      <Section id="protocol" index="02" title="Board protocol version 1">
+        <p>
+          Every frame starts with ASCII <code>P4</code>, then one-byte version and
+          command fields, a little-endian <code>u16</code> payload length, at most
+          1,024 payload bytes, and a little-endian IEEE CRC32 over the header after
+          magic plus payload. Successful replies set command bit 7. Error
+          <code>0xff</code> returns the rejected command and an error code. The fixed
+          1,034-byte parser buffer handles partial and consecutive frames without allocation.
+        </p>
+        <Code>{`01 hello        02 device info    03 firmware info
+04 model info   10 model begin    11 model chunk
+12 model commit 20 position       21 go
+22 bench        ff error`}</Code>
+        <p>
+          Position carries a complete ASCII FEN. Go type 1 requests fixed depth;
+          type 2 requests device-measured milliseconds. The result reports UCI move,
+          signed centipawn score, completed depth, nodes, elapsed milliseconds,
+          active model state, and model CRC32. Version 1 exposes no authentication,
+          signatures, accounts, or cryptographic identity field. The ESP32 P4 target
+          value is an unverified firmware report.
+        </p>
+        <Code>{`python3 esp/board_client.py --port /dev/ttyACM0 info
+python3 esp/board_client.py --port /dev/ttyACM0 upload models/reference.nnue
+python3 esp/board_client.py --port /dev/ttyACM0 search 'FEN' --depth 5
+python3 esp/board_client.py --port /dev/ttyACM0 search 'FEN' --time-ms 1000
+python3 esp/board_client.py --port /dev/ttyACM0 bench`}</Code>
+      </Section>
+
+      <Section id="memory" index="03" title="Flash activation and memory policy">
         <p>
           Firmware is single-core, the main task stack is 32,768 bytes, PSRAM is
           not assumed, and the 262,144-byte transposition table is allocated from
-          normal heap. The linker places the 328,480-byte NNUE at
-          <code>0x40020120</code> through <code>0x40070440</code> in mapped
-          <code>.flash.rodata</code>. The size report records 79,256 bytes of flash
-          text, 356,276 bytes of flash read-only data, 7,980 bytes of internal
-          data, and 16,776 bytes of internal BSS. Only the network descriptor and
-          position accumulators use runtime RAM; the trained reference model
-          supplies the published chess evaluation.
+          normal heap. The embedded 328,480-byte fallback remains in mapped
+          <code>.flash.rodata</code>. A dedicated 328-KiB partition contains one
+          4-KiB metadata sector, exactly one model, and 3,296 rounding bytes.
+          Uploaded chunks stream directly to flash; commit writes the validity
+          marker last after length, CRC32, format 3, 4-bucket, and width-128 checks.
+          Boot maps an uploaded model read-only only when metadata, full CRC, and
+          <code>validate_nnue</code> all pass. Otherwise it uses the embedded fallback.
+        </p>
+        <p>
+          The current size report records 81,946 bytes of flash text, 355,844
+          bytes of flash read-only data, 8,196 bytes of internal data, and 16,776
+          bytes of internal BSS. The parser and upload state are fixed-size; no full
+          user model buffer exists in RAM.
         </p>
       </Section>
 
-      <Section id="hardware" index="03" title="Next physical measurements">
+      <Section id="hardware" index="04" title="Next physical measurements">
         <Notice pending><strong>physical esp32 p4 results pending</strong></Notice>
         <ul>
-          <li>boot and UART UCI behavior</li>
+          <li>boot and UART protocol behavior including interrupted upload</li>
           <li>real table allocation and stack headroom</li>
           <li>integer evaluations per second and fixed-depth search throughput</li>
           <li>native 64-bit bitboards against explicit 32-bit halves</li>
@@ -668,8 +708,8 @@ idf.py merge-bin -o esp32p4_nnue_merged.bin`}</Code>
         </ul>
         <p>
           Web Serial play, verified device identity, NNUE visualization, and the
-          online arena remain later website stages. No cryptographic device work
-          or PIE implementation is part of this guide feature.
+          online arena remain later website stages. No browser implementation,
+          cryptographic device work, or PIE implementation is part of this feature.
         </p>
       </Section>
     </main>

@@ -95,8 +95,18 @@ if(BUILD_TESTING)
         P4_NNUE_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/nnue_features.txt"
     )
     add_test(NAME p4test COMMAND p4test)
+
+    add_executable(p4protocoltest test/protocol_test.c esp/protocol.c)
+    target_include_directories(p4protocoltest PRIVATE esp)
+    target_compile_options(p4protocoltest PRIVATE ${P4_WARNINGS})
+    add_test(NAME p4protocol COMMAND p4protocoltest)
+
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME p4boardclient
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_board_client.py
+        )
         add_test(
             NAME p4features
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/train/test_features.py

@@ -866,8 +866,14 @@ static void test_nnue_loader(void *memory) {
     int16_t *feature_bias =
         (int16_t *)(bytes + NNUE_FEATURE_BIAS_OFFSET);
 
+    expect_true("valid network validation",
+                validate_nnue(memory, NNUE_FILE_SIZE));
     expect_true("valid network bind", bind_nnue(memory, NNUE_FILE_SIZE));
     expect_true("valid network loaded", nnue_is_loaded());
+    bytes[NNUE_MAGIC_OFFSET + NNUE_MAGIC_SIZE - 1] = 'x';
+    expect_true("invalid validation", !validate_nnue(memory, NNUE_FILE_SIZE));
+    expect_true("validation preserves network", nnue_is_loaded());
+    memcpy(memory, valid_header, sizeof(valid_header));
     unload_nnue();
 
     bytes[NNUE_MAGIC_OFFSET + NNUE_MAGIC_SIZE - 1] = 'x';

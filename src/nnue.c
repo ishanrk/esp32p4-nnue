@@ -62,7 +62,7 @@ static bool native_little_endian(void) {
     return *(const uint8_t *)&one == 1;
 }
 
-static bool bind_network(const void *data, size_t size, bool owns_memory) {
+bool validate_nnue(const void *data, size_t size) {
     if (!data || size < NNUE_HEADER_SIZE || !native_little_endian() ||
         (uintptr_t)data % _Alignof(int16_t)) return false;
     const uint8_t *bytes = data;
@@ -90,9 +90,16 @@ static bool bind_network(const void *data, size_t size, bool owns_memory) {
         if (feature_bias[i] < NNUE_ACCUMULATOR_BIAS_MIN ||
             feature_bias[i] > NNUE_ACCUMULATOR_BIAS_MAX) return false;
     }
+    return true;
+}
+
+static bool bind_network(const void *data, size_t size, bool owns_memory) {
+    if (!validate_nnue(data, size)) return false;
+    const uint8_t *bytes = data;
 
     unload_nnue();
-    network.feature_bias = feature_bias;
+    network.feature_bias =
+        (const int16_t *)(bytes + NNUE_FEATURE_BIAS_OFFSET);
     network.output_weights =
         (const int16_t *)(bytes + NNUE_OUTPUT_WEIGHTS_OFFSET);
     network.feature_weights =

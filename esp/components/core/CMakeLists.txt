@@ -7,7 +7,6 @@ idf_component_register(
         "../../../src/position.c"
         "../../../src/search.c"
         "../../../src/system.c"
-        "../../../src/uci.c"
     INCLUDE_DIRS "../../../src"
     REQUIRES esp_timer
 )

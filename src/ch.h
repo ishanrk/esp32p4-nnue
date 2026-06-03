@@ -216,6 +216,7 @@ void move_to_uci(move_t move, char output[6]);
 uint64_t perft(position_t *position, int depth);
 
 bool load_nnue(const char *path);
+bool validate_nnue(const void *data, size_t size);
 bool bind_nnue(const void *data, size_t size);
 void unload_nnue(void);
 bool nnue_is_loaded(void);
