@@ -3,6 +3,10 @@
 #include "protocol.h"
 
 #include "esp_app_desc.h"
+#include "esp_log.h"
+#include "driver/uart.h"
+#include "freertos/FreeRTOS.h"
+#include "sdkconfig.h"
 
 #include <limits.h>
 #include <stdbool.h>
@@ -14,7 +18,14 @@ extern const uint8_t reference_nnue_start[]
 extern const uint8_t reference_nnue_end[]
     asm("_binary_reference_nnue_end");
 
-enum { FIRMWARE_TT_BYTES = 256 * 1024 };
+enum {
+    FIRMWARE_TT_BYTES = 256 * 1024,
+    UART_RECEIVE_CHUNK_BYTES = 256,
+    UART_RX_RING_BYTES = 512,
+    UART_TX_RING_BYTES = 0
+};
+
+static const char *firmware_log_tag = "firmware";
 
 typedef struct {
     model_storage_t model_storage;
@@ -139,12 +150,40 @@ static board_protocol_error_t run_protocol_benchmark(
 static void write_protocol_bytes(const uint8_t *data,
                                  size_t size,
                                  void *argument) {
-    (void)argument;
-    fwrite(data, 1, size, stdout);
-    fflush(stdout);
+    uart_port_t port = *(const uart_port_t *)argument;
+    (void)uart_write_bytes(port, data, size);
 }
 
-static void run_protocol_loop(firmware_context_t *context) {
+static bool initialize_uart_transport(uart_port_t *port) {
+    *port = (uart_port_t)CONFIG_ESP_CONSOLE_UART_NUM;
+    esp_err_t error = uart_driver_install(
+        *port, UART_RX_RING_BYTES, UART_TX_RING_BYTES, 0, NULL, 0);
+    if (error == ESP_OK) return true;
+    ESP_LOGE(firmware_log_tag, "uart driver initialization failed %s",
+             esp_err_to_name(error));
+    return false;
+}
+
+static int read_uart_chunk(uart_port_t port,
+                           uint8_t data[UART_RECEIVE_CHUNK_BYTES]) {
+    int received = uart_read_bytes(port, data, 1, portMAX_DELAY);
+    if (received != 1) return -1;
+
+    size_t buffered = 0;
+    if (uart_get_buffered_data_len(port, &buffered) != ESP_OK) return -1;
+    if (buffered > UART_RECEIVE_CHUNK_BYTES - 1) {
+        buffered = UART_RECEIVE_CHUNK_BYTES - 1;
+    }
+    if (!buffered) return received;
+
+    int additional = uart_read_bytes(
+        port, data + received, (uint32_t)buffered, 0);
+    if (additional < 0) return -1;
+    return received + additional;
+}
+
+static bool run_protocol_loop(firmware_context_t *context,
+                              uart_port_t *port) {
     board_protocol_backend_t backend = {
         .context = context,
         .get_info = get_device_info,
@@ -157,12 +196,12 @@ static void run_protocol_loop(firmware_context_t *context) {
     };
     board_protocol_t protocol;
     board_protocol_init(&protocol, &backend);
+    uint8_t input[UART_RECEIVE_CHUNK_BYTES];
     for (;;) {
-        int byte = getchar();
-        if (byte == EOF) continue;
-        uint8_t input = (uint8_t)byte;
-        board_protocol_feed(&protocol, &input, 1,
-                            write_protocol_bytes, NULL);
+        int received = read_uart_chunk(*port, input);
+        if (received < 0) return false;
+        board_protocol_feed(&protocol, input, (size_t)received,
+                            write_protocol_bytes, port);
     }
 }
 
@@ -173,8 +212,6 @@ void app_main(void) {
         (size_t)((uintptr_t)reference_nnue_end -
                  (uintptr_t)reference_nnue_start);
 
-    setvbuf(stdin, NULL, _IONBF, 0);
-    setvbuf(stdout, NULL, _IONBF, 0);
     initialize_chess();
     if (!model_storage_init(&context.model_storage,
                             reference_nnue_start, model_size)) return;
@@ -184,7 +221,17 @@ void app_main(void) {
         unload_nnue();
         return;
     }
-    run_protocol_loop(&context);
+    uart_port_t port;
+    if (!initialize_uart_transport(&port)) {
+        free_transposition_table(&context.table);
+        model_storage_deinit(&context.model_storage);
+        unload_nnue();
+        return;
+    }
+    if (!run_protocol_loop(&context, &port)) {
+        ESP_LOGE(firmware_log_tag, "uart receive failed");
+    }
+    uart_driver_delete(port);
     free_transposition_table(&context.table);
     model_storage_deinit(&context.model_storage);
     unload_nnue();

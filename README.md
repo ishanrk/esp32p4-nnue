@@ -54,15 +54,20 @@ idf.py size
 idf.py merge-bin -o esp32p4_nnue_merged.bin
 ```
 
-The protocol build produces a 492,736-byte application image and a 558,272-byte
-merged image, both 4,416 bytes larger than the previous firmware commit. The
-one-MiB application partition remains 53% free. The linker places the embedded
-model in `.flash.rodata`; the size report attributes 81,946 bytes to flash text,
-355,844 bytes to flash read-only data, 8,196 bytes to internal data, and 16,776
+The UART-driver build produces a 514,384-byte application image, 22,768 bytes
+larger than the polling-stdio build under the same hardware configuration. The
+one-MiB application partition remains 51% free. The linker places the embedded
+model in `.flash.rodata`; the size report attributes 95,344 bytes to flash text,
+360,652 bytes to flash read-only data, 8,560 bytes to internal data, and 16,824
 bytes to internal BSS.
 
-This verifies compilation and image layout for ESP32 P4. Physical boot, UART,
-speed, memory headroom, power, and thermal behavior have not been tested yet.
+Physical boot through `app_main` has been observed on an ESP32 P4 revision 1.3.
+That first board test exposed a single-core watchdog failure in the polling
+stdio receive loop. Firmware now uses the interrupt-driven ESP-IDF UART driver
+with blocking receive and binary-transparent direct reads and writes. Physical
+validation of this transport fix remains pending until the image is manually
+reflashed. Search speed, memory headroom, power, and thermal behavior also
+remain unmeasured on hardware.
 
 ## Board protocol version 1
 
