@@ -1,15 +1,16 @@
 {
-  "name": "esp32p4-nnue-guide",
+  "name": "esp32p4-nnue-web",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "npm run sync && vite",
-    "sync": "node scripts/sync-data.mjs",
-    "check": "npm run sync && tsc --noEmit && tsx src/site.test.ts",
-    "build": "npm run sync && vite build && node scripts/postbuild.mjs && node scripts/validate.mjs"
+    "dev": "vite",
+    "check": "tsc --noEmit",
+    "test": "tsx src/site.test.ts",
+    "build": "vite build && node scripts/validate.mjs"
   },
   "dependencies": {
+    "chess.js": "1.4.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

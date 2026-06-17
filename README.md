@@ -14,23 +14,22 @@ ctest --test-dir build --output-on-failure
 ./build/p4nnue
 ```
 
-## Public guide
+## Public site
 
-The static React and TypeScript guide covers training, architecture, results,
-the reference download, and firmware status. It is configured for
-[nnue.ishankumthekar.com](https://nnue.ishankumthekar.com).
+The static React and TypeScript site at
+[nnue.ishankumthekar.com](https://nnue.ishankumthekar.com) is a direct hardware
+chess interface. Chrome or Edge connects to the board through Web Serial on the
+PWR USB TO UART connector and speaks the existing binary protocol without a
+backend. Detach the serial device from WSL before giving it to the browser.
 
 ```sh
 cd web
 npm ci
 npm run check
+npm test
 npm run build
 npm run dev
 ```
-
-The build copies `models/reference.nnue`, `models/reference.json`, and the
-compact `results` JSON into generated output. It does not keep a second model
-copy in source control.
 
 ## ESP32 P4 firmware
 
