@@ -31,4 +31,11 @@ if (output.some((file) => file === "fonts" || file.startsWith("fonts/"))) {
 const html = readFileSync(resolve(dist, "index.html"), "utf8");
 if (!html.includes('id="root"')) throw new Error("invalid root output");
 
+const stylesheets = output.filter((file) => file.startsWith("assets/") && file.endsWith(".css"));
+if (stylesheets.length !== 1) throw new Error("unexpected stylesheet output");
+const stylesheet = readFileSync(resolve(dist, stylesheets[0]), "utf8");
+if (!stylesheet.includes("grid-template-rows:repeat(8,minmax(0,1fr))")) {
+  throw new Error("chessboard rows are not fixed to equal tracks");
+}
+
 console.log(`validated root app and ${output.length} production entries`);

@@ -478,6 +478,9 @@ function AeroLandscape() {
   return (
     <div aria-hidden="true" className="aero-landscape">
       <span className="sun-glow" />
+      <span className="earth-orb">
+        <span className="earth-gloss" />
+      </span>
       <span className="cloud cloud-one" />
       <span className="cloud cloud-two" />
       <span className="cloud cloud-three" />
@@ -486,6 +489,12 @@ function AeroLandscape() {
       <span className="bubble bubble-three" />
       <span className="grass-hill grass-hill-back" />
       <span className="grass-hill grass-hill-front" />
+      <span className="eco-leaf eco-leaf-one" />
+      <span className="eco-leaf eco-leaf-two" />
+      <span className="aero-people">
+        <span className="aero-person aero-person-green" />
+        <span className="aero-person aero-person-blue" />
+      </span>
       <span className="water-line" />
     </div>
   );
