@@ -14,6 +14,7 @@ import {
 
 import { Chessboard } from "./board";
 import { SerialBoard, isWebSerialSupported } from "./device";
+import { Guide, GUIDE_STEPS } from "./guide";
 import {
   applyHumanMove,
   applyUciMove,
@@ -41,6 +42,13 @@ const PROMOTIONS: Array<{ value: PieceSymbol; label: string }> = [
 
 type ConnectionState = "disconnected" | "connecting" | "connected" | "disconnecting";
 type PromotionChoice = { from: Square; to: Square };
+export type SiteView = "play" | "guide";
+
+const GUIDE_HASHES = new Set([
+  "#guide",
+  "#guide-content",
+  ...GUIDE_STEPS.map((step) => `#${step.id}`),
+]);
 
 export function App() {
   const gameRef = useRef(new Chess());
@@ -59,6 +67,8 @@ export function App() {
   const [blocked, setBlocked] = useState(false);
   const [activity, setActivity] = useState("connect board");
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
+  const [siteHash, setSiteHash] = useState(() => window.location.hash);
+  const siteView = siteViewFromHash(siteHash);
   const serialSupported = isWebSerialSupported();
   const game = gameRef.current;
   const legalTargets = new Set(
@@ -77,6 +87,46 @@ export function App() {
       void boardRef.current?.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    function updateSiteHash(): void {
+      setSiteHash(window.location.hash);
+    }
+    window.addEventListener("hashchange", updateSiteHash);
+    return () => window.removeEventListener("hashchange", updateSiteHash);
+  }, []);
+
+  useEffect(() => {
+    const guideAnchor = guideAnchorFromHash(siteHash);
+    document.title = siteView === "guide"
+      ? "Guide | ESP32 P4 NNUE"
+      : "Play | ESP32 P4 NNUE";
+    if (!guideAnchor) {
+      window.scrollTo(0, 0);
+      return;
+    }
+
+    let cancelled = false;
+    let frame = 0;
+    const scrollToGuideAnchor = (): void => {
+      if (!cancelled) document.getElementById(guideAnchor)?.scrollIntoView();
+    };
+    const scrollAfterStyles = (attempt: number): void => {
+      const stylesReady = getComputedStyle(document.documentElement).scrollPaddingTop !== "auto";
+      if (stylesReady || attempt === 10) {
+        scrollToGuideAnchor();
+        return;
+      }
+      frame = requestAnimationFrame(() => scrollAfterStyles(attempt + 1));
+    };
+
+    frame = requestAnimationFrame(() => scrollAfterStyles(0));
+    void document.fonts.ready.then(scrollToGuideAnchor);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [siteHash, siteView]);
 
   useEffect(() => {
     if (promotion || thinking || !promotionReturnFocus.current) return;
@@ -269,180 +319,207 @@ export function App() {
 
   return (
     <div className="site-shell">
-      <AeroLandscape />
+      <a
+        className="skip-link"
+        href={siteView === "guide" ? "#guide-content" : "#play-content"}
+      >
+        skip to content
+      </a>
+      <span aria-atomic="true" aria-live="polite" className="sr-only">
+        {siteView === "guide" ? "guide view" : "play view"}
+      </span>
       <header className="site-header">
         <nav aria-label="Main navigation" className="nav-inner">
-          <a className="wordmark" href="#play">
-            <span aria-hidden="true" className="wordmark-orb" />
+          <a aria-label="ESP32 P4 NNUE play" className="wordmark" href="#play">
+            <span aria-hidden="true" className="wordmark-mark">P4</span>
             <span>ESP32 P4 NNUE</span>
           </a>
           <div className="nav-links">
-            <a href="#play">Play</a>
-            <a href="https://github.com/ishanrk/esp32p4-nnue">GitHub</a>
+            <a aria-current={siteView === "play" ? "page" : undefined} href="#play">Play</a>
+            <a aria-current={siteView === "guide" ? "page" : undefined} href="#guide">Guide</a>
+            <a href="https://github.com/ishanrk/esp32p4-nnue">Source</a>
           </div>
         </nav>
       </header>
 
-      <main id="play">
-        <section className="title-area" aria-labelledby="page-title">
-          <p className="eyebrow">hardware chess</p>
-          <h1 id="page-title">ESP32 P4 NNUE</h1>
-          <p className="tagline">play the chip</p>
-        </section>
+      {siteView === "guide" ? <Guide /> : (
+        <main className="play-page" id="play-content" tabIndex={-1}>
+          <span aria-hidden="true" className="view-anchor" id="play" />
+          <section className="play-intro" aria-labelledby="page-title">
+            <div>
+              <p className="eyebrow">physical nnue / serial depth 05</p>
+              <h1 id="page-title">Play the chip</h1>
+            </div>
+            <p>
+              Every engine move runs on the connected ESP32 P4 The browser sends
+              position state and renders the result
+            </p>
+          </section>
 
-        <section className="play-area" aria-label="Hardware chess game">
-          <div className="board-column">
-            <div className="board-frame">
-              <Chessboard
-                disabled={boardDisabled}
-                game={game}
-                lastMove={lastMove}
-                legalTargets={legalTargets}
-                onSquare={chooseSquare}
-                orientation={boardOrientation}
-                selected={selected}
-              />
-              {thinking && (
-                <div aria-live="polite" className="thinking-bubble">
-                  <span aria-hidden="true" className="thinking-orb" />
-                  chip thinking...
-                </div>
-              )}
-              {gameResult && (
-                <div aria-live="polite" className="game-result-layer">
-                  <div className="game-result-message">
-                    <strong>{gameResult.heading}</strong>
-                    <span>{gameResult.detail}</span>
+          <section className="play-area" aria-label="Hardware chess game">
+            <div className="board-column">
+              <div className="board-meta" aria-hidden="true">
+                <span>board / {boardOrientation === "w" ? "white" : "black"}</span>
+                <span>8 × 8</span>
+              </div>
+              <div className="board-frame">
+                <Chessboard
+                  disabled={boardDisabled}
+                  game={game}
+                  lastMove={lastMove}
+                  legalTargets={legalTargets}
+                  onSquare={chooseSquare}
+                  orientation={boardOrientation}
+                  selected={selected}
+                />
+                {thinking && (
+                  <div aria-live="polite" className="thinking-label">
+                    <span aria-hidden="true" />
+                    chip thinking
                   </div>
-                </div>
-              )}
-              {promotion && (
-                <div
-                  aria-label="Choose promotion piece"
-                  aria-modal="true"
-                  className="promotion-layer"
-                  onKeyDown={handlePromotionKeys}
-                  role="dialog"
-                >
-                  <div className="promotion-picker">
-                    <strong>promote to</strong>
-                    <div className="promotion-options">
-                      {PROMOTIONS.map((option, index) => (
-                        <button
-                          autoFocus={index === 0}
-                          className="aero-button promotion-button"
-                          key={option.value}
-                          onClick={() => finishHumanMove(
-                            promotion.from,
-                            promotion.to,
-                            option.value,
-                          )}
-                          type="button"
-                        >
-                          {option.label}
-                        </button>
-                      ))}
+                )}
+                {gameResult && (
+                  <div aria-live="polite" className="game-result-layer">
+                    <div className="game-result-message">
+                      <strong>{gameResult.heading}</strong>
+                      <span>{gameResult.detail}</span>
                     </div>
+                  </div>
+                )}
+                {promotion && (
+                  <div
+                    aria-label="Choose promotion piece"
+                    aria-modal="true"
+                    className="promotion-layer"
+                    onKeyDown={handlePromotionKeys}
+                    role="dialog"
+                  >
+                    <div className="promotion-picker">
+                      <strong>promote to</strong>
+                      <div className="promotion-options">
+                        {PROMOTIONS.map((option, index) => (
+                          <button
+                            autoFocus={index === 0}
+                            className="action-button promotion-button"
+                            key={option.value}
+                            onClick={() => finishHumanMove(
+                              promotion.from,
+                              promotion.to,
+                              option.value,
+                            )}
+                            type="button"
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        className="text-button"
+                        onClick={cancelPromotion}
+                        type="button"
+                      >
+                        cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <aside className="game-controls" aria-label="Game controls">
+              <header className="controls-heading">
+                <span>01</span>
+                <div>
+                  <strong>board control</strong>
+                  <small>web serial / 115200 baud</small>
+                </div>
+              </header>
+
+              <div className="connection-row">
+                <button
+                  className={`connect-button ${connection === "connected" ? "is-connected" : ""}`}
+                  aria-label={connection === "connected" ? "disconnect board" : undefined}
+                  disabled={!serialSupported || connection === "connecting" || connection === "disconnecting"}
+                  onClick={() => connection === "connected" ? void disconnectBoard() : void connectBoard()}
+                  title={connection === "connected" ? "disconnect board" : undefined}
+                  type="button"
+                >
+                  <span aria-hidden="true" className="connection-mark" />
+                  {connection === "connecting" ? "connecting" :
+                    connection === "disconnecting" ? "disconnecting" :
+                    connection === "connected" ? "board connected" : "connect board"}
+                </button>
+                {!serialSupported && (
+                  <p className="support-note">Web Serial needs Chrome or Edge</p>
+                )}
+              </div>
+
+              <fieldset
+                className="side-selector"
+                disabled={thinking || connection === "connecting" || connection === "disconnecting"}
+              >
+                <legend>choose a side</legend>
+                <div className="side-options">
+                  {SIDE_CHOICES.map((option) => (
                     <button
-                      className="text-button"
-                      onClick={cancelPromotion}
+                      aria-pressed={sideChoice === option.value}
+                      className="side-button"
+                      key={option.value}
+                      onClick={() => setSideChoice(option.value)}
                       type="button"
                     >
-                      cancel
+                      {option.label}
                     </button>
-                  </div>
+                  ))}
                 </div>
-              )}
-            </div>
-          </div>
+                {connection === "connected" && (
+                  <span className="resolved-side">
+                    playing {humanColor === "w" ? "white" : "black"}
+                  </span>
+                )}
+              </fieldset>
 
-          <aside className="game-controls" aria-label="Game controls">
-            <div className="connection-row">
+              <div aria-atomic="true" aria-live="polite" className="game-status">
+                <span aria-hidden="true" className={`status-mark ${thinking ? "is-thinking" : ""}`} />
+                <div>
+                  <strong>{statusHeading}</strong>
+                  {statusDetail && <span>{statusDetail}</span>}
+                </div>
+              </div>
+
+              {searchResult && (
+                <dl className="engine-response">
+                  <div><dt>depth</dt><dd>{searchResult.depth}</dd></div>
+                  <div><dt>time</dt><dd>{searchResult.elapsedMs.toLocaleString()} ms</dd></div>
+                  <div><dt>nodes</dt><dd>{searchResult.nodes.toLocaleString()}</dd></div>
+                </dl>
+              )}
+
               <button
-                className={`connect-button ${connection === "connected" ? "is-connected" : ""}`}
-                aria-label={connection === "connected" ? "disconnect board" : undefined}
-                disabled={!serialSupported || connection === "connecting" || connection === "disconnecting"}
-                onClick={() => connection === "connected" ? void disconnectBoard() : void connectBoard()}
-                title={connection === "connected" ? "disconnect board" : undefined}
+                className="action-button new-game-button"
+                disabled={connection !== "connected" || thinking}
+                onClick={() => startGame()}
                 type="button"
               >
-                <span aria-hidden="true" className="connection-orb" />
-                {connection === "connecting" ? "connecting..." :
-                  connection === "disconnecting" ? "disconnecting..." :
-                  connection === "connected" ? "board connected" : "connect board"}
+                new game
               </button>
-              {!serialSupported && (
-                <p className="support-note">Web Serial needs Chrome or Edge</p>
+
+              <MoveHistory game={game} />
+
+              {deviceInfo && (
+                <p className="device-line">
+                  firmware {deviceInfo.firmwareVersion}
+                  <span aria-hidden="true"> / </span>
+                  {modelStateName(deviceInfo.modelState)} model
+                </p>
               )}
-            </div>
-
-            <fieldset
-              className="side-selector"
-              disabled={thinking || connection === "connecting" || connection === "disconnecting"}
-            >
-              <legend>choose a side</legend>
-              <div className="segmented-pills">
-                {SIDE_CHOICES.map((option) => (
-                  <button
-                    aria-pressed={sideChoice === option.value}
-                    className="side-button"
-                    key={option.value}
-                    onClick={() => setSideChoice(option.value)}
-                    type="button"
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-              {connection === "connected" && (
-                <span className="resolved-side">
-                  playing {humanColor === "w" ? "white" : "black"}
-                </span>
-              )}
-            </fieldset>
-
-            <div aria-atomic="true" aria-live="polite" className="game-status">
-              <span aria-hidden="true" className={`status-orb ${thinking ? "is-thinking" : ""}`} />
-              <div>
-                <strong>{statusHeading}</strong>
-                {statusDetail && <span>{statusDetail}</span>}
-              </div>
-            </div>
-
-            {searchResult && (
-              <p className="engine-response">
-                depth {searchResult.depth}
-                <span aria-hidden="true"> · </span>
-                {searchResult.elapsedMs.toLocaleString()} ms
-                <span aria-hidden="true"> · </span>
-                {searchResult.nodes.toLocaleString()} nodes
-              </p>
-            )}
-
-            <button
-              className="aero-button new-game-button"
-              disabled={connection !== "connected" || thinking}
-              onClick={() => startGame()}
-              type="button"
-            >
-              New game
-            </button>
-
-            <MoveHistory game={game} />
-
-            {deviceInfo && (
-              <p className="device-line">
-                firmware {deviceInfo.firmwareVersion}
-                <span aria-hidden="true"> · </span>
-                {modelStateName(deviceInfo.modelState)} model
-              </p>
-            )}
-          </aside>
-        </section>
-      </main>
+            </aside>
+          </section>
+        </main>
+      )}
 
       <footer className="site-footer">
-        <span>ESP32 P4 NNUE</span>
+        <span>stage one embedded nnue</span>
         <div>
           <a href="https://github.com/ishanrk/esp32p4-nnue">source</a>
           <a href="https://ishankumthekar.com">ishankumthekar.com</a>
@@ -474,32 +551,14 @@ function MoveHistory({ game }: { game: Chess }) {
   );
 }
 
-function AeroLandscape() {
-  return (
-    <div aria-hidden="true" className="aero-landscape">
-      <span className="sun-glow" />
-      <span className="earth-orb">
-        <span className="earth-gloss" />
-      </span>
-      <span className="cloud cloud-one" />
-      <span className="cloud cloud-two" />
-      <span className="cloud cloud-three" />
-      <span className="bubble bubble-one" />
-      <span className="bubble bubble-two" />
-      <span className="bubble bubble-three" />
-      <span className="grass-hill grass-hill-back" />
-      <span className="grass-hill grass-hill-front" />
-      <span className="eco-leaf eco-leaf-one" />
-      <span className="eco-leaf eco-leaf-two" />
-      <span className="aero-people">
-        <span className="aero-person aero-person-green" />
-        <span className="aero-person aero-person-blue" />
-      </span>
-      <span className="water-line" />
-    </div>
-  );
-}
-
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+export function siteViewFromHash(hash: string): SiteView {
+  return GUIDE_HASHES.has(hash) ? "guide" : "play";
+}
+
+export function guideAnchorFromHash(hash: string): string | null {
+  return hash !== "#guide" && GUIDE_HASHES.has(hash) ? hash.slice(1) : null;
 }

@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 
 import { Chess, DEFAULT_POSITION } from "chess.js";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
+import { guideAnchorFromHash, siteViewFromHash } from "./app";
 import { SerialBoard } from "./device";
+import { Guide, GUIDE_RESOURCES, GUIDE_STEPS } from "./guide";
 import {
   applyHumanMove,
   applyUciMove,
@@ -134,6 +138,41 @@ function protocolTests(): void {
 
   const startFen = DEFAULT_POSITION;
   assert.equal(new TextDecoder().decode(encodePositionPayload(startFen)), startFen);
+}
+
+function guideTests(): void {
+  assert.equal(GUIDE_STEPS.length, 15);
+  assert.equal(new Set(GUIDE_STEPS.map((step) => step.id)).size, GUIDE_STEPS.length);
+  assert.deepEqual(
+    GUIDE_STEPS.map((step) => step.number),
+    Array.from({ length: 15 }, (_, index) => String(index + 1).padStart(2, "0")),
+  );
+  for (const step of GUIDE_STEPS) {
+    assert.doesNotMatch(step.title, /\b(?:how|why)\b|\?/i);
+  }
+  assert.ok(GUIDE_RESOURCES.includes("https://github.com/maksimKorzh/bbc"));
+  assert.ok(GUIDE_RESOURCES.includes("https://github.com/official-stockfish/nnue-pytorch"));
+  assert.ok(GUIDE_RESOURCES.includes("https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT"));
+  assert.ok(GUIDE_RESOURCES.includes("https://wicg.github.io/serial/"));
+
+  assert.equal(siteViewFromHash("#play"), "play");
+  assert.equal(siteViewFromHash("#play-content"), "play");
+  assert.equal(siteViewFromHash("#guide"), "guide");
+  assert.equal(siteViewFromHash("#guide-content"), "guide");
+  assert.equal(siteViewFromHash("#guide-hardware"), "guide");
+  assert.equal(siteViewFromHash("#guidelines"), "play");
+  assert.equal(siteViewFromHash("#guide-missing"), "play");
+  assert.equal(guideAnchorFromHash("#guide"), null);
+  assert.equal(guideAnchorFromHash("#guide-hardware"), "guide-hardware");
+  assert.equal(guideAnchorFromHash("#guide-content"), "guide-content");
+
+  const guideMarkup = renderToStaticMarkup(createElement(Guide));
+  assert.match(guideMarkup, /id="guide-content"/);
+  const visibleGuideText = guideMarkup.replace(/<[^>]*>/g, " ");
+  assert.doesNotMatch(visibleGuideText, /\b(?:how|why)\b|\?/i);
+  for (const step of GUIDE_STEPS) {
+    assert.match(guideMarkup, new RegExp(`id="${step.id}"`));
+  }
 }
 
 class FakeTransport implements SearchTransport {
@@ -361,8 +400,9 @@ async function serialTransportTest(): Promise<void> {
 }
 
 protocolTests();
+guideTests();
 await chessTests();
 await integrationTests();
 await serialTransportTest();
 
-console.log("passed protocol chess and serial browser tests");
+console.log("passed protocol guide chess and serial browser tests");

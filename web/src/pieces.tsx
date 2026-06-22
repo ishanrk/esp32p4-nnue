@@ -1,4 +1,3 @@
-import { useId } from "react";
 import type { Piece } from "chess.js";
 
 type PieceShape = {
@@ -35,16 +34,7 @@ const PIECES: Record<Piece["type"], PieceShape> = {
 
 export function ChessPiece({ piece }: { piece: Piece }) {
   const shape = PIECES[piece.type];
-  const gradientId = `piece-${useId().replaceAll(":", "")}`;
   const colorName = piece.color === "w" ? "white" : "black";
-  const pieceName = {
-    p: "pawn",
-    n: "knight",
-    b: "bishop",
-    r: "rook",
-    q: "queen",
-    k: "king",
-  }[piece.type];
 
   return (
     <svg
@@ -53,26 +43,7 @@ export function ChessPiece({ piece }: { piece: Piece }) {
       focusable="false"
       viewBox={`0 0 ${shape.width} 512`}
     >
-      <defs>
-        <linearGradient id={gradientId} x1="0" x2="0.78" y1="0" y2="1">
-          {piece.color === "w" ? (
-            <>
-              <stop offset="0" stopColor="#ffffff" />
-              <stop offset="0.48" stopColor="#fffce9" />
-              <stop offset="0.78" stopColor="#d9f2f5" />
-              <stop offset="1" stopColor="#91c9d7" />
-            </>
-          ) : (
-            <>
-              <stop offset="0" stopColor="#4b8db3" />
-              <stop offset="0.34" stopColor="#174e78" />
-              <stop offset="0.76" stopColor="#082d55" />
-              <stop offset="1" stopColor="#031b39" />
-            </>
-          )}
-        </linearGradient>
-      </defs>
-      <path d={shape.path} fill={`url(#${gradientId})`} />
+      <path d={shape.path} />
     </svg>
   );
 }

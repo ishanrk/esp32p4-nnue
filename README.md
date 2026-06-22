@@ -17,10 +17,13 @@ ctest --test-dir build --output-on-failure
 ## Public site
 
 The static React and TypeScript site at
-[nnue.ishankumthekar.com](https://nnue.ishankumthekar.com) is a direct hardware
-chess interface. Chrome or Edge connects to the board through Web Serial on the
-PWR USB TO UART connector and speaks the existing binary protocol without a
-backend. Detach the serial device from WSL before giving it to the browser.
+[nnue.ishankumthekar.com](https://nnue.ishankumthekar.com) contains the direct
+hardware chess interface and the sequential implementation guide. Chrome or
+Edge connects to the board through Web Serial on the PWR USB TO UART connector
+and speaks the existing binary protocol without a backend. Detach the serial
+device from WSL before giving it to the browser. The Guide tab covers the shared
+engine, NNUE design, data, training, export, firmware, board validation, browser
+protocol, and adaptation to another constrained target.
 
 ```sh
 cd web
