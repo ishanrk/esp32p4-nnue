@@ -1,0 +1,45 @@
+Chess coordinates
+
+File: chess-coordinates.svg
+Title: SCD algebraic notation
+Source: https://commons.wikimedia.org/wiki/File:SCD_algebraic_notation.svg
+Direct download: https://upload.wikimedia.org/wikipedia/commons/b/b6/SCD_algebraic_notation.svg
+Credits: derivative by Beao with notation by Klin and base board work credited
+on the source page to ILA-boy Nevit Dilmen and Colin M L Burnett
+License: Creative Commons Attribution ShareAlike 3.0
+License link: https://creativecommons.org/licenses/by-sa/3.0/
+Changes: none
+
+Minimax tree
+
+File: minimax-tree.svg
+Title: MiniMax
+Source: https://commons.wikimedia.org/wiki/File:MiniMax.svg
+Direct download: https://upload.wikimedia.org/wikipedia/commons/e/ea/MiniMax.svg
+Author: Handige Harrie
+License: public domain dedication
+Changes: none
+
+Alpha beta tree
+
+File: alpha-beta-tree.svg
+Title: Alpha beta
+Source: https://commons.wikimedia.org/wiki/File:Alpha_beta.svg
+Direct download: https://upload.wikimedia.org/wikipedia/commons/d/df/Alpha_beta.svg
+Author: Antonsusi based on an earlier image by Sgop
+License: public domain dedication
+Changes: none
+
+Neural network layers
+
+File: neural-network-layers.svg
+Title: Multi-Layer Neural Network-Vector
+Source: https://commons.wikimedia.org/wiki/File:Multi-Layer_Neural_Network-Vector.svg
+Direct download: https://upload.wikimedia.org/wikipedia/commons/9/91/Multi-Layer_Neural_Network-Vector.svg
+Author: Offnfopt
+License: public domain release and Creative Commons CC0 1.0
+License link: https://creativecommons.org/publicdomain/zero/1.0/
+Changes: none
+
+All four reference images are downloaded human-created works. No generated
+image system was used for these assets.

@@ -148,8 +148,9 @@ function guideTests(): void {
     Array.from({ length: 15 }, (_, index) => String(index + 1).padStart(2, "0")),
   );
   for (const step of GUIDE_STEPS) {
-    assert.doesNotMatch(step.title, /\b(?:how|why)\b|\?/i);
+    assert.doesNotMatch(step.title, /\?/);
   }
+  assert.ok(GUIDE_RESOURCES.includes("https://www.chessprogramming.org/"));
   assert.ok(GUIDE_RESOURCES.includes("https://github.com/maksimKorzh/bbc"));
   assert.ok(GUIDE_RESOURCES.includes("https://github.com/official-stockfish/nnue-pytorch"));
   assert.ok(GUIDE_RESOURCES.includes("https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT"));
@@ -168,8 +169,14 @@ function guideTests(): void {
 
   const guideMarkup = renderToStaticMarkup(createElement(Guide));
   assert.match(guideMarkup, /id="guide-content"/);
-  const visibleGuideText = guideMarkup.replace(/<[^>]*>/g, " ");
-  assert.doesNotMatch(visibleGuideText, /\b(?:how|why)\b|\?/i);
+  assert.match(
+    guideMarkup,
+    /A Small Guide on How to Build Your Own Neural Networks Under Hardware Constraints/,
+  );
+  assert.match(guideMarkup, /Chess Programming Wiki/);
+  assert.match(guideMarkup, /Code Monkey King/);
+  assert.match(guideMarkup, /images\/reference\/alpha-beta-tree\.svg/);
+  assert.match(guideMarkup, /images\/reference\/neural-network-layers\.svg/);
   for (const step of GUIDE_STEPS) {
     assert.match(guideMarkup, new RegExp(`id="${step.id}"`));
   }

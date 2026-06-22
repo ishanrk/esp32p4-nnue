@@ -10,10 +10,15 @@ const required = [
   ".nojekyll",
   "THIRD_PARTY_LICENSES.txt",
   "favicon.svg",
-  "fonts/bungee-regular.ttf",
-  "fonts/BUNGEE_LICENSE.txt",
+  "fonts/block-blueprint.ttf",
+  "fonts/BLOCK_BLUEPRINT_NOTICE.txt",
   "images/esp32-p4-module-dev-kit.jpg",
   "images/esp32-p4-test-setup.jpg",
+  "images/reference/SOURCES.txt",
+  "images/reference/alpha-beta-tree.svg",
+  "images/reference/chess-coordinates.svg",
+  "images/reference/minimax-tree.svg",
+  "images/reference/neural-network-layers.svg",
 ];
 const removedRoutes = ["architecture", "results", "reference-model", "status"];
 
@@ -33,6 +38,9 @@ for (const route of removedRoutes) {
 }
 if (output.some((file) => file === "generated" || file.startsWith("generated/"))) {
   throw new Error("obsolete generated data emitted");
+}
+if (output.some((file) => file.toLowerCase().includes("bungee"))) {
+  throw new Error("obsolete Bungee font emitted");
 }
 const html = readFileSync(resolve(dist, "index.html"), "utf8");
 if (!html.includes('id="root"')) throw new Error("invalid root output");
@@ -57,11 +65,25 @@ for (const file of vectorSources) {
   if (/<(?:linearGradient|radialGradient)\b|(?:fill|stroke)=["']url\(#/i.test(vectorSource)) {
     throw new Error(`gradient vector styling reintroduced in ${file}`);
   }
+  if (/<script\b|javascript:|(?:xlink:)?href=["']https?:/i.test(vectorSource)) {
+    throw new Error(`active or remote vector content found in ${file}`);
+  }
 }
 
 const guideSource = readFileSync(resolve(root, "src/guide.tsx"), "utf8");
-if (/\b(?:how|why)\b/i.test(guideSource)) {
-  throw new Error("guide contains forbidden question wording");
+if (!guideSource.includes("A Small Guide on How to Build Your Own Neural Networks Under Hardware Constraints")) {
+  throw new Error("requested guide title is missing");
+}
+if (!guideSource.includes("Chess Programming Wiki") || !guideSource.includes("Code Monkey King")) {
+  throw new Error("primary guide references are missing");
+}
+
+const appSource = readFileSync(resolve(root, "src/app.tsx"), "utf8");
+if (!appSource.includes("Playing Your Own Chess Neural Network Hosted on a Microcontroller")) {
+  throw new Error("requested play title is missing");
+}
+if (!appSource.includes("Waveshare") || !appSource.includes("ESP32-P4NRW32")) {
+  throw new Error("play page hardware subtitle is missing");
 }
 
 console.log(`validated play guide and ${output.length} production entries`);

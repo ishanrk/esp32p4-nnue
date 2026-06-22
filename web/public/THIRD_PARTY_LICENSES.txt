@@ -35,10 +35,18 @@ POSSIBILITY OF SUCH DAMAGE.
 
 https://github.com/jhlywa/chess.js
 
-Bungee Regular
+Block Blueprint
 
-Copyright 2023 The Bungee Project Authors
-https://github.com/djrrb/Bungee
+Designed by HipFonts and Igor Ovsyannykov
+https://www.fontspace.com/block-blueprint-font-f139566
 
-The font is licensed under the SIL Open Font License version 1.1
-The complete license is included at fonts/BUNGEE_LICENSE.txt
+The supplied font is identified as a demo with separate commercial licenses
+See fonts/BLOCK_BLUEPRINT_NOTICE.txt for the complete project notice
+
+Reference diagrams
+
+The guide includes human-created diagrams from Wikimedia Commons covering
+chess coordinates minimax alpha beta pruning and neural network layers
+The files include public domain CC0 and CC BY-SA 3.0 works
+Complete authors source links license links and modification status are listed
+in images/reference/SOURCES.txt and in the visible figure captions

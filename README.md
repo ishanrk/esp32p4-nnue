@@ -18,12 +18,17 @@ ctest --test-dir build --output-on-failure
 
 The static React and TypeScript site at
 [nnue.ishankumthekar.com](https://nnue.ishankumthekar.com) contains the direct
-hardware chess interface and the sequential implementation guide. Chrome or
-Edge connects to the board through Web Serial on the PWR USB TO UART connector
-and speaks the existing binary protocol without a backend. Detach the serial
-device from WSL before giving it to the browser. The Guide tab covers the shared
-engine, NNUE design, data, training, export, firmware, board validation, browser
-protocol, and adaptation to another constrained target.
+hardware chess interface and a 15-step implementation guide. The site uses the
+same Block Blueprint heading font and black-and-lime visual language as Noir
+Poker. The guide cites Chess Programming Wiki, Code Monkey King, Stockfish,
+Lichess, Espressif, and the exact project source beside the relevant steps.
+Downloaded diagrams retain visible author and license credits.
+
+Chrome or Edge connects to the board through Web Serial on the PWR USB TO UART
+connector and speaks the existing binary protocol without a backend. Detach the
+serial device from WSL before giving it to the browser. The Guide tab covers the
+shared engine, NNUE design, data, training, export, firmware, board validation,
+browser protocol, and adaptation to another constrained target.
 
 ```sh
 cd web

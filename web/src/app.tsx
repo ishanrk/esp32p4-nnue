@@ -346,21 +346,32 @@ export function App() {
         <main className="play-page" id="play-content" tabIndex={-1}>
           <span aria-hidden="true" className="view-anchor" id="play" />
           <section className="play-intro" aria-labelledby="page-title">
-            <div>
-              <p className="eyebrow">physical nnue / serial depth 05</p>
-              <h1 id="page-title">Play the chip</h1>
+            <div className="play-intro-copy">
+              <p className="eyebrow">CHESS NNUE ON AN ESP32 P4</p>
+              <h1 id="page-title">
+                Playing Your Own Chess Neural Network Hosted on a Microcontroller
+              </h1>
+              <p>
+                For this demo and guide, I used the Waveshare
+                ESP32-P4-Module-DEV-KIT with an ESP32-P4NRW32 module, 32 MB PSRAM,
+                and 16 MB flash. The browser sends each position over USB serial.
+                The microcontroller searches it and returns a legal move.
+              </p>
             </div>
-            <p>
-              Every engine move runs on the connected ESP32 P4 The browser sends
-              position state and renders the result
-            </p>
+            <div aria-hidden="true" className="hero-chess-mark">
+              <span className="hero-piece">♞</span>
+              <span className="hero-chip-label">ESP32 P4</span>
+              <i />
+              <i />
+              <i />
+            </div>
           </section>
 
           <section className="play-area" aria-label="Hardware chess game">
             <div className="board-column">
               <div className="board-meta" aria-hidden="true">
-                <span>board / {boardOrientation === "w" ? "white" : "black"}</span>
-                <span>8 × 8</span>
+                <span>{boardOrientation === "w" ? "White" : "Black"} board orientation</span>
+                <span>64 equal squares</span>
               </div>
               <div className="board-frame">
                 <Chessboard
@@ -430,8 +441,8 @@ export function App() {
               <header className="controls-heading">
                 <span>01</span>
                 <div>
-                  <strong>board control</strong>
-                  <small>web serial / 115200 baud</small>
+                  <strong>Play on the board</strong>
+                  <small>Web Serial at 115200 baud</small>
                 </div>
               </header>
 
@@ -509,7 +520,7 @@ export function App() {
               {deviceInfo && (
                 <p className="device-line">
                   firmware {deviceInfo.firmwareVersion}
-                  <span aria-hidden="true"> / </span>
+                  <span aria-hidden="true"> · </span>
                   {modelStateName(deviceInfo.modelState)} model
                 </p>
               )}
@@ -519,9 +530,10 @@ export function App() {
       )}
 
       <footer className="site-footer">
-        <span>stage one embedded nnue</span>
+        <span>Chess NNUE running on an ESP32 P4</span>
         <div>
           <a href="https://github.com/ishanrk/esp32p4-nnue">source</a>
+          <a href="/THIRD_PARTY_LICENSES.txt">licenses</a>
           <a href="https://ishankumthekar.com">ishankumthekar.com</a>
         </div>
       </footer>
