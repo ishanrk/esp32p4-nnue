@@ -155,6 +155,8 @@ function guideTests(): void {
   assert.ok(GUIDE_RESOURCES.includes("https://github.com/official-stockfish/nnue-pytorch"));
   assert.ok(GUIDE_RESOURCES.includes("https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT"));
   assert.ok(GUIDE_RESOURCES.includes("https://wicg.github.io/serial/"));
+  assert.ok(GUIDE_RESOURCES.includes("https://developer.chrome.com/docs/capabilities/serial"));
+  assert.ok(GUIDE_RESOURCES.includes("https://docs.github.com/en/pages/getting-started-with-github-pages/securing-your-github-pages-site-with-https"));
 
   assert.equal(siteViewFromHash("#play"), "play");
   assert.equal(siteViewFromHash("#play-content"), "play");
@@ -177,6 +179,8 @@ function guideTests(): void {
   assert.match(guideMarkup, /Code Monkey King/);
   assert.match(guideMarkup, /images\/reference\/alpha-beta-tree\.svg/);
   assert.match(guideMarkup, /images\/reference\/neural-network-layers\.svg/);
+  assert.match(guideMarkup, /images\/esp32-p4-browser-game\.jpg/);
+  assert.match(guideMarkup, /nnue\.ishankumthekar\.com/);
   for (const step of GUIDE_STEPS) {
     assert.match(guideMarkup, new RegExp(`id="${step.id}"`));
   }

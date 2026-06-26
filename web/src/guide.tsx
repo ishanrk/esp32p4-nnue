@@ -31,6 +31,8 @@ export const GUIDE_RESOURCES = [
   "https://github.com/official-stockfish/nnue-pytorch",
   "https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT",
   "https://wicg.github.io/serial/",
+  "https://developer.chrome.com/docs/capabilities/serial",
+  "https://docs.github.com/en/pages/getting-started-with-github-pages/securing-your-github-pages-site-with-https",
 ] as const;
 
 type Resource = {
@@ -646,6 +648,19 @@ python3 esp/board_client.py --port /dev/ttyACM0 search \
               microcontroller through Web Serial.
             </p>
             <p>
+              The connection works from localhost and from an HTTPS deployment such
+              as <code>nnue.ishankumthekar.com</code>. The ESP32-P4 remains connected
+              to the visitor's computer. Serial bytes move directly between that
+              browser tab and USB. The hosting server does not receive the position or
+              control the board.
+            </p>
+            <p>
+              Use a desktop Chromium browser with Web Serial support. Press the
+              connect button and select the board in the browser permission prompt.
+              Close terminal programs and serial monitors first so the browser can
+              open the port.
+            </p>
+            <p>
               Open the port at 115200 baud with eight data bits, one stop bit, no
               parity, and no flow control. Send a complete FEN before every search.
               The firmware returns a UCI move. The browser checks that move against
@@ -681,8 +696,24 @@ validate returned uci move`}</Code>
               payload length, payload, and CRC32. A successful response sets bit seven
               on the request command.
             </p>
+            <figure className="hardware-figure hardware-figure-wide">
+              <img
+                alt="Browser chess game connected to the ESP32-P4 development board over USB serial"
+                decoding="async"
+                height="1350"
+                loading="lazy"
+                src="/images/esp32-p4-browser-game.jpg"
+                width="1800"
+              />
+              <figcaption>
+                Completed local browser game with the ESP32-P4 connected over USB
+                serial. Photo by Ishan Kumthekar.
+              </figcaption>
+            </figure>
             <ResourceLinks links={[
               { label: "Web Incubator CG — Web Serial specification", href: GUIDE_RESOURCES[5] },
+              { label: "Chrome for Developers — Web Serial", href: GUIDE_RESOURCES[6] },
+              { label: "GitHub Pages — HTTPS deployment", href: GUIDE_RESOURCES[7] },
               { label: "Project browser — web/src/protocol.ts", href: source("web/src/protocol.ts") },
               { label: "Project browser — web/src/device.ts", href: source("web/src/device.ts") },
               { label: "Project browser — web/src/game.ts", href: source("web/src/game.ts") },

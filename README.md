@@ -30,6 +30,10 @@ serial device from WSL before giving it to the browser. The Guide tab covers the
 shared engine, NNUE design, data, training, export, firmware, board validation,
 browser protocol, and adaptation to another constrained target.
 
+The hardware connection works from localhost or an HTTPS deployment. In both
+cases the board stays connected to the visitor's computer and serial traffic
+moves directly between the browser tab and USB rather than through the web host.
+
 ```sh
 cd web
 npm ci

@@ -14,6 +14,7 @@ const required = [
   "fonts/BLOCK_BLUEPRINT_NOTICE.txt",
   "images/esp32-p4-module-dev-kit.jpg",
   "images/esp32-p4-test-setup.jpg",
+  "images/esp32-p4-browser-game.jpg",
   "images/reference/SOURCES.txt",
   "images/reference/alpha-beta-tree.svg",
   "images/reference/chess-coordinates.svg",
@@ -76,6 +77,9 @@ if (!guideSource.includes("A Small Guide on How to Build Your Own Neural Network
 }
 if (!guideSource.includes("Chess Programming Wiki") || !guideSource.includes("Code Monkey King")) {
   throw new Error("primary guide references are missing");
+}
+if (!guideSource.includes("/images/esp32-p4-browser-game.jpg")) {
+  throw new Error("completed browser game photo is missing");
 }
 
 const appSource = readFileSync(resolve(root, "src/app.tsx"), "utf8");
