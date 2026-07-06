@@ -19,10 +19,17 @@ ctest --test-dir build --output-on-failure
 The static React and TypeScript site at
 [nnue.ishankumthekar.com](https://nnue.ishankumthekar.com) contains the direct
 hardware chess interface and a 15-step implementation guide. The site uses the
-same Block Blueprint heading font and black-and-lime visual language as Noir
-Poker. The guide cites Chess Programming Wiki, Code Monkey King, Stockfish,
-Lichess, Espressif, and the exact project source beside the relevant steps.
-Downloaded diagrams retain visible author and license credits.
+deep teal parchment and antique gold visual language of a printed technical
+folio. Bodoni Moda supplies the display type. Libre Baskerville supplies the
+reading and interface type. The board uses the Chessnut piece set. All three
+assets are self-hosted with their license records.
+
+The guide cites Chess Programming Wiki, Code Monkey King, Stockfish, Lichess,
+Espressif, and the exact project source beside the relevant steps. Its code
+studies explain the project implementation from 64-bit bitboards on an RV32
+target through legal move state, principal variation search, quiescence, NNUE
+features, training, export, firmware startup, and browser framing. Downloaded
+diagrams retain visible author and license credits.
 
 Chrome or Edge connects to the board through Web Serial on the PWR USB TO UART
 connector and speaks the existing binary protocol without a backend. Detach the

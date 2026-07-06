@@ -4,14 +4,22 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = resolve(root, "dist");
+const pieceAssets = [
+  "bB", "bK", "bN", "bP", "bQ", "bR",
+  "wB", "wK", "wN", "wP", "wQ", "wR",
+]
+  .map((piece) => `images/pieces/${piece}.svg`);
 const required = [
   "index.html",
   "CNAME",
   ".nojekyll",
   "THIRD_PARTY_LICENSES.txt",
   "favicon.svg",
-  "fonts/block-blueprint.ttf",
-  "fonts/BLOCK_BLUEPRINT_NOTICE.txt",
+  "fonts/bodoni-moda-latin.woff2",
+  "fonts/libre-baskerville-latin.woff2",
+  "fonts/BODONI_MODA_OFL.txt",
+  "fonts/LIBRE_BASKERVILLE_OFL.txt",
+  "fonts/SOURCES.txt",
   "images/esp32-p4-module-dev-kit.jpg",
   "images/esp32-p4-test-setup.jpg",
   "images/esp32-p4-browser-game.jpg",
@@ -20,6 +28,10 @@ const required = [
   "images/reference/chess-coordinates.svg",
   "images/reference/minimax-tree.svg",
   "images/reference/neural-network-layers.svg",
+  "images/pieces/APACHE-2.0.txt",
+  "images/pieces/COPYRIGHT.txt",
+  "images/pieces/SOURCES.txt",
+  ...pieceAssets,
 ];
 const removedRoutes = ["architecture", "results", "reference-model", "status"];
 
@@ -42,6 +54,9 @@ if (output.some((file) => file === "generated" || file.startsWith("generated/"))
 }
 if (output.some((file) => file.toLowerCase().includes("bungee"))) {
   throw new Error("obsolete Bungee font emitted");
+}
+if (output.some((file) => file.toLowerCase().includes("block-blueprint"))) {
+  throw new Error("obsolete Block Blueprint font emitted");
 }
 const html = readFileSync(resolve(dist, "index.html"), "utf8");
 if (!html.includes('id="root"')) throw new Error("invalid root output");
@@ -78,6 +93,19 @@ if (!guideSource.includes("A Small Guide on How to Build Your Own Neural Network
 if (!guideSource.includes("Chess Programming Wiki") || !guideSource.includes("Code Monkey King")) {
   throw new Error("primary guide references are missing");
 }
+for (const codeReference of [
+  "typedef uint64_t bitboard_t",
+  "principal_variation_search",
+  "quiescence_search",
+  "class NnueNetwork",
+  "build_model_blob",
+  "app_main",
+  "FrameDecoder",
+]) {
+  if (!guideSource.includes(codeReference)) {
+    throw new Error(`guide code study missing ${codeReference}`);
+  }
+}
 if (!guideSource.includes("/images/esp32-p4-browser-game.jpg")) {
   throw new Error("completed browser game photo is missing");
 }
@@ -88,6 +116,16 @@ if (!appSource.includes("Playing Your Own Chess Neural Network Hosted on a Micro
 }
 if (!appSource.includes("Waveshare") || !appSource.includes("ESP32-P4NRW32")) {
   throw new Error("play page hardware subtitle is missing");
+}
+for (const removedDecoration of [
+  "hero-chess-mark",
+  "hero-piece",
+  "connection-mark",
+  "status-mark",
+]) {
+  if (appSource.includes(removedDecoration)) {
+    throw new Error(`obsolete decoration remains ${removedDecoration}`);
+  }
 }
 
 console.log(`validated play guide and ${output.length} production entries`);

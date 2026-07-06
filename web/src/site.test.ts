@@ -181,6 +181,14 @@ function guideTests(): void {
   assert.match(guideMarkup, /images\/reference\/neural-network-layers\.svg/);
   assert.match(guideMarkup, /images\/esp32-p4-browser-game\.jpg/);
   assert.match(guideMarkup, /nnue\.ishankumthekar\.com/);
+  assert.ok((guideMarkup.match(/class="code-study"/g) ?? []).length >= 15);
+  assert.match(guideMarkup, /typedef uint64_t bitboard_t/);
+  assert.match(guideMarkup, /principal_variation_search/);
+  assert.match(guideMarkup, /quiescence_search/);
+  assert.match(guideMarkup, /class NnueNetwork/);
+  assert.match(guideMarkup, /build_model_blob/);
+  assert.match(guideMarkup, /FrameDecoder/);
+  assert.doesNotMatch(guideMarkup, /↗|video-slot|guide-end/);
   for (const step of GUIDE_STEPS) {
     assert.match(guideMarkup, new RegExp(`id="${step.id}"`));
   }

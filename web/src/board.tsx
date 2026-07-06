@@ -64,7 +64,6 @@ export function Chessboard({
           "square",
           isLight ? "square-light" : "square-dark",
           isSelected ? "is-selected" : "",
-          isTarget ? "is-legal" : "",
           isTarget && piece ? "is-capture" : "",
           isLast ? "is-last" : "",
           checkedKing === square ? "is-check" : "",
@@ -83,6 +82,7 @@ export function Chessboard({
         return (
           <button
             aria-label={`${square}, ${state}`}
+            aria-pressed={isSelected}
             className={classNames}
             data-square={square}
             disabled={disabled}

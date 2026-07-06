@@ -1,0 +1,47 @@
+Bodoni Moda
+
+File
+bodoni-moda-latin.woff2
+
+Source
+https://fonts.gstatic.com/s/bodonimoda/v28/aFTQ7PxzY382XsXX63LUYJSKSKg.woff2
+
+Stylesheet source
+https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400..900&display=swap
+
+License
+SIL Open Font License 1.1
+See BODONI_MODA_OFL.txt
+
+License source
+https://github.com/google/fonts/blob/6a003b5eb672dc8bf5bff5937cf5863f8b175445/ofl/bodonimoda/OFL.txt
+
+SHA256
+c032219ef636f7b4932f7d1dc91bdab602c970f090770b546bea4effaab3463c
+
+Libre Baskerville
+
+File
+libre-baskerville-latin.woff2
+
+Source
+https://fonts.gstatic.com/s/librebaskerville/v24/kmKnZrc3Hgbbcjq75U4uslyuy4kn0qNZaxM.woff2
+
+Stylesheet source
+https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&display=swap
+
+License
+SIL Open Font License 1.1
+See LIBRE_BASKERVILLE_OFL.txt
+
+License source
+https://github.com/google/fonts/blob/6a003b5eb672dc8bf5bff5937cf5863f8b175445/ofl/librebaskerville/OFL.txt
+
+SHA256
+22219fb90e3b9bd28debd1825fe8d9a0154a0e31f8b3fa601ac1a0a5aa5e6d1b
+
+Both files contain the latin subset
+Both files are unchanged from the Google Fonts response
+
+Retrieved
+2026-08-25

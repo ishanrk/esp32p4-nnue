@@ -66,13 +66,11 @@ function ResourceLinks({ links }: { links: readonly Resource[] }) {
   return (
     <div className="resource-block">
       <strong>References and project code</strong>
-      <ul className="resource-links">
+      <nav aria-label="Section references" className="resource-links">
         {links.map((link) => (
-          <li key={link.href}>
-            <a href={link.href}>{link.label}<span aria-hidden="true">↗</span></a>
-          </li>
+          <a href={link.href} key={link.href}>{link.label}</a>
         ))}
-      </ul>
+      </nav>
     </div>
   );
 }
@@ -85,23 +83,47 @@ function Code({ children }: { children: string }) {
   );
 }
 
+function CodeStudy({
+  children,
+  code,
+  path,
+  title,
+}: {
+  children: ReactNode;
+  code: string;
+  path: string;
+  title: string;
+}) {
+  return (
+    <section className="code-study">
+      <header className="code-study-heading">
+        <span>Project code</span>
+        <h3>{title}</h3>
+        <a href={source(path)}>{path}</a>
+      </header>
+      <Code>{code}</Code>
+      <div className="code-study-notes">{children}</div>
+    </section>
+  );
+}
+
 function ReferenceFigure({
   alt,
   caption,
-  className = "",
+  compact = false,
   height,
   src,
   width,
 }: {
   alt: string;
   caption: ReactNode;
-  className?: string;
+  compact?: boolean;
   height: number;
   src: string;
   width: number;
 }) {
   return (
-    <figure className={`reference-figure ${className}`.trim()}>
+    <figure className={`reference-figure${compact ? " is-compact" : ""}`}>
       <div className="reference-image-wrap">
         <img
           alt={alt}
@@ -114,6 +136,21 @@ function ReferenceFigure({
       </div>
       <figcaption>{caption}</figcaption>
     </figure>
+  );
+}
+
+function GuideStepList() {
+  return (
+    <ol>
+      {GUIDE_STEPS.map((step) => (
+        <li key={step.id}>
+          <a href={`#${step.id}`}>
+            <span>{step.number}</span>
+            {step.title}
+          </a>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -151,17 +188,18 @@ export function Guide() {
 
       <div className="guide-layout">
         <nav aria-label="Guide sequence" className="guide-index">
-          <span className="guide-index-label">15 steps</span>
-          <ol>
-            {GUIDE_STEPS.map((step) => (
-              <li key={step.id}>
-                <a href={`#${step.id}`}>
-                  <span>{step.number}</span>
-                  {step.title}
-                </a>
-              </li>
-            ))}
-          </ol>
+          <div className="guide-index-desktop">
+            <span className="guide-index-label">15 steps</span>
+            <GuideStepList />
+          </div>
+          <details className="guide-index-mobile">
+            <summary>
+              <span className="guide-index-label">15 steps</span>
+              <span className="guide-index-action is-closed">open steps</span>
+              <span className="guide-index-action is-open">close steps</span>
+            </summary>
+            <GuideStepList />
+          </details>
         </nav>
 
         <article className="guide-content">
@@ -178,7 +216,33 @@ export function Guide() {
               reserves 256 KiB for the transposition table and 32 KiB for the main
               task stack. It runs on one core and does not require PSRAM.
             </p>
-            <figure className="hardware-figure hardware-figure-wide">
+            <CodeStudy
+              code={`typedef uint64_t bitboard_t;
+typedef uint32_t move_t;
+
+_Static_assert(sizeof(bitboard_t) == 8, "bitboard size");
+_Static_assert(sizeof(move_t) == 4, "move size");`}
+              path="src/ch.h"
+              title="Choose integer widths from the data"
+            >
+              <p>
+                A chessboard has 64 squares. One bit in <code>bitboard_t</code> maps
+                directly to one square. A full board mask can therefore be combined
+                with one AND, OR, XOR, or shift in the C source. The packed move needs
+                only 19 active bits, so <code>uint32_t</code> leaves room for the complete
+                move and keeps each move-list entry small.
+              </p>
+              <p>
+                The ESP32-P4 uses a 32-bit RISC-V core. Its compiler can still implement
+                <code>uint64_t</code>, but many operations become work on two 32-bit
+                halves. An explicit pair of <code>uint32_t</code> values could make that
+                cost visible and give more control over carries and shifts. It would also
+                make every attack mask and bit scan more complicated. This repository
+                keeps the direct 64-bit form until both representations can be measured
+                on the physical board. No pair-of-halves result exists yet.
+              </p>
+            </CodeStudy>
+            <figure className="hardware-figure">
               <img
                 alt="Waveshare ESP32-P4-Module-DEV-KIT with the USB serial cable attached"
                 decoding="async"
@@ -188,16 +252,16 @@ export function Guide() {
                 width="1600"
               />
               <figcaption>
-                Waveshare ESP32-P4-Module-DEV-KIT used for this project. Photo by
-                Ishan Kumthekar.
+                Waveshare ESP32-P4-Module-DEV-KIT used for this project. Ishan
+                Kumthekar photograph.
               </figcaption>
             </figure>
             <ResourceLinks links={[
-              { label: "Waveshare documentation — ESP32-P4-Module-DEV-KIT", href: GUIDE_RESOURCES[4] },
-              { label: "Project code — train/profiles.py", href: source("train/profiles.py") },
-              { label: "Project code — src/nnue_config.h", href: source("src/nnue_config.h") },
-              { label: "Project code — esp/sdkconfig.defaults", href: source("esp/sdkconfig.defaults") },
-              { label: "Project record — models/reference.json", href: source("models/reference.json") },
+              { label: "Waveshare documentation: ESP32-P4-Module-DEV-KIT", href: GUIDE_RESOURCES[4] },
+              { label: "Project code: train/profiles.py", href: source("train/profiles.py") },
+              { label: "Project code: src/nnue_config.h", href: source("src/nnue_config.h") },
+              { label: "Project code: esp/sdkconfig.defaults", href: source("esp/sdkconfig.defaults") },
+              { label: "Project record: models/reference.json", href: source("models/reference.json") },
             ]} />
           </GuideSection>
 
@@ -209,6 +273,33 @@ export function Guide() {
               in <code>src/uci.c</code>. Board startup, model storage, and the serial
               protocol stay in <code>esp</code>.
             </p>
+            <CodeStudy
+              code={`set(P4_SRC
+    src/bitboard.c
+    src/evaluate.c
+    src/movegen.c
+    src/nnue.c
+    src/position.c
+    src/search.c
+    src/system.c
+)
+
+add_library(p4core STATIC \${P4_SRC})`}
+              path="CMakeLists.txt"
+              title="Keep one shared engine core"
+            >
+              <p>
+                The root build turns these files into the desktop <code>p4core</code>
+                library. The ESP-IDF component lists the same source paths instead of
+                keeping a firmware copy. A move that passes the host tests is therefore
+                handled by the same implementation on the microcontroller.
+              </p>
+              <p>
+                Platform code stays at the edge. <code>src/uci.c</code> reads desktop
+                UCI commands. <code>esp/main/app.c</code> starts the board and reads UART
+                frames. Both call the public functions declared in <code>src/ch.h</code>.
+              </p>
+            </CodeStudy>
             <div className="reference-callouts">
               <p>
                 <strong>Chess Programming Wiki</strong>
@@ -222,13 +313,13 @@ export function Guide() {
               </p>
             </div>
             <ResourceLinks links={[
-              { label: "Chess Programming Wiki — Main Page", href: GUIDE_RESOURCES[0] },
-              { label: "Chess Programming Wiki — Board Representation", href: "https://www.chessprogramming.org/Board_Representation" },
-              { label: "Code Monkey King — BBC repository", href: GUIDE_RESOURCES[1] },
-              { label: "Code Monkey King — bitboard video series", href: GUIDE_RESOURCES[2] },
-              { label: "Project code — src/ch.h", href: source("src/ch.h") },
-              { label: "Project build — CMakeLists.txt", href: source("CMakeLists.txt") },
-              { label: "Project firmware build — esp/components/core/CMakeLists.txt", href: source("esp/components/core/CMakeLists.txt") },
+              { label: "Chess Programming Wiki: Main Page", href: GUIDE_RESOURCES[0] },
+              { label: "Chess Programming Wiki: Board Representation", href: "https://www.chessprogramming.org/Board_Representation" },
+              { label: "Code Monkey King: BBC repository", href: GUIDE_RESOURCES[1] },
+              { label: "Code Monkey King: bitboard video series", href: GUIDE_RESOURCES[2] },
+              { label: "Project code: src/ch.h", href: source("src/ch.h") },
+              { label: "Project build: CMakeLists.txt", href: source("CMakeLists.txt") },
+              { label: "Project firmware build: esp/components/core/CMakeLists.txt", href: source("esp/components/core/CMakeLists.txt") },
             ]} />
           </GuideSection>
 
@@ -238,6 +329,46 @@ export function Guide() {
               It also stores one piece value for each of the 64 squares. Every move
               updates both representations.
             </p>
+            <CodeStudy
+              code={`typedef struct {
+    bitboard_t pieces[PIECE_COUNT];
+    bitboard_t occupancy[3];
+    uint64_t key;
+    uint64_t history[POSITION_HISTORY_SIZE];
+    int16_t accumulator[COLOR_COUNT][NNUE_HIDDEN_SIZE];
+    uint8_t board[64];
+    uint16_t halfmove_clock;
+    uint16_t fullmove_number;
+    uint16_t history_count;
+    uint8_t king_bucket[COLOR_COUNT];
+    uint8_t king_mirror[COLOR_COUNT];
+    uint8_t side_to_move;
+    uint8_t castling;
+    uint8_t en_passant;
+} position_t;`}
+              path="src/ch.h"
+              title="Store sets and direct square lookup together"
+            >
+              <p>
+                <code>pieces</code> answers set questions such as every white knight or
+                every occupied square. <code>board</code> answers the different question
+                of which exact piece occupies one square. Search and move generation use
+                both forms without rebuilding either one.
+              </p>
+              <p>
+                <code>key</code> is the incremental Zobrist hash. <code>history</code>
+                records earlier hashes for repetition detection. The accumulators hold
+                both NNUE perspectives inside the position so make and undo can keep the
+                evaluation ready for the next search node.
+              </p>
+              <p>
+                The move clocks preserve FEN state and the fifty-move rule.
+                <code>history_count</code> bounds the valid repetition history. The king
+                bucket and mirror arrays cache the active NNUE view for each side. The
+                remaining bytes record the side to move and the two reversible move
+                rights needed by castling and en passant.
+              </p>
+            </CodeStudy>
             <ReferenceFigure
               alt="Chessboard showing algebraic file and rank coordinates"
               caption={(
@@ -248,35 +379,79 @@ export function Guide() {
                   Unmodified and licensed {" "}<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>.
                 </>
               )}
-              className="reference-figure-board"
+              compact
               height={246}
               src="/images/reference/chess-coordinates.svg"
               width={242}
             />
-            <Code>{`bits 0..5    source square
+            <CodeStudy
+              code={`bits 0..5    source square
 bits 6..11   destination square
 bits 12..14  promotion selector
 bits 15..18  capture en passant castle double pawn flags
-bits 19..31  reserved`}</Code>
+bits 19..31  reserved
+
+#define PACK_MOVE(from, to, promotion, flags) \\
+    ((move_t)((from) | ((to) << 6) | ((promotion) << 12) | ((flags) << 15)))`}
+              path="src/ch.h"
+              title="Pack a complete move into 32 bits"
+            >
+              <p>
+                Source and destination squares each need six bits. Promotion needs three
+                bits. Four flag bits distinguish captures, en passant, castling, and a
+                double pawn push. Search can copy, compare, sort, and store a move as one
+                integer without heap allocation.
+              </p>
+            </CodeStudy>
             <p>
               Generate pseudo-legal moves. Make one move. Reject it when it leaves
               the moving side&apos;s king in check. Undo it. The undo record restores
               captured pieces, castling rights, en passant, clocks, the Zobrist hash,
               and NNUE accumulator state.
             </p>
+            <CodeStudy
+              code={`remove_piece(position, from);
+if (captured != NO_PIECE) remove_piece(position, capture_square);
+place_piece(position, placed_piece, to);
+
+position->side_to_move = (uint8_t)opponent;
+position->key ^= zobrist_side;
+
+int king_square = find_king_square(position, side);
+if (king_square == NO_SQUARE ||
+    square_is_attacked(position, king_square, opponent)) {
+    undo_move(position, move, undo);
+    return false;
+}`}
+              path="src/position.c"
+              title="Make the move then reject an exposed king"
+            >
+              <p>
+                <code>remove_piece</code> and <code>place_piece</code> update the square
+                array, piece bitboards, occupancy, hash, and NNUE features as one state
+                transition. The side changes only after the pieces move. The final king
+                attack test turns a pseudo-legal generated move into a legal move.
+              </p>
+              <p>
+                <code>undo_t</code> saves the old hash, clocks, castling rights, en
+                passant square, history count, moved piece, captured piece, and king
+                view. Undo reverses the piece operations and restores those values. The
+                search never rebuilds the complete position after every child.
+              </p>
+            </CodeStudy>
             <Code>{`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure`}</Code>
             <ResourceLinks links={[
-              { label: "Chess Programming Wiki — Bitboards", href: "https://www.chessprogramming.org/Bitboards" },
-              { label: "Chess Programming Wiki — Move Generation", href: "https://www.chessprogramming.org/Move_Generation" },
-              { label: "Chess Programming Wiki — Make Move", href: "https://www.chessprogramming.org/Make_Move" },
-              { label: "Chess Programming Wiki — Unmake Move", href: "https://www.chessprogramming.org/Unmake_Move" },
-              { label: "Chess Programming Wiki — Perft", href: "https://www.chessprogramming.org/Perft" },
-              { label: "Chess Programming Wiki — Zobrist Hashing", href: "https://www.chessprogramming.org/Zobrist_Hashing" },
-              { label: "Project code — src/bitboard.c", href: source("src/bitboard.c") },
-              { label: "Project code — src/movegen.c", href: source("src/movegen.c") },
-              { label: "Project code — src/position.c", href: source("src/position.c") },
+              { label: "Chess Programming Wiki: Bitboards", href: "https://www.chessprogramming.org/Bitboards" },
+              { label: "Chess Programming Wiki: Move Generation", href: "https://www.chessprogramming.org/Move_Generation" },
+              { label: "Chess Programming Wiki: Make Move", href: "https://www.chessprogramming.org/Make_Move" },
+              { label: "Chess Programming Wiki: Unmake Move", href: "https://www.chessprogramming.org/Unmake_Move" },
+              { label: "Chess Programming Wiki: Perft", href: "https://www.chessprogramming.org/Perft" },
+              { label: "Chess Programming Wiki: Zobrist Hashing", href: "https://www.chessprogramming.org/Zobrist_Hashing" },
+              { label: "Project code: src/bitboard.c", href: source("src/bitboard.c") },
+              { label: "Project code: src/movegen.c", href: source("src/movegen.c") },
+              { label: "Project code: src/position.c", href: source("src/position.c") },
             ]} />
           </GuideSection>
 
@@ -287,6 +462,46 @@ ctest --test-dir build --output-on-failure`}</Code>
               Iterative deepening completes depth 1, then 2, then 3, so the engine
               always has a finished answer.
             </p>
+            <CodeStudy
+              code={`bool quiet = !(MOVE_FLAGS(move) & MOVE_CAPTURE) &&
+             !MOVE_PROMOTION(move);
+if (!legal_moves) {
+    score = -principal_variation_search(
+        context, position, depth - 1, -beta, -alpha, ply + 1);
+} else {
+    int reduction = depth >= 3 && legal_moves >= 4 && quiet &&
+                    !in_check && !gives_check;
+    score = -principal_variation_search(
+        context, position, depth - 1 - reduction,
+        -alpha - 1, -alpha, ply + 1);
+    if (!context->stop && reduction && score > alpha) {
+        score = -principal_variation_search(
+            context, position, depth - 1,
+            -alpha - 1, -alpha, ply + 1);
+    }
+    if (!context->stop && score > alpha && score < beta) {
+        score = -principal_variation_search(
+            context, position, depth - 1, -beta, -alpha, ply + 1);
+    }
+}`}
+              path="src/search.c"
+              title="Negamax and principal variation search"
+            >
+              <p>
+                Every returned score belongs to the side that is about to move. Making
+                a move changes that side, so the recursive result is negated. The bounds
+                also change sign and exchange places. This is the negamax form of
+                alpha-beta.
+              </p>
+              <p>
+                The first legal move receives the full search window. Later moves first
+                receive the narrow window from <code>-alpha - 1</code> through
+                <code>-alpha</code>. Most inferior moves fail inside that narrow window
+                with less work. A late quiet move can first use one less ply. A reduced
+                result above alpha repeats the narrow search at full depth. A full-depth
+                result between alpha and beta then receives the complete window.
+              </p>
+            </CodeStudy>
             <div className="reference-pair">
               <ReferenceFigure
                 alt="Three stages of values moving upward through a minimax tree"
@@ -321,6 +536,53 @@ ctest --test-dir build --output-on-failure`}</Code>
               evaluation. This keeps a hanging queen or an unfinished exchange from
               producing an unstable score at the search boundary.
             </p>
+            <CodeStudy
+              code={`static int quiescence_search(search_context_t *context,
+                             position_t *position,
+                             int alpha,
+                             int beta,
+                             int ply) {
+    count_node(context);
+    if (context->stop) return 0;
+    if (ply >= MAX_PLY - 1) return evaluate(position);
+    if (position_is_draw(position)) return 0;
+    bool in_check = side_in_check(position, position->side_to_move);
+    if (!in_check) {
+        int score = evaluate(position);
+        if (score >= beta) return score;
+        if (score > alpha) alpha = score;
+    }
+
+    move_list_t list;
+    bool tactical_only = !in_check;
+    generate_moves(position, &list, tactical_only);
+    int legal_moves = 0;
+    for (int i = 0; i < list.count; ++i) {
+        select_next_move(context, position, &list, i, 0, ply);
+        undo_t undo;
+        if (!make_move(position, list.moves[i], &undo)) continue;
+        ++legal_moves;
+        int score =
+            -quiescence_search(context, position, -beta, -alpha, ply + 1);
+        undo_move(position, list.moves[i], &undo);
+        if (context->stop) return 0;
+        if (score >= beta) return score;
+        if (score > alpha) alpha = score;
+    }
+    if (in_check && !legal_moves) return -SCORE_MATE + ply;
+    return alpha;
+}`}
+              path="src/search.c"
+              title="Continue unstable positions at depth zero"
+            >
+              <p>
+                A quiet position can use its static score as a lower bound called stand
+                pat. The search then considers captures and promotions. A checked king
+                cannot stand pat, so <code>tactical_only</code> becomes false and every
+                evasion is generated. Checkmate is returned when none of those moves is
+                legal.
+              </p>
+            </CodeStudy>
             <h3>The current search result</h3>
             <p>
               The engine also uses principal variation search, a fixed transposition
@@ -328,17 +590,41 @@ ctest --test-dir build --output-on-failure`}</Code>
               move reduction. <code>search_position</code> returns the best move,
               score, completed depth, node count, elapsed time, and principal variation.
             </p>
+            <CodeStudy
+              code={`tt_entry_t *entry =
+    &context->table->entries[key & (context->table->count - 1)];
+if (entry->key != key) return SCORE_INFINITY;
+*table_move = entry->move;
+int score = entry->score;
+if (score > SCORE_MATE - MAX_PLY) score -= ply;
+else if (score < -SCORE_MATE + MAX_PLY) score += ply;
+if (entry->depth < depth) return SCORE_INFINITY;
+if (entry->flag == TT_EXACT) return score;
+if (entry->flag == TT_LOWER_BOUND && score >= beta) return score;
+if (entry->flag == TT_UPPER_BOUND && score <= alpha) return score;`}
+              path="src/search.c"
+              title="Reuse positions with the transposition table"
+            >
+              <p>
+                The table count is a power of two. Masking the Zobrist key selects one
+                16-byte entry without division. The full 64-bit key confirms that the
+                slot belongs to this position. An exact score can return immediately.
+                Lower and upper bounds return only when they already prove the current
+                alpha-beta result. The stored move still helps move ordering when the
+                stored depth is too shallow for a score cutoff.
+              </p>
+            </CodeStudy>
             <ResourceLinks links={[
-              { label: "Chess Programming Wiki — Negamax", href: "https://www.chessprogramming.org/Negamax" },
-              { label: "Chess Programming Wiki — Alpha-Beta", href: "https://www.chessprogramming.org/Alpha-Beta" },
-              { label: "Chess Programming Wiki — Iterative Deepening", href: "https://www.chessprogramming.org/Iterative_Deepening" },
-              { label: "Chess Programming Wiki — Principal Variation Search", href: "https://www.chessprogramming.org/Principal_Variation_Search" },
-              { label: "Chess Programming Wiki — Quiescence Search", href: "https://www.chessprogramming.org/Quiescence_Search" },
-              { label: "Chess Programming Wiki — Horizon Effect", href: "https://www.chessprogramming.org/Horizon_Effect" },
-              { label: "Chess Programming Wiki — Transposition Table", href: "https://www.chessprogramming.org/Transposition_Table" },
-              { label: "Chess Programming Wiki — Move Ordering", href: "https://www.chessprogramming.org/Move_Ordering" },
-              { label: "Chess Programming Wiki — Late Move Reductions", href: "https://www.chessprogramming.org/Late_Move_Reductions" },
-              { label: "Project code — src/search.c", href: source("src/search.c") },
+              { label: "Chess Programming Wiki: Negamax", href: "https://www.chessprogramming.org/Negamax" },
+              { label: "Chess Programming Wiki: Alpha-Beta", href: "https://www.chessprogramming.org/Alpha-Beta" },
+              { label: "Chess Programming Wiki: Iterative Deepening", href: "https://www.chessprogramming.org/Iterative_Deepening" },
+              { label: "Chess Programming Wiki: Principal Variation Search", href: "https://www.chessprogramming.org/Principal_Variation_Search" },
+              { label: "Chess Programming Wiki: Quiescence Search", href: "https://www.chessprogramming.org/Quiescence_Search" },
+              { label: "Chess Programming Wiki: Horizon Effect", href: "https://www.chessprogramming.org/Horizon_Effect" },
+              { label: "Chess Programming Wiki: Transposition Table", href: "https://www.chessprogramming.org/Transposition_Table" },
+              { label: "Chess Programming Wiki: Move Ordering", href: "https://www.chessprogramming.org/Move_Ordering" },
+              { label: "Chess Programming Wiki: Late Move Reductions", href: "https://www.chessprogramming.org/Late_Move_Reductions" },
+              { label: "Project code: src/search.c", href: source("src/search.c") },
             ]} />
           </GuideSection>
 
@@ -357,7 +643,6 @@ ctest --test-dir build --output-on-failure`}</Code>
                   rows present on the chessboard. Diagram by Offnfopt from {" "}<a href="https://commons.wikimedia.org/wiki/File:Multi-Layer_Neural_Network-Vector.svg">Wikimedia Commons</a>, released to the public domain under {" "}<a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0 1.0</a>.
                 </>
               )}
-              className="reference-figure-network"
               height={305}
               src="/images/reference/neural-network-layers.svg"
               width={527}
@@ -378,15 +663,47 @@ ctest --test-dir build --output-on-failure`}</Code>
                 </tbody>
               </table>
             </div>
-            <Code>{`model bytes = 32 + 6H + 640BH
+            <CodeStudy
+              code={`@property
+def model_bytes(self) -> int:
+    return (
+        MODEL_HEADER_SIZE
+        + MODEL_OUTPUT_BIAS_SIZE
+        + self.feature_count * self.hidden_width
+        + 3 * self.hidden_width * 2
+    )
+
+PROFILES = (
+    NnueProfile("4x128", 4, 128),
+    NnueProfile("8x64", 8, 64),
+    NnueProfile("8x96", 8, 96),
+    NnueProfile("16x48", 16, 48),
+)`}
+              path="train/profiles.py"
+              title="Calculate each model before training it"
+            >
+              <p>
+                Each bucket contains 640 piece-square features. Every feature owns one
+                signed 8-bit row with <code>hidden_width</code> values. This transformer
+                dominates the file size. The remaining bytes hold the header, output
+                bias, feature bias, and two sets of signed 16-bit output weights.
+              </p>
+              <Code>{`model bytes = 32 + 6H + 640BH
 32 + 6 × 128 + 640 × 4 × 128 = 328480`}</Code>
+              <p>
+                A wider hidden layer gives every active feature more learned values. More
+                king buckets preserve more king location detail. Both consume flash in
+                the product <code>640BH</code>. The four listed profiles stay below the
+                project&apos;s 512 KiB ceiling and make that tradeoff measurable.
+              </p>
+            </CodeStudy>
             <ResourceLinks links={[
-              { label: "Stockfish — NNUE technical documentation", href: "https://github.com/official-stockfish/nnue-pytorch/blob/master/docs/nnue.md" },
-              { label: "Stockfish — official nnue-pytorch trainer", href: GUIDE_RESOURCES[3] },
-              { label: "Chess Programming Wiki — NNUE", href: "https://www.chessprogramming.org/NNUE" },
-              { label: "Project code — train/profiles.py", href: source("train/profiles.py") },
-              { label: "Project code — train/net.py", href: source("train/net.py") },
-              { label: "Project code — src/nnue.c", href: source("src/nnue.c") },
+              { label: "Stockfish: NNUE technical documentation", href: "https://github.com/official-stockfish/nnue-pytorch/blob/master/docs/nnue.md" },
+              { label: "Stockfish: official nnue-pytorch trainer", href: GUIDE_RESOURCES[3] },
+              { label: "Chess Programming Wiki: NNUE", href: "https://www.chessprogramming.org/NNUE" },
+              { label: "Project code: train/profiles.py", href: source("train/profiles.py") },
+              { label: "Project code: train/net.py", href: source("train/net.py") },
+              { label: "Project code: src/nnue.c", href: source("src/nnue.c") },
             ]} />
           </GuideSection>
 
@@ -396,27 +713,73 @@ ctest --test-dir build --output-on-failure`}</Code>
               ranks. Kings on files e through h mirror the board. The king file selects
               a bucket. Non-king pieces map to ten piece classes.
             </p>
-            <ol className="plain-steps">
-              <li>Flip ranks for the Black perspective</li>
-              <li>Mirror files when the normalized king occupies files e through h</li>
-              <li>Select the normalized king-file bucket</li>
-              <li>Exclude kings from sparse inputs</li>
-              <li>Map friendly pawns through queens to classes zero through four</li>
-              <li>Map opposing pawns through queens to classes five through nine</li>
-              <li>Append the normalized piece square</li>
-              <li>Pad each training feature list to 30 entries</li>
-            </ol>
+            <CodeStudy
+              code={`def _feature_index_from_view(
+    bucket: int,
+    mirror: bool,
+    piece: int,
+    square: int,
+    perspective: int,
+) -> int | None:
+    piece_type = piece % 6
+    if piece_type == 5:
+        return None
+    normalized_square = _perspective_square(square, perspective, mirror)
+    own_piece = (piece >= 6) == bool(perspective)
+    piece_class = piece_type if own_piece else 5 + piece_type
+    return bucket * FEATURES_PER_BUCKET + piece_class * 64 + normalized_square`}
+              path="train/features.py"
+              title="Create the sparse feature index"
+            >
+              <p>
+                Perspective normalization makes the friendly side face the same
+                direction in both accumulators. Horizontal mirroring lets symmetric king
+                positions share a bucket. Kings provide the view and are not input
+                features. Friendly pawns through queens use classes zero through four.
+                Opposing pawns through queens use classes five through nine. The final
+                square selects one value inside that piece class.
+              </p>
+              <p>
+                <code>encode_position</code> builds the side-to-move list first and the
+                opponent list second. Each list is padded to 30 entries with a reserved
+                index whose embedding row remains zero. Fixed shapes let PyTorch batch
+                positions without changing the sparse meaning.
+              </p>
+            </CodeStudy>
             <p>
               A normal move subtracts old feature vectors and adds new ones. Rebuild
               one perspective only when a king changes its bucket or mirror. Compare
               every incremental result with a full refresh after make and undo.
             </p>
+            <CodeStudy
+              code={`void add_nnue_feature(position_t *position, int piece, int square) {
+    if (!nnue_is_loaded() || piece_type(piece) == KING) return;
+    for (int perspective = 0; perspective < COLOR_COUNT; ++perspective) {
+        int feature = feature_index_from_view(
+            position->king_bucket[perspective],
+            position->king_mirror[perspective] != 0,
+            piece, square, perspective);
+        add_vector(position->accumulator[perspective],
+                   feature_vector(feature));
+    }
+}`}
+              path="src/nnue.c"
+              title="Update both accumulators after a piece change"
+            >
+              <p>
+                A non-king piece appears once in each perspective with a different
+                feature index. Adding that piece adds one signed 8-bit row to each signed
+                16-bit accumulator. Removal subtracts the same rows. A king contributes
+                no row. When a king changes bucket or mirror state, only that king&apos;s
+                perspective is rebuilt from the feature bias and current pieces.
+              </p>
+            </CodeStudy>
             <ResourceLinks links={[
-              { label: "Stockfish — NNUE feature transformation", href: "https://github.com/official-stockfish/nnue-pytorch/blob/master/docs/nnue.md#feature-transformer" },
-              { label: "Project code — train/features.py", href: source("train/features.py") },
-              { label: "Project code — src/nnue.c", href: source("src/nnue.c") },
-              { label: "Project fixture — test/nnue_features.txt", href: source("test/nnue_features.txt") },
-              { label: "Project tests — train/test_features.py", href: source("train/test_features.py") },
+              { label: "Stockfish: NNUE feature transformation", href: "https://github.com/official-stockfish/nnue-pytorch/blob/master/docs/nnue.md#feature-transformer" },
+              { label: "Project code: train/features.py", href: source("train/features.py") },
+              { label: "Project code: src/nnue.c", href: source("src/nnue.c") },
+              { label: "Project fixture: test/nnue_features.txt", href: source("test/nnue_features.txt") },
+              { label: "Project tests: train/test_features.py", href: source("train/test_features.py") },
             ]} />
           </GuideSection>
 
@@ -431,6 +794,33 @@ ctest --test-dir build --output-on-failure`}</Code>
               Sample complete PGN games and ask Stockfish for a fixed-node search.
               This path is useful for checking the complete pipeline with a small file.
             </p>
+            <CodeStudy
+              code={`def analyse_with_teacher(
+    engine: chess.engine.SimpleEngine, board: chess.Board, nodes: int
+) -> int:
+    info = engine.analyse(board, chess.engine.Limit(nodes=nodes))
+    if "score" not in info:
+        raise ValueError("teacher returned no score")
+    score = info["score"].pov(board.turn).score(mate_score=SCORE_LIMIT)
+    if score is None:
+        raise ValueError("teacher returned an empty score")
+    return clip_score(score)`}
+              path="train/label.py"
+              title="Convert every teacher score to side to move"
+            >
+              <p>
+                A fixed node limit gives every sampled position the same teacher budget.
+                <code>pov(board.turn)</code> converts the result to the player about to
+                move. Positive labels therefore always favor that player. Mate scores
+                become the bounded score limit and every output is clamped before it is
+                written.
+              </p>
+              <p>
+                The PGN path assigns an entire game to one split before sampling its
+                positions. Related positions from one game cannot leak across training,
+                validation, and test data.
+              </p>
+            </CodeStudy>
             <Code>{`python3 train/label.py \
   test/training_games.pgn /path/to/stockfish \
   build-guide/labels.jsonl \
@@ -443,6 +833,29 @@ ctest --test-dir build --output-on-failure`}</Code>
               depth 20 or greater. The split contains 9,000,455 training positions,
               500,453 validation positions, and 499,092 test positions.
             </p>
+            <CodeStudy
+              code={`depth, knodes, score_kind, white_score = _selected_evaluation(record)
+score = white_score if board.turn == chess.WHITE else -white_score
+return ImportedEvaluation(
+    fen=board.fen(en_passant="fen"),
+    score=clip_score(score),
+    depth=depth,
+    knodes=knodes,
+    score_kind=score_kind,
+    side_to_move="white" if board.turn == chess.WHITE else "black",
+    piece_count=len(board.piece_map()),
+)`}
+              path="train/import_evals.py"
+              title="Normalize the large evaluation database"
+            >
+              <p>
+                The importer validates each FEN and selects the deepest usable evaluation
+                record. Lichess stores the score from White&apos;s point of view. Negating
+                Black-to-move records converts it to the same side-to-move convention as
+                the PGN teacher path. Seeded filtering makes the ten-million-position
+                selection reproducible.
+              </p>
+            </CodeStudy>
             <Code>{`python3 train/import_evals.py \
   https://database.lichess.org/lichess_db_eval.jsonl.zst \
   data/reference_labels.jsonl \
@@ -454,11 +867,11 @@ ctest --test-dir build --output-on-failure`}</Code>
               membership, so the importer splits accepted records individually.
             </p>
             <ResourceLinks links={[
-              { label: "Stockfish — official source", href: "https://github.com/official-stockfish/Stockfish" },
-              { label: "Lichess — open evaluation database", href: "https://database.lichess.org/" },
-              { label: "Project code — train/label.py", href: source("train/label.py") },
-              { label: "Project code — train/import_evals.py", href: source("train/import_evals.py") },
-              { label: "Project code — train/data.py", href: source("train/data.py") },
+              { label: "Stockfish: official source", href: "https://github.com/official-stockfish/Stockfish" },
+              { label: "Lichess: open evaluation database", href: "https://database.lichess.org/" },
+              { label: "Project code: train/label.py", href: source("train/label.py") },
+              { label: "Project code: train/import_evals.py", href: source("train/import_evals.py") },
+              { label: "Project code: train/data.py", href: source("train/data.py") },
             ]} />
           </GuideSection>
 
@@ -468,6 +881,35 @@ ctest --test-dir build --output-on-failure`}</Code>
               int16 centipawn label. Save the data in compressed NPZ shards so training
               does not parse FEN during every epoch.
             </p>
+            <CodeStudy
+              code={`def _new_buffer(shard_size: int) -> dict[str, Any]:
+    return {
+        "side": np.empty(
+            (shard_size, MAX_ACTIVE_FEATURES), dtype=FEATURE_DTYPE
+        ),
+        "opponent": np.empty(
+            (shard_size, MAX_ACTIVE_FEATURES), dtype=FEATURE_DTYPE
+        ),
+        "score": np.empty(shard_size, dtype=LABEL_DTYPE),
+        "count": 0,
+    }`}
+              path="train/prep.py"
+              title="Encode compact fixed-shape training rows"
+            >
+              <p>
+                Each row contains 30 unsigned 16-bit indexes for the side-to-move view
+                and 30 for the opposing view. The label is one signed 16-bit centipawn
+                value. FEN parsing and feature mapping happen once during preparation.
+                Training later reads ready-to-batch numeric arrays.
+              </p>
+              <p>
+                Full buffers are written with <code>np.savez_compressed</code>. The
+                manifest records the exact profile, mapping version, dtypes, split counts,
+                teacher metadata, and shard names. <code>load_shard</code> rejects wrong
+                shapes, dtypes, feature ranges, and score ranges before training uses a
+                file.
+              </p>
+            </CodeStudy>
             <Code>{`python3 train/prep.py \
   data/reference_labels.jsonl data/reference_4x128 \
   --shard-size 250000 --profile 4x128`}</Code>
@@ -477,9 +919,9 @@ ctest --test-dir build --output-on-failure`}</Code>
               every shard before training.
             </p>
             <ResourceLinks links={[
-              { label: "Project code — train/prep.py", href: source("train/prep.py") },
-              { label: "Project code — train/data.py", href: source("train/data.py") },
-              { label: "Project tests — train/test_data.py", href: source("train/test_data.py") },
+              { label: "Project code: train/prep.py", href: source("train/prep.py") },
+              { label: "Project code: train/data.py", href: source("train/data.py") },
+              { label: "Project tests: train/test_data.py", href: source("train/test_data.py") },
             ]} />
           </GuideSection>
 
@@ -489,6 +931,35 @@ ctest --test-dir build --output-on-failure`}</Code>
               clip the values, place the side-to-move accumulator first, and send the
               256 values through the output layer.
             </p>
+            <CodeStudy
+              code={`class NnueNetwork(torch.nn.Module):
+    def forward(
+        self, side_features: torch.Tensor, opponent_features: torch.Tensor
+    ) -> torch.Tensor:
+        side = self.feature_transformer(side_features).sum(1) + self.feature_bias
+        opponent = (
+            self.feature_transformer(opponent_features).sum(1) + self.feature_bias
+        )
+        clip = ACTIVATION_CLIP / FEATURE_QUANTIZATION
+        side = torch.clamp(side, 0.0, clip)
+        opponent = torch.clamp(opponent, 0.0, clip)
+        return self.output(torch.cat((side, opponent), 1)).squeeze(1)`}
+              path="train/net.py"
+              title="Train the same accumulator shape used by C"
+            >
+              <p>
+                The embedding table is the feature transformer. Looking up the active
+                indexes selects only the rows present in the position. Summing those rows
+                and adding one shared bias produces each 128-value accumulator. The
+                padding index owns a zero row and has no effect on the sum.
+              </p>
+              <p>
+                Values are clipped to the floating-point equivalent of the runtime range
+                from zero through 127. The side-to-move accumulator comes first. The
+                opposing accumulator comes second. One linear output produces the
+                centipawn prediction used by the loss.
+              </p>
+            </CodeStudy>
             <Code>{`python3 train/train.py \
   data/reference_4x128 model_4x128_seed7.pt \
   --epochs 12 --batch 4096 --lr 0.001 --seed 7 \
@@ -500,12 +971,38 @@ ctest --test-dir build --output-on-failure`}</Code>
               after every epoch. Keep the checkpoint with the lowest validation loss.
               Use the test split only after model selection.
             </p>
+            <CodeStudy
+              code={`prediction = network(side, opponent)
+loss = transformed_loss(prediction, target, score_scale)
+optimizer.zero_grad(set_to_none=True)
+loss.backward()
+optimizer.step()
+
+epoch_constraints = constrain_quantized_parameters(network)
+validation = evaluate_shards(
+    network, shard_paths["validation"], batch_size, score_scale, device
+)
+is_best = (
+    best_validation is None
+    or validation["loss"] < best_validation["loss"]
+)`}
+              path="train/train.py"
+              title="Select checkpoints with validation data"
+            >
+              <p>
+                AdamW updates parameters from each batch. The parameter constraint runs
+                once the epoch is complete so every saved checkpoint remains representable
+                by the integer file format. Validation then measures positions that did
+                not update the weights. Only a lower validation loss replaces the saved
+                checkpoint. The final test split stays outside this selection loop.
+              </p>
+            </CodeStudy>
             <ResourceLinks links={[
-              { label: "PyTorch — AdamW", href: "https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html" },
-              { label: "PyTorch — Smooth L1 loss", href: "https://docs.pytorch.org/docs/stable/generated/torch.nn.SmoothL1Loss.html" },
-              { label: "Project code — train/net.py", href: source("train/net.py") },
-              { label: "Project code — train/train.py", href: source("train/train.py") },
-              { label: "Project code — train/evaluate.py", href: source("train/evaluate.py") },
+              { label: "PyTorch: AdamW", href: "https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html" },
+              { label: "PyTorch: Smooth L1 loss", href: "https://docs.pytorch.org/docs/stable/generated/torch.nn.SmoothL1Loss.html" },
+              { label: "Project code: train/net.py", href: source("train/net.py") },
+              { label: "Project code: train/train.py", href: source("train/train.py") },
+              { label: "Project code: train/evaluate.py", href: source("train/evaluate.py") },
             ]} />
           </GuideSection>
 
@@ -515,6 +1012,53 @@ ctest --test-dir build --output-on-failure`}</Code>
               bias, feature bias, output weights, and feature weights. Reject wrong
               dimensions, nonfinite values, unsafe accumulator bias, and saturation.
             </p>
+            <CodeStudy
+              code={`def build_model_blob(
+    quantized: dict[str, Any],
+    profile: NnueProfile = DEFAULT_PROFILE,
+) -> bytes:
+    header = struct.pack(
+        "<8s8HI",
+        MAGIC,
+        MODEL_FORMAT_VERSION,
+        profile.bucket_count,
+        FEATURES_PER_BUCKET,
+        profile.hidden_width,
+        ACTIVATION_CLIP,
+        FEATURE_QUANTIZATION,
+        OUTPUT_QUANTIZATION,
+        PERSPECTIVE_COUNT,
+        profile.model_bytes,
+    )
+    if len(header) != HEADER_SIZE:
+        raise RuntimeError("bad model header size")
+    blob = (
+        header
+        + struct.pack("<i", quantized["output_bias"])
+        + quantized["feature_bias"].astype("<i2", copy=False).tobytes()
+        + quantized["output_weights"].astype("<i2", copy=False).tobytes()
+        + quantized["feature_weights"].tobytes()
+    )
+    if len(blob) != profile.model_bytes:
+        raise RuntimeError("bad model size")
+    return blob`}
+              path="train/export.py"
+              title="Write one fixed little-endian model layout"
+            >
+              <p>
+                The header records magic, format version, bucket count, features per
+                bucket, hidden width, activation clip, both quantization scales,
+                perspective count, and final byte size. Feature weights become signed
+                8-bit values. Biases and output weights use the explicit little-endian
+                signed 16-bit form. The output bias uses signed 32-bit storage.
+              </p>
+              <p>
+                Quantization rounds with fixed scales of 64. Export stops when a value is
+                nonfinite or would saturate its integer type. The C loader checks the same
+                dimensions, offsets, file size, alignment, endianness, and safe bias range
+                before it exposes pointers to the weights.
+              </p>
+            </CodeStudy>
             <Code>{`python3 train/evaluate.py \
   data/reference_4x128 model_4x128_seed7.pt
 
@@ -529,12 +1073,41 @@ python3 train/compare.py \
               the C runtime. Require exact scores. The selected model matched on all
               1,000 comparison positions.
             </p>
+            <CodeStudy
+              code={`python_scores = [evaluate_integer(model, fen) for fen in fens]
+process = subprocess.run(
+    [str(eval_tool), str(model_path)],
+    input="\\n".join(fens) + "\\n",
+    check=True,
+    capture_output=True,
+    text=True,
+)
+c_scores = [int(line) for line in process.stdout.splitlines()]
+for index, (python_score, c_score) in enumerate(
+    zip(python_scores, c_scores, strict=True)
+):
+    if python_score != c_score:
+        raise ValueError(
+            f"integer mismatch at position {index} "
+            f"python {python_score} c {c_score}"
+        )`}
+              path="train/compare.py"
+              title="Require bit-exact Python and C scores"
+            >
+              <p>
+                Python first reads the exported bytes and evaluates with the same integer
+                accumulator, clipping, output products, and truncating division as C. The
+                C evaluation tool receives the identical FEN list in one process. A single
+                unequal score fails the comparison. This catches layout, perspective,
+                rounding, and feature-index differences before firmware uses the model.
+              </p>
+            </CodeStudy>
             <ResourceLinks links={[
-              { label: "Project code — train/export.py", href: source("train/export.py") },
-              { label: "Project code — train/integer.py", href: source("train/integer.py") },
-              { label: "Project code — train/compare.py", href: source("train/compare.py") },
-              { label: "Project code — src/nnue.c", href: source("src/nnue.c") },
-              { label: "Project model record — models/reference.json", href: source("models/reference.json") },
+              { label: "Project code: train/export.py", href: source("train/export.py") },
+              { label: "Project code: train/integer.py", href: source("train/integer.py") },
+              { label: "Project code: train/compare.py", href: source("train/compare.py") },
+              { label: "Project code: src/nnue.c", href: source("src/nnue.c") },
+              { label: "Project model record: models/reference.json", href: source("models/reference.json") },
             ]} />
           </GuideSection>
 
@@ -545,6 +1118,31 @@ python3 train/compare.py \
               repeated seeds. Play paired games with the same openings and reversed
               colors.
             </p>
+            <CodeStudy
+              code={`for item in opening_suite[:opening_count]:
+    opening_name = item["name"]
+    opening = item["fen"]
+    for engine_a_white in (True, False):
+        white = engine_a if engine_a_white else engine_b
+        black = engine_b if engine_a_white else engine_a
+        winner, termination, plies = play_game(
+            white, black, opening, depth, max_plies
+        )`}
+              path="train/arena.py"
+              title="Play every opening with both color assignments"
+            >
+              <p>
+                Each candidate receives the same position once as White and once as
+                Black. This reduces color and opening bias. The arena sends full FENs to
+                each UCI engine and verifies every returned move with
+                <code>python-chess</code> before adding it to the game.
+              </p>
+              <p>
+                The Elo estimate describes only the two engines in that match. Its 95
+                percent uncertainty comes from the observed win, draw, and loss scores.
+                It is not an estimate of human playing strength.
+              </p>
+            </CodeStudy>
             <Code>{`python3 train/arena.py \
   build-4x128/p4nnue model_4x128_seed7.nnue \
   build-8x96/p4nnue model_8x96_seed7.nnue \
@@ -562,10 +1160,10 @@ python3 train/compare.py \
               absolute human Elo. ESP32-P4 search speed is still unmeasured.
             </p>
             <ResourceLinks links={[
-              { label: "Project results — profile comparison", href: source("results/profile_comparison.json") },
-              { label: "Project results — reference model", href: source("results/reference.json") },
-              { label: "Project code — train/arena.py", href: source("train/arena.py") },
-              { label: "Project code — train/openings.py", href: source("train/openings.py") },
+              { label: "Project results: profile comparison", href: source("results/profile_comparison.json") },
+              { label: "Project results: reference model", href: source("results/reference.json") },
+              { label: "Project code: train/arena.py", href: source("train/arena.py") },
+              { label: "Project code: train/openings.py", href: source("train/openings.py") },
             ]} />
           </GuideSection>
 
@@ -576,6 +1174,22 @@ python3 train/compare.py \
               uploaded model uses the dedicated NNUE partition. Neither path copies
               the full model to the heap.
             </p>
+            <CodeStudy
+              code={`set(reference_model "\${CMAKE_CURRENT_LIST_DIR}/../models/reference.nnue")
+target_add_binary_data(
+    \${PROJECT_NAME}.elf "\${reference_model}" BINARY
+    RENAME_TO reference_nnue
+)`}
+              path="esp/CMakeLists.txt"
+              title="Embed the reference model as binary data"
+            >
+              <p>
+                ESP-IDF places the original model bytes in the application image. Linker
+                symbols expose the first byte and the byte after the model. Firmware
+                passes that address and size to <code>bind_nnue</code>. It does not create
+                a generated C array and does not copy the 328480-byte model into heap RAM.
+              </p>
+            </CodeStudy>
             <Code>{`. /home/ishan/esp-idf/export.sh
 cd esp
 idf.py set-target esp32p4
@@ -589,13 +1203,49 @@ idf.py merge-bin -o esp32p4_nnue_merged.bin`}</Code>
               binary command loop. The firmware contains no Wi-Fi, Bluetooth, display,
               filesystem, or web server.
             </p>
+            <CodeStudy
+              code={`initialize_chess();
+if (!model_storage_init(&context.model_storage,
+                        reference_nnue_start, model_size)) return;
+if (!resize_transposition_table_bytes(
+        &context.table, FIRMWARE_TT_BYTES)) {
+    model_storage_deinit(&context.model_storage);
+    unload_nnue();
+    return;
+}
+uart_port_t port;
+if (!initialize_uart_transport(&port)) {
+    free_transposition_table(&context.table);
+    model_storage_deinit(&context.model_storage);
+    unload_nnue();
+    return;
+}
+if (!run_protocol_loop(&context, &port)) {
+    ESP_LOGE(firmware_log_tag, "uart receive failed");
+}`}
+              path="esp/main/app.c"
+              title="Start only the engine and serial transport"
+            >
+              <p>
+                Model storage first looks for a committed upload in the dedicated flash
+                partition. A valid uploaded model is memory mapped and bound directly.
+                Otherwise the embedded model becomes active. The transposition table is
+                the large writable allocation. UART is then installed and the firmware
+                waits for framed commands.
+              </p>
+              <p>
+                The single-core setting and 32 KiB task stack come from
+                <code>esp/sdkconfig.defaults</code>. The firmware adds no network stack,
+                display loop, filesystem, or service that competes with search memory.
+              </p>
+            </CodeStudy>
             <ResourceLinks links={[
-              { label: "Espressif — ESP-IDF setup for ESP32-P4", href: "https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/get-started/linux-macos-setup-legacy.html" },
-              { label: "Espressif — build and flash a project", href: "https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/get-started/start-project.html" },
-              { label: "Espressif — ESP32-P4 UART API", href: "https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/api-reference/peripherals/uart.html" },
-              { label: "Project firmware — esp/main/app.c", href: source("esp/main/app.c") },
-              { label: "Project firmware — esp/main/model_storage.c", href: source("esp/main/model_storage.c") },
-              { label: "Project firmware — esp/partitions.csv", href: source("esp/partitions.csv") },
+              { label: "Espressif: ESP-IDF setup for ESP32-P4", href: "https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/get-started/linux-macos-setup-legacy.html" },
+              { label: "Espressif: build and flash a project", href: "https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/get-started/start-project.html" },
+              { label: "Espressif: ESP32-P4 UART API", href: "https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/api-reference/peripherals/uart.html" },
+              { label: "Project firmware: esp/main/app.c", href: source("esp/main/app.c") },
+              { label: "Project firmware: esp/main/model_storage.c", href: source("esp/main/model_storage.c") },
+              { label: "Project firmware: esp/partitions.csv", href: source("esp/partitions.csv") },
             ]} />
           </GuideSection>
 
@@ -614,6 +1264,47 @@ python3 esp/board_client.py --port /dev/ttyACM0 bench
 python3 esp/board_client.py --port /dev/ttyACM0 search \
   'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' \
   --depth 5`}</Code>
+            <CodeStudy
+              code={`def request(self, command, payload=b"", timeout=None):
+    frame = encode_frame(command, payload)
+    written = 0
+    while written < len(frame):
+        written += os.write(self.fd, frame[written:])
+    deadline = time.monotonic() + (self.timeout if timeout is None else timeout)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("board response timed out")
+        readable, _, _ = select.select([self.fd], [], [], remaining)
+        if not readable:
+            raise TimeoutError("board response timed out")
+        data = os.read(self.fd, 4096)
+        for response_command, response_payload in self.decoder.feed(data):
+            if response_command == COMMAND_ERROR:
+                self._raise_board_error(response_payload)
+            expected = command | 0x80
+            if response_command != expected:
+                raise ProtocolError(
+                    f"expected response 0x{expected:02x} got 0x{response_command:02x}"
+                )
+            return response_payload`}
+              path="esp/board_client.py"
+              title="Test the binary protocol without the website"
+            >
+              <p>
+                The host client opens one explicit serial path in raw mode. It writes a
+                complete request and feeds any returned byte chunks into the same framed
+                protocol used by the browser. A deadline prevents a disconnected or
+                stalled board from waiting forever. The response command must match the
+                request with its high bit set.
+              </p>
+              <p>
+                Run <code>info</code> first to verify firmware, model dimensions, model
+                CRC, and transposition-table size. Run <code>bench</code> to exercise one
+                fixed start-position search. Run <code>search</code> with an explicit FEN
+                to verify position transfer and a returned legal move.
+              </p>
+            </CodeStudy>
             <figure className="hardware-figure">
               <img
                 alt="ESP32-P4 development board connected beside a laptop during the first physical test"
@@ -624,21 +1315,19 @@ python3 esp/board_client.py --port /dev/ttyACM0 search \
                 width="1800"
               />
               <figcaption>
-                First physical ESP32-P4 test setup. Photo by Ishan Kumthekar.
+                First physical ESP32-P4 test setup. Ishan Kumthekar photograph.
               </figcaption>
             </figure>
-            <ul className="status-list">
-              <li className="is-complete">Host chess core verified</li>
-              <li className="is-complete">Python and C integer scores matched</li>
-              <li className="is-complete">Firmware built for ESP32-P4</li>
-              <li className="is-complete">First physical boot observed</li>
-              <li>UART correction still needs a recorded reflash test</li>
-              <li>Board speed, power, memory headroom, and temperature are unmeasured</li>
-            </ul>
-            <div className="video-slot">
-              <span>Recorded board game</span>
-              <strong>Video link pending</strong>
-              <p>The finished game recording can be added here without changing the guide.</p>
+            <div className="hardware-status">
+              <p>
+                The host chess core is verified. Python and C integer scores match. The
+                firmware builds for ESP32-P4 and the first physical boot was observed.
+              </p>
+              <p>
+                The UART correction still needs a recorded reflash test. Physical search
+                speed, power draw, memory headroom, and temperature remain unmeasured.
+                Keep those results separate from the existing host benchmarks.
+              </p>
             </div>
           </GuideSection>
 
@@ -666,6 +1355,77 @@ python3 esp/board_client.py --port /dev/ttyACM0 search \
               The firmware returns a UCI move. The browser checks that move against
               the legal moves before applying it.
             </p>
+            <CodeStudy
+              code={`const frame = new Uint8Array(HEADER_SIZE + payload.byteLength + CRC_SIZE);
+const view = dataView(frame);
+frame[0] = MAGIC_FIRST;
+frame[1] = MAGIC_SECOND;
+frame[2] = version;
+frame[3] = command;
+view.setUint16(4, payload.byteLength, true);
+frame.set(payload, HEADER_SIZE);
+const checksumOffset = HEADER_SIZE + payload.byteLength;
+view.setUint32(
+  checksumOffset,
+  crc32(frame.subarray(2, checksumOffset)),
+  true,
+);`}
+              path="web/src/protocol.ts"
+              title="Encode the same frame in TypeScript and C"
+            >
+              <p>
+                The first two bytes are the ASCII marker <code>P4</code>. The next bytes
+                carry protocol version and command. A little-endian 16-bit length tells
+                the receiver where the payload ends. CRC32 covers version, command,
+                length, and payload so damaged frames are rejected before command code
+                reads them.
+              </p>
+              <p>
+                <code>FrameDecoder</code> keeps incomplete bytes between reads. It scans
+                past boot text until it finds the marker, waits for the complete declared
+                length, checks CRC and protocol version, then returns one decoded frame.
+                UART and USB reads do not need to align with message boundaries.
+              </p>
+            </CodeStudy>
+            <CodeStudy
+              code={`const openTask = port.open({
+  baudRate: BAUD_RATE,
+  dataBits: 8,
+  stopBits: 1,
+  parity: "none",
+  flowControl: "none",
+});
+await openTask;
+
+const hello = await this.exchange(
+  COMMAND.hello,
+  new Uint8Array(),
+  COMMAND_TIMEOUT_MS,
+);
+decodeHello(hello.payload);
+
+const deviceResponse = await this.exchange(
+  COMMAND.deviceInfo,
+  new Uint8Array(),
+  COMMAND_TIMEOUT_MS,
+);`}
+              path="web/src/device.ts"
+              title="Open the selected port and verify the board"
+            >
+              <p>
+                <code>requestPort</code> runs only after the visitor presses the connect
+                control. The browser permission prompt gives this page access to the one
+                selected device. The hello exchange confirms protocol version. Device
+                info then confirms ESP32-P4 target, model format 3, four king buckets,
+                hidden width 128, model size, and active model state.
+              </p>
+              <p>
+                <code>requestChipSearch</code> sends <code>game.fen()</code> before every
+                search. The result parser reads the fixed 29-byte payload. The returned
+                text must match UCI syntax and <code>chess.js</code> must accept it as a
+                legal move before the board changes.
+              </p>
+            </CodeStudy>
             <Code>{`request serial port
 open at 115200 baud
 send hello
@@ -696,7 +1456,7 @@ validate returned uci move`}</Code>
               payload length, payload, and CRC32. A successful response sets bit seven
               on the request command.
             </p>
-            <figure className="hardware-figure hardware-figure-wide">
+            <figure className="hardware-figure">
               <img
                 alt="Browser chess game connected to the ESP32-P4 development board over USB serial"
                 decoding="async"
@@ -707,18 +1467,18 @@ validate returned uci move`}</Code>
               />
               <figcaption>
                 Completed local browser game with the ESP32-P4 connected over USB
-                serial. Photo by Ishan Kumthekar.
+                serial. Ishan Kumthekar photograph.
               </figcaption>
             </figure>
             <ResourceLinks links={[
-              { label: "Web Incubator CG — Web Serial specification", href: GUIDE_RESOURCES[5] },
-              { label: "Chrome for Developers — Web Serial", href: GUIDE_RESOURCES[6] },
-              { label: "GitHub Pages — HTTPS deployment", href: GUIDE_RESOURCES[7] },
-              { label: "Project browser — web/src/protocol.ts", href: source("web/src/protocol.ts") },
-              { label: "Project browser — web/src/device.ts", href: source("web/src/device.ts") },
-              { label: "Project browser — web/src/game.ts", href: source("web/src/game.ts") },
-              { label: "Project tests — web/src/site.test.ts", href: source("web/src/site.test.ts") },
-              { label: "Project firmware protocol — esp/protocol.h", href: source("esp/protocol.h") },
+              { label: "Web Incubator CG: Web Serial specification", href: GUIDE_RESOURCES[5] },
+              { label: "Chrome for Developers: Web Serial", href: GUIDE_RESOURCES[6] },
+              { label: "GitHub Pages: HTTPS deployment", href: GUIDE_RESOURCES[7] },
+              { label: "Project browser: web/src/protocol.ts", href: source("web/src/protocol.ts") },
+              { label: "Project browser: web/src/device.ts", href: source("web/src/device.ts") },
+              { label: "Project browser: web/src/game.ts", href: source("web/src/game.ts") },
+              { label: "Project tests: web/src/site.test.ts", href: source("web/src/site.test.ts") },
+              { label: "Project firmware protocol: esp/protocol.h", href: source("esp/protocol.h") },
             ]} />
           </GuideSection>
 
@@ -732,6 +1492,36 @@ validate returned uci move`}</Code>
             </p>
             <Code>{`python3 esp/board_client.py \
   --port /dev/ttyACM0 upload path/to/model.nnue`}</Code>
+            <CodeStudy
+              code={`if (
+  info.kingBuckets !== EXPECTED_KING_BUCKETS ||
+  info.hiddenWidth !== EXPECTED_HIDDEN_WIDTH
+) {
+  throw new Error("Board NNUE architecture is incompatible");
+}
+if (
+  info.activeModelBytes !== EXPECTED_MODEL_BYTES ||
+  info.maximumModelBytes < EXPECTED_MODEL_BYTES
+) {
+  throw new Error("Board NNUE model size is incompatible");
+}`}
+              path="web/src/device.ts"
+              title="Keep new weights inside the accepted format"
+            >
+              <p>
+                A replacement network can use new learned weights with no website change
+                when it remains model format 3 with four buckets, width 128, and 328480
+                bytes. The upload client sends length and CRC first, streams ordered
+                chunks, then commits. Firmware maps the completed file, validates the
+                header and safe bias range, and writes the validity marker last.
+              </p>
+              <p>
+                A different bucket count or hidden width changes both model layout and C
+                compile-time dimensions. It needs a matching core build plus updated
+                browser compatibility constants. Uploading bytes alone cannot change the
+                compiled architecture.
+              </p>
+            </CodeStudy>
             <h3>Connect a different microcontroller</h3>
             <p>
               Implement the same hello, device info, position, go, and error messages.
@@ -739,34 +1529,47 @@ validate returned uci move`}</Code>
               in <code>esp/protocol.h</code>, allow it in <code>web/src/device.ts</code>,
               and add protocol fixtures with a fake serial-port test.
             </p>
-            <ol className="plain-steps">
-              <li>Run a legal chess engine on the new target</li>
-              <li>Expose USB serial or a UART bridge</li>
-              <li>Use the same binary frame header and CRC32</li>
-              <li>Return target and model metadata from device info</li>
-              <li>Accept full FEN position messages</li>
-              <li>Return legal UCI moves in the fixed search response</li>
-              <li>Extend browser validation for the new target identifier</li>
-              <li>Add byte-level protocol and fake-port tests</li>
-            </ol>
+            <CodeStudy
+              code={`export interface BoardTransport {
+  readonly connected: boolean;
+  connect(): Promise<DeviceInfo>;
+  disconnect(): Promise<void>;
+  setPosition(fen: string): Promise<void>;
+  searchDepth(depth: number): Promise<SearchResult>;
+}`}
+              path="web/src/device.ts"
+              title="Implement the small browser boundary"
+            >
+              <p>
+                The browser game needs only connection state, one complete FEN setter,
+                and fixed-depth search. The new target can use any board representation,
+                search, or evaluator behind this boundary. It must expose USB serial or a
+                UART bridge and implement the same frame header, CRC32, hello, device
+                info, position, go, and error messages.
+              </p>
+              <p>
+                Device info needs a distinct target identifier and honest model metadata.
+                Position must accept a full legal FEN. Go must return the fixed result with
+                a legal UCI move. Add the target identifier to <code>esp/protocol.h</code>
+                and browser validation. Reuse the C protocol fixtures and fake Web Serial
+                test to prove exact bytes, partial reads, checksum failures, command order,
+                legal move handling, and disconnect behavior.
+              </p>
+            </CodeStudy>
             <p>
               The browser does not depend on the search or NNUE internals. Any engine
               can connect when it implements the serial protocol and returns legal UCI
               moves.
             </p>
             <ResourceLinks links={[
-              { label: "Project protocol — esp/protocol.h", href: source("esp/protocol.h") },
-              { label: "Project protocol — esp/protocol.c", href: source("esp/protocol.c") },
-              { label: "Project host client — esp/board_client.py", href: source("esp/board_client.py") },
-              { label: "Project browser checks — web/src/device.ts", href: source("web/src/device.ts") },
-              { label: "Project browser tests — web/src/site.test.ts", href: source("web/src/site.test.ts") },
+              { label: "Project protocol: esp/protocol.h", href: source("esp/protocol.h") },
+              { label: "Project protocol: esp/protocol.c", href: source("esp/protocol.c") },
+              { label: "Project host client: esp/board_client.py", href: source("esp/board_client.py") },
+              { label: "Project browser checks: web/src/device.ts", href: source("web/src/device.ts") },
+              { label: "Project browser tests: web/src/site.test.ts", href: source("web/src/site.test.ts") },
             ]} />
           </GuideSection>
 
-          <footer className="guide-end">
-            <span>Step 15 of 15</span>
-            <strong>The complete path from chess code to a running microcontroller</strong>
-          </footer>
         </article>
       </div>
     </main>

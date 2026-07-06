@@ -1,11 +1,11 @@
-Font Awesome Free 6.7.2 chess piece shapes
+Chessnut chess pieces
 
-The chess piece SVG paths are adapted from Font Awesome Free
-Copyright Fonticons Inc
-https://fontawesome.com
+Copyright 2015 Alexis Luengas
+https://github.com/lichess-org/lila/tree/master/public/piece/chessnut
 
-The icons are licensed under Creative Commons Attribution 4.0 International
-https://creativecommons.org/licenses/by/4.0/
+Licensed under the Apache License 2.0
+See images/pieces/COPYRIGHT.txt images/pieces/SOURCES.txt and
+images/pieces/APACHE-2.0.txt
 
 chess.js 1.4.0
 
@@ -35,13 +35,21 @@ POSSIBILITY OF SUCH DAMAGE.
 
 https://github.com/jhlywa/chess.js
 
-Block Blueprint
+Bodoni Moda
 
-Designed by HipFonts and Igor Ovsyannykov
-https://www.fontspace.com/block-blueprint-font-f139566
+Copyright 2020 The Bodoni Moda Project Authors
+https://github.com/indestructible-type/Bodoni
 
-The supplied font is identified as a demo with separate commercial licenses
-See fonts/BLOCK_BLUEPRINT_NOTICE.txt for the complete project notice
+Licensed under the SIL Open Font License 1.1
+See fonts/BODONI_MODA_OFL.txt and fonts/SOURCES.txt
+
+Libre Baskerville
+
+Copyright 2012 The Libre Baskerville Project Authors
+https://github.com/impallari/Libre-Baskerville
+
+Licensed under the SIL Open Font License 1.1
+See fonts/LIBRE_BASKERVILLE_OFL.txt and fonts/SOURCES.txt
 
 Reference diagrams
 

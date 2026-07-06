@@ -65,7 +65,7 @@ export function App() {
   const [promotion, setPromotion] = useState<PromotionChoice | null>(null);
   const [thinking, setThinking] = useState(false);
   const [blocked, setBlocked] = useState(false);
-  const [activity, setActivity] = useState("connect board");
+  const [activity, setActivity] = useState("board not connected");
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [siteHash, setSiteHash] = useState(() => window.location.hash);
   const siteView = siteViewFromHash(siteHash);
@@ -157,7 +157,7 @@ export function App() {
   async function connectBoard(): Promise<void> {
     if (!serialSupported || connection !== "disconnected") return;
     setConnection("connecting");
-    setActivity("connecting...");
+    setActivity("connecting");
     setBlocked(false);
     const board = new SerialBoard((error) => handleUnexpectedDisconnect(board, error));
     boardRef.current = board;
@@ -186,7 +186,7 @@ export function App() {
     setThinking(false);
     setSelected(null);
     setPromotion(null);
-    setActivity("disconnecting...");
+    setActivity("disconnecting");
     await board.disconnect();
     setConnection("disconnected");
     setActivity("board disconnected");
@@ -204,7 +204,7 @@ export function App() {
     setPromotion(null);
     setSearchResult(null);
     setBlocked(false);
-    setActivity(nextHumanColor === "w" ? "your move" : "chip thinking...");
+    setActivity(nextHumanColor === "w" ? "your move" : "chip thinking");
     refreshGame();
     if (board && nextHumanColor === "b") {
       void playChipTurn(nextGame, board, token);
@@ -219,7 +219,7 @@ export function App() {
     if (activeGame.isGameOver()) return;
     setThinking(true);
     setSelected(null);
-    setActivity("chip thinking...");
+    setActivity("chip thinking");
     try {
       const result = await requestChipSearch(board, activeGame, SEARCH_DEPTH);
       if (token !== gameToken.current || board !== boardRef.current) return;
@@ -331,7 +331,7 @@ export function App() {
       <header className="site-header">
         <nav aria-label="Main navigation" className="nav-inner">
           <a aria-label="ESP32 P4 NNUE play" className="wordmark" href="#play">
-            <span aria-hidden="true" className="wordmark-mark">P4</span>
+            <span aria-hidden="true" className="wordmark-initials">P4</span>
             <span>ESP32 P4 NNUE</span>
           </a>
           <div className="nav-links">
@@ -352,18 +352,11 @@ export function App() {
                 Playing Your Own Chess Neural Network Hosted on a Microcontroller
               </h1>
               <p>
-                For this demo and guide, I used the Waveshare
-                ESP32-P4-Module-DEV-KIT with an ESP32-P4NRW32 module, 32 MB PSRAM,
-                and 16 MB flash. The browser sends each position over USB serial.
+                For this demo and guide I used the Waveshare
+                ESP32-P4-Module-DEV-KIT with an ESP32-P4NRW32 module. It has 32 MB
+                PSRAM and 16 MB flash. The browser sends each position over USB serial.
                 The microcontroller searches it and returns a legal move.
               </p>
-            </div>
-            <div aria-hidden="true" className="hero-chess-mark">
-              <span className="hero-piece">♞</span>
-              <span className="hero-chip-label">ESP32 P4</span>
-              <i />
-              <i />
-              <i />
             </div>
           </section>
 
@@ -371,7 +364,7 @@ export function App() {
             <div className="board-column">
               <div className="board-meta" aria-hidden="true">
                 <span>{boardOrientation === "w" ? "White" : "Black"} board orientation</span>
-                <span>64 equal squares</span>
+                <span>ESP32 P4 search</span>
               </div>
               <div className="board-frame">
                 <Chessboard
@@ -385,7 +378,6 @@ export function App() {
                 />
                 {thinking && (
                   <div aria-live="polite" className="thinking-label">
-                    <span aria-hidden="true" />
                     chip thinking
                   </div>
                 )}
@@ -411,7 +403,7 @@ export function App() {
                         {PROMOTIONS.map((option, index) => (
                           <button
                             autoFocus={index === 0}
-                            className="action-button promotion-button"
+                            className="action-button"
                             key={option.value}
                             onClick={() => finishHumanMove(
                               promotion.from,
@@ -439,9 +431,8 @@ export function App() {
 
             <aside className="game-controls" aria-label="Game controls">
               <header className="controls-heading">
-                <span>01</span>
                 <div>
-                  <strong>Play on the board</strong>
+                  <strong>Board connection</strong>
                   <small>Web Serial at 115200 baud</small>
                 </div>
               </header>
@@ -455,7 +446,6 @@ export function App() {
                   title={connection === "connected" ? "disconnect board" : undefined}
                   type="button"
                 >
-                  <span aria-hidden="true" className="connection-mark" />
                   {connection === "connecting" ? "connecting" :
                     connection === "disconnecting" ? "disconnecting" :
                     connection === "connected" ? "board connected" : "connect board"}
@@ -491,7 +481,6 @@ export function App() {
               </fieldset>
 
               <div aria-atomic="true" aria-live="polite" className="game-status">
-                <span aria-hidden="true" className={`status-mark ${thinking ? "is-thinking" : ""}`} />
                 <div>
                   <strong>{statusHeading}</strong>
                   {statusDetail && <span>{statusDetail}</span>}
@@ -519,9 +508,8 @@ export function App() {
 
               {deviceInfo && (
                 <p className="device-line">
-                  firmware {deviceInfo.firmwareVersion}
-                  <span aria-hidden="true"> · </span>
-                  {modelStateName(deviceInfo.modelState)} model
+                  <span>firmware {deviceInfo.firmwareVersion}</span>
+                  <span>{modelStateName(deviceInfo.modelState)} model</span>
                 </p>
               )}
             </aside>

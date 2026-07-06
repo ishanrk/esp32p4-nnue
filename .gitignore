@@ -23,4 +23,3 @@ __pycache__/
 /.vscode/
 /web/node_modules/
 /web/dist/
-/web/public/generated/

@@ -1,0 +1,40 @@
+Chessnut chess pieces
+
+Files
+bB.svg
+bK.svg
+bN.svg
+bP.svg
+bQ.svg
+bR.svg
+wB.svg
+wK.svg
+wN.svg
+wP.svg
+wQ.svg
+wR.svg
+
+Author
+Alexis Luengas
+
+Original project
+https://github.com/LexLuengas/chessnut-pieces
+
+Copyright notice
+See COPYRIGHT.txt in this directory
+
+Source
+https://github.com/lichess-org/lila/tree/81117d576f56fb9151c3a753478837168ca1721a/public/piece/chessnut
+
+License record
+https://github.com/lichess-org/lila/blob/81117d576f56fb9151c3a753478837168ca1721a/COPYING.md
+
+License
+Apache License 2.0
+See APACHE-2.0.txt in this directory
+
+Changes
+None
+
+Retrieved
+2026-08-25
