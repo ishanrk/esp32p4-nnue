@@ -189,6 +189,19 @@ function guideTests(): void {
   assert.match(guideMarkup, /build_model_blob/);
   assert.match(guideMarkup, /FrameDecoder/);
   assert.doesNotMatch(guideMarkup, /↗|video-slot|guide-end/);
+  assert.doesNotMatch(
+    guideMarkup
+      .replace(/<pre[\s\S]*?<\/pre>/g, "")
+      .replace(/<[^>]+>/g, " "),
+    /[-–—]/,
+  );
+  const firstStep = guideMarkup.slice(
+    guideMarkup.indexOf('id="guide-budget"'),
+    guideMarkup.indexOf('id="guide-core"'),
+  );
+  assert.match(firstStep, /https:\/\/www\.chessprogramming\.org\//);
+  assert.match(firstStep, /https:\/\/github\.com\/maksimKorzh\/bbc/);
+  assert.doesNotMatch(guideMarkup, /primary-references|reference-callouts|does not copy BBC/);
   for (const step of GUIDE_STEPS) {
     assert.match(guideMarkup, new RegExp(`id="${step.id}"`));
   }

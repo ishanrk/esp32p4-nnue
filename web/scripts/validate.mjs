@@ -114,7 +114,7 @@ const appSource = readFileSync(resolve(root, "src/app.tsx"), "utf8");
 if (!appSource.includes("Playing Your Own Chess Neural Network Hosted on a Microcontroller")) {
   throw new Error("requested play title is missing");
 }
-if (!appSource.includes("Waveshare") || !appSource.includes("ESP32-P4NRW32")) {
+if (!appSource.includes("Waveshare") || !appSource.includes("ESP32 P4NRW32")) {
   throw new Error("play page hardware subtitle is missing");
 }
 for (const removedDecoration of [

@@ -426,7 +426,7 @@ function validateDeviceInfo(info: DeviceInfo): void {
     throw new Error("Board protocol is incompatible");
   }
   if (info.target !== EXPECTED_TARGET) {
-    throw new Error("Connected device is not an ESP32-P4 board");
+    throw new Error("Connected device is not an ESP32 P4 board");
   }
   if (info.modelFormat !== EXPECTED_MODEL_FORMAT) {
     throw new Error("Board NNUE format is incompatible");

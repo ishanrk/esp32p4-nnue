@@ -773,19 +773,6 @@ summary:focus-visible,
   font-weight: 700;
 }
 
-.primary-references {
-  max-width: 800px;
-  margin: 0 auto;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--rule);
-  text-align: left;
-}
-
-.primary-references p:last-child {
-  margin-bottom: 0;
-}
-
-.primary-references a,
 .guide-section a {
   color: var(--teal-900);
   font-weight: 700;
@@ -1050,31 +1037,6 @@ pre {
   font-weight: 400;
 }
 
-.reference-callouts {
-  margin: 1.5rem 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
-}
-
-.reference-callouts > p {
-  margin: 0;
-  padding: 1rem;
-  border-right: 1px solid var(--rule);
-}
-
-.reference-callouts > p:last-child {
-  border-right: 0;
-}
-
-.reference-callouts strong {
-  display: block;
-  color: var(--teal-900);
-  font-family: var(--serif-display);
-  font-size: 1.2rem;
-}
-
 .table-wrap {
   margin: 1.5rem 0;
   overflow-x: auto;
@@ -1333,18 +1295,8 @@ tbody th {
     gap: 0.25rem;
   }
 
-  .reference-pair,
-  .reference-callouts {
+  .reference-pair {
     grid-template-columns: 1fr;
-  }
-
-  .reference-callouts > p {
-    border-right: 0;
-    border-bottom: 1px solid var(--rule);
-  }
-
-  .reference-callouts > p:last-child {
-    border-bottom: 0;
   }
 
   .hardware-status {

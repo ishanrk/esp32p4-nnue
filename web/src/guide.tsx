@@ -27,7 +27,6 @@ export const GUIDE_STEPS = [
 export const GUIDE_RESOURCES = [
   "https://www.chessprogramming.org/",
   "https://github.com/maksimKorzh/bbc",
-  "https://www.youtube.com/watch?v=QUNP-UjujBM",
   "https://github.com/official-stockfish/nnue-pytorch",
   "https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT",
   "https://wicg.github.io/serial/",
@@ -163,27 +162,15 @@ export function Guide() {
         <h1>A Small Guide on How to Build Your Own Neural Networks Under Hardware Constraints</h1>
         <p className="guide-lead">
           This guide follows the exact chess engine, NNUE training, firmware, and
-          browser code used for the Waveshare ESP32-P4 board. Each step links to
+          browser code used for the Waveshare ESP32 P4 board. Each step links to
           the project files and the outside references used for that part.
         </p>
         <dl className="guide-facts">
-          <div><dt>board</dt><dd>Waveshare ESP32-P4</dd></div>
+          <div><dt>board</dt><dd>Waveshare ESP32 P4</dd></div>
           <div><dt>engine</dt><dd>Portable C11</dd></div>
           <div><dt>network</dt><dd>4 buckets × 128</dd></div>
           <div><dt>model size</dt><dd>328,480 bytes</dd></div>
         </dl>
-        <div className="primary-references">
-          <p>
-            <a href={GUIDE_RESOURCES[0]}>Chess Programming Wiki</a> is the main
-            reference for board representation, move generation, engine testing,
-            evaluation, and search.
-          </p>
-          <p>
-            <a href={GUIDE_RESOURCES[1]}>Code Monkey King</a> provides a practical
-            C bitboard engine in the BBC repository and a separate
-            {" "}<a href={GUIDE_RESOURCES[2]}>video series</a>.
-          </p>
-        </div>
       </header>
 
       <div className="guide-layout">
@@ -210,8 +197,8 @@ export function Guide() {
               These limits set the largest network and transposition table that fit.
             </p>
             <p>
-              This project uses the Waveshare ESP32-P4-Module-DEV-KIT with an
-              ESP32-P4NRW32 module, 32 MB PSRAM, and 16 MB flash. The NNUE profiles
+              This project uses the Waveshare ESP32 P4 Module DEV KIT with an
+              ESP32 P4NRW32 module, 32 MB PSRAM, and 16 MB flash. The NNUE profiles
               stay below 512 KiB. The selected model is 328,480 bytes. Firmware
               reserves 256 KiB for the transposition table and 32 KiB for the main
               task stack. It runs on one core and does not require PSRAM.
@@ -230,21 +217,21 @@ _Static_assert(sizeof(move_t) == 4, "move size");`}
                 directly to one square. A full board mask can therefore be combined
                 with one AND, OR, XOR, or shift in the C source. The packed move needs
                 only 19 active bits, so <code>uint32_t</code> leaves room for the complete
-                move and keeps each move-list entry small.
+                move and keeps each move list entry small.
               </p>
               <p>
-                The ESP32-P4 uses a 32-bit RISC-V core. Its compiler can still implement
-                <code>uint64_t</code>, but many operations become work on two 32-bit
+                The ESP32 P4 uses a 32 bit RISC V core. Its compiler can still implement
+                <code>uint64_t</code>, but many operations become work on two 32 bit
                 halves. An explicit pair of <code>uint32_t</code> values could make that
                 cost visible and give more control over carries and shifts. It would also
                 make every attack mask and bit scan more complicated. This repository
-                keeps the direct 64-bit form until both representations can be measured
-                on the physical board. No pair-of-halves result exists yet.
+                keeps the direct 64 bit form until both representations can be measured
+                on the physical board. No pair of halves result exists yet.
               </p>
             </CodeStudy>
             <figure className="hardware-figure">
               <img
-                alt="Waveshare ESP32-P4-Module-DEV-KIT with the USB serial cable attached"
+                alt="Waveshare ESP32 P4 Module DEV KIT with the USB serial cable attached"
                 decoding="async"
                 height="1200"
                 loading="lazy"
@@ -252,12 +239,14 @@ _Static_assert(sizeof(move_t) == 4, "move size");`}
                 width="1600"
               />
               <figcaption>
-                Waveshare ESP32-P4-Module-DEV-KIT used for this project. Ishan
+                Waveshare ESP32 P4 Module DEV KIT used for this project. Ishan
                 Kumthekar photograph.
               </figcaption>
             </figure>
             <ResourceLinks links={[
-              { label: "Waveshare documentation: ESP32-P4-Module-DEV-KIT", href: GUIDE_RESOURCES[4] },
+              { label: "Chess Programming Wiki", href: GUIDE_RESOURCES[0] },
+              { label: "Code Monkey King", href: GUIDE_RESOURCES[1] },
+              { label: "Waveshare documentation: ESP32 P4 Module DEV KIT", href: GUIDE_RESOURCES[3] },
               { label: "Project code: train/profiles.py", href: source("train/profiles.py") },
               { label: "Project code: src/nnue_config.h", href: source("src/nnue_config.h") },
               { label: "Project code: esp/sdkconfig.defaults", href: source("esp/sdkconfig.defaults") },
@@ -268,7 +257,7 @@ _Static_assert(sizeof(move_t) == 4, "move size");`}
           <GuideSection id="guide-core" number="02" title="Build the chess engine in C">
             <p>
               Put chess rules, evaluation, and search in one portable C11 core.
-              Compile the same C files for desktop tests and ESP32-P4 firmware. The
+              Compile the same C files for desktop tests and ESP32 P4 firmware. The
               <code>src</code> directory contains the shared engine. Desktop UCI stays
               in <code>src/uci.c</code>. Board startup, model storage, and the serial
               protocol stay in <code>esp</code>.
@@ -290,7 +279,7 @@ add_library(p4core STATIC \${P4_SRC})`}
             >
               <p>
                 The root build turns these files into the desktop <code>p4core</code>
-                library. The ESP-IDF component lists the same source paths instead of
+                library. The ESP IDF component lists the same source paths instead of
                 keeping a firmware copy. A move that passes the host tests is therefore
                 handled by the same implementation on the microcontroller.
               </p>
@@ -300,23 +289,8 @@ add_library(p4core STATIC \${P4_SRC})`}
                 frames. Both call the public functions declared in <code>src/ch.h</code>.
               </p>
             </CodeStudy>
-            <div className="reference-callouts">
-              <p>
-                <strong>Chess Programming Wiki</strong>
-                Use it as the main map of chess-engine concepts and established
-                terminology.
-              </p>
-              <p>
-                <strong>Code Monkey King</strong>
-                Use BBC as a compact working example of bitboards and move generation
-                in C. This project does not copy BBC source.
-              </p>
-            </div>
             <ResourceLinks links={[
-              { label: "Chess Programming Wiki: Main Page", href: GUIDE_RESOURCES[0] },
               { label: "Chess Programming Wiki: Board Representation", href: "https://www.chessprogramming.org/Board_Representation" },
-              { label: "Code Monkey King: BBC repository", href: GUIDE_RESOURCES[1] },
-              { label: "Code Monkey King: bitboard video series", href: GUIDE_RESOURCES[2] },
               { label: "Project code: src/ch.h", href: source("src/ch.h") },
               { label: "Project build: CMakeLists.txt", href: source("CMakeLists.txt") },
               { label: "Project firmware build: esp/components/core/CMakeLists.txt", href: source("esp/components/core/CMakeLists.txt") },
@@ -362,7 +336,7 @@ add_library(p4core STATIC \${P4_SRC})`}
                 evaluation ready for the next search node.
               </p>
               <p>
-                The move clocks preserve FEN state and the fifty-move rule.
+                The move clocks preserve FEN state and the fifty move rule.
                 <code>history_count</code> bounds the valid repetition history. The king
                 bucket and mirror arrays cache the active NNUE view for each side. The
                 remaining bytes record the side to move and the two reversible move
@@ -374,9 +348,9 @@ add_library(p4core STATIC \${P4_SRC})`}
               caption={(
                 <>
                   Algebraic square coordinates used by FEN, UCI moves, bitboards, and
-                  the 64-entry square array. Diagram derived by Beao from work credited
+                  the 64 entry square array. Diagram derived by Beao from work credited
                   on the {" "}<a href="https://commons.wikimedia.org/wiki/File:SCD_algebraic_notation.svg">source page</a>.
-                  Unmodified and licensed {" "}<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>.
+                  Unmodified and licensed {" "}<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY SA 3.0</a>.
                 </>
               )}
               compact
@@ -404,7 +378,7 @@ bits 19..31  reserved
               </p>
             </CodeStudy>
             <p>
-              Generate pseudo-legal moves. Make one move. Reject it when it leaves
+              Generate pseudo legal moves. Make one move. Reject it when it leaves
               the moving side&apos;s king in check. Undo it. The undo record restores
               captured pieces, castling rights, en passant, clocks, the Zobrist hash,
               and NNUE accumulator state.
@@ -430,7 +404,7 @@ if (king_square == NO_SQUARE ||
                 <code>remove_piece</code> and <code>place_piece</code> update the square
                 array, piece bitboards, occupancy, hash, and NNUE features as one state
                 transition. The side changes only after the pieces move. The final king
-                attack test turns a pseudo-legal generated move into a legal move.
+                attack test turns a pseudo legal generated move into a legal move.
               </p>
               <p>
                 <code>undo_t</code> saves the old hash, clocks, castling rights, en
@@ -458,7 +432,7 @@ ctest --test-dir build --output-on-failure`}</Code>
           <GuideSection id="guide-search" number="04" title="Add the chess search">
             <p>
               Use one score from the side to move. Search each child with the sign
-              reversed. Alpha-beta stops branches that cannot change the result.
+              reversed. Alpha beta stops branches that cannot change the result.
               Iterative deepening completes depth 1, then 2, then 3, so the engine
               always has a finished answer.
             </p>
@@ -491,14 +465,14 @@ if (!legal_moves) {
                 Every returned score belongs to the side that is about to move. Making
                 a move changes that side, so the recursive result is negated. The bounds
                 also change sign and exchange places. This is the negamax form of
-                alpha-beta.
+                alpha beta.
               </p>
               <p>
                 The first legal move receives the full search window. Later moves first
-                receive the narrow window from <code>-alpha - 1</code> through
-                <code>-alpha</code>. Most inferior moves fail inside that narrow window
-                with less work. A late quiet move can first use one less ply. A reduced
-                result above alpha repeats the narrow search at full depth. A full-depth
+                receive the narrow null window immediately above alpha. Most inferior
+                moves fail inside that narrow window with less work. A late quiet move
+                can first use one less ply. A reduced
+                result above alpha repeats the narrow search at full depth. A full depth
                 result between alpha and beta then receives the complete window.
               </p>
             </CodeStudy>
@@ -517,10 +491,10 @@ if (!legal_moves) {
                 width={180}
               />
               <ReferenceFigure
-                alt="Alpha-beta search tree with gray pruned branches"
+                alt="Alpha beta search tree with gray pruned branches"
                 caption={(
                   <>
-                    Alpha-beta leaves gray branches unsearched after their result can
+                    Alpha beta leaves gray branches unsearched after their result can
                     no longer affect the root. Diagram by Antonsusi, based on Sgop,
                     from {" "}<a href="https://commons.wikimedia.org/wiki/File:Alpha_beta.svg">Wikimedia Commons</a>, public domain.
                   </>
@@ -607,16 +581,16 @@ if (entry->flag == TT_UPPER_BOUND && score <= alpha) return score;`}
             >
               <p>
                 The table count is a power of two. Masking the Zobrist key selects one
-                16-byte entry without division. The full 64-bit key confirms that the
+                16 byte entry without division. The full 64 bit key confirms that the
                 slot belongs to this position. An exact score can return immediately.
                 Lower and upper bounds return only when they already prove the current
-                alpha-beta result. The stored move still helps move ordering when the
+                alpha beta result. The stored move still helps move ordering when the
                 stored depth is too shallow for a score cutoff.
               </p>
             </CodeStudy>
             <ResourceLinks links={[
               { label: "Chess Programming Wiki: Negamax", href: "https://www.chessprogramming.org/Negamax" },
-              { label: "Chess Programming Wiki: Alpha-Beta", href: "https://www.chessprogramming.org/Alpha-Beta" },
+              { label: "Chess Programming Wiki: Alpha Beta", href: "https://www.chessprogramming.org/Alpha-Beta" },
               { label: "Chess Programming Wiki: Iterative Deepening", href: "https://www.chessprogramming.org/Iterative_Deepening" },
               { label: "Chess Programming Wiki: Principal Variation Search", href: "https://www.chessprogramming.org/Principal_Variation_Search" },
               { label: "Chess Programming Wiki: Quiescence Search", href: "https://www.chessprogramming.org/Quiescence_Search" },
@@ -630,15 +604,15 @@ if (entry->flag == TT_UPPER_BOUND && score <= alpha) return score;`}
 
           <GuideSection id="guide-profile" number="05" title="Choose the NNUE size">
             <p>
-              This is a king-conditioned NNUE inspired by HalfKP. The king square
+              This is a king conditioned NNUE inspired by HalfKP. The king square
               selects one of four mirrored buckets. The other pieces select sparse
-              piece-square features. Each side has one 128-value accumulator.
+              piece square features. Each side has one 128 value accumulator.
             </p>
             <ReferenceFigure
-              alt="Feed-forward neural network with input hidden and output layers"
+              alt="Feed forward neural network with input hidden and output layers"
               caption={(
                 <>
-                  A general feed-forward network showing inputs, hidden layers, and an
+                  A general feed forward network showing inputs, hidden layers, and an
                   output. The project NNUE is smaller and activates only the feature
                   rows present on the chessboard. Diagram by Offnfopt from {" "}<a href="https://commons.wikimedia.org/wiki/File:Multi-Layer_Neural_Network-Vector.svg">Wikimedia Commons</a>, released to the public domain under {" "}<a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0 1.0</a>.
                 </>
@@ -683,10 +657,10 @@ PROFILES = (
               title="Calculate each model before training it"
             >
               <p>
-                Each bucket contains 640 piece-square features. Every feature owns one
-                signed 8-bit row with <code>hidden_width</code> values. This transformer
+                Each bucket contains 640 piece square features. Every feature owns one
+                signed 8 bit row with <code>hidden_width</code> values. This transformer
                 dominates the file size. The remaining bytes hold the header, output
-                bias, feature bias, and two sets of signed 16-bit output weights.
+                bias, feature bias, and two sets of signed 16 bit output weights.
               </p>
               <Code>{`model bytes = 32 + 6H + 640BH
 32 + 6 × 128 + 640 × 4 × 128 = 328480`}</Code>
@@ -699,7 +673,7 @@ PROFILES = (
             </CodeStudy>
             <ResourceLinks links={[
               { label: "Stockfish: NNUE technical documentation", href: "https://github.com/official-stockfish/nnue-pytorch/blob/master/docs/nnue.md" },
-              { label: "Stockfish: official nnue-pytorch trainer", href: GUIDE_RESOURCES[3] },
+              { label: "Stockfish: official NNUE trainer", href: GUIDE_RESOURCES[2] },
               { label: "Chess Programming Wiki: NNUE", href: "https://www.chessprogramming.org/NNUE" },
               { label: "Project code: train/profiles.py", href: source("train/profiles.py") },
               { label: "Project code: train/net.py", href: source("train/net.py") },
@@ -711,7 +685,7 @@ PROFILES = (
             <p>
               Implement the same feature index in Python and C. The Black view flips
               ranks. Kings on files e through h mirror the board. The king file selects
-              a bucket. Non-king pieces map to ten piece classes.
+              a bucket. Non king pieces map to ten piece classes.
             </p>
             <CodeStudy
               code={`def _feature_index_from_view(
@@ -740,7 +714,7 @@ PROFILES = (
                 square selects one value inside that piece class.
               </p>
               <p>
-                <code>encode_position</code> builds the side-to-move list first and the
+                <code>encode_position</code> builds the side to move list first and the
                 opponent list second. Each list is padded to 30 entries with a reserved
                 index whose embedding row remains zero. Fixed shapes let PyTorch batch
                 positions without changing the sparse meaning.
@@ -767,9 +741,9 @@ PROFILES = (
               title="Update both accumulators after a piece change"
             >
               <p>
-                A non-king piece appears once in each perspective with a different
-                feature index. Adding that piece adds one signed 8-bit row to each signed
-                16-bit accumulator. Removal subtracts the same rows. A king contributes
+                A non king piece appears once in each perspective with a different
+                feature index. Adding that piece adds one signed 8 bit row to each signed
+                16 bit accumulator. Removal subtracts the same rows. A king contributes
                 no row. When a king changes bucket or mirror state, only that king&apos;s
                 perspective is rebuilt from the feature bias and current pieces.
               </p>
@@ -791,7 +765,7 @@ PROFILES = (
             </p>
             <h3>Small local data path</h3>
             <p>
-              Sample complete PGN games and ask Stockfish for a fixed-node search.
+              Sample complete PGN games and ask Stockfish for a fixed node search.
               This path is useful for checking the complete pipeline with a small file.
             </p>
             <CodeStudy
@@ -851,9 +825,9 @@ return ImportedEvaluation(
               <p>
                 The importer validates each FEN and selects the deepest usable evaluation
                 record. Lichess stores the score from White&apos;s point of view. Negating
-                Black-to-move records converts it to the same side-to-move convention as
-                the PGN teacher path. Seeded filtering makes the ten-million-position
-                selection reproducible.
+                records where Black moves next converts each score to the same side to
+                move convention as the PGN teacher path. Seeded filtering makes the ten
+                million position selection reproducible.
               </p>
             </CodeStudy>
             <Code>{`python3 train/import_evals.py \
@@ -894,13 +868,13 @@ return ImportedEvaluation(
         "count": 0,
     }`}
               path="train/prep.py"
-              title="Encode compact fixed-shape training rows"
+              title="Encode compact fixed shape training rows"
             >
               <p>
-                Each row contains 30 unsigned 16-bit indexes for the side-to-move view
-                and 30 for the opposing view. The label is one signed 16-bit centipawn
+                Each row contains 30 unsigned 16 bit indexes for the side to move view
+                and 30 for the opposing view. The label is one signed 16 bit centipawn
                 value. FEN parsing and feature mapping happen once during preparation.
-                Training later reads ready-to-batch numeric arrays.
+                Training later reads ready to batch numeric arrays.
               </p>
               <p>
                 Full buffers are written with <code>np.savez_compressed</code>. The
@@ -928,7 +902,7 @@ return ImportedEvaluation(
           <GuideSection id="guide-training" number="09" title="Train the NNUE">
             <p>
               Sum the sparse feature rows for both perspectives. Add the feature bias,
-              clip the values, place the side-to-move accumulator first, and send the
+              clip the values, place the side to move accumulator first, and send the
               256 values through the output layer.
             </p>
             <CodeStudy
@@ -950,12 +924,12 @@ return ImportedEvaluation(
               <p>
                 The embedding table is the feature transformer. Looking up the active
                 indexes selects only the rows present in the position. Summing those rows
-                and adding one shared bias produces each 128-value accumulator. The
+                and adding one shared bias produces each 128 value accumulator. The
                 padding index owns a zero row and has no effect on the sum.
               </p>
               <p>
-                Values are clipped to the floating-point equivalent of the runtime range
-                from zero through 127. The side-to-move accumulator comes first. The
+                Values are clipped to the floating point equivalent of the runtime range
+                from zero through 127. The side to move accumulator comes first. The
                 opposing accumulator comes second. One linear output produces the
                 centipawn prediction used by the loss.
               </p>
@@ -1043,14 +1017,14 @@ is_best = (
         raise RuntimeError("bad model size")
     return blob`}
               path="train/export.py"
-              title="Write one fixed little-endian model layout"
+              title="Write one fixed little endian model layout"
             >
               <p>
                 The header records magic, format version, bucket count, features per
                 bucket, hidden width, activation clip, both quantization scales,
                 perspective count, and final byte size. Feature weights become signed
-                8-bit values. Biases and output weights use the explicit little-endian
-                signed 16-bit form. The output bias uses signed 32-bit storage.
+                8 bit values. Biases and output weights use the explicit little endian
+                signed 16 bit form. The output bias uses signed 32 bit storage.
               </p>
               <p>
                 Quantization rounds with fixed scales of 64. Export stops when a value is
@@ -1092,14 +1066,14 @@ for index, (python_score, c_score) in enumerate(
             f"python {python_score} c {c_score}"
         )`}
               path="train/compare.py"
-              title="Require bit-exact Python and C scores"
+              title="Require bit exact Python and C scores"
             >
               <p>
                 Python first reads the exported bytes and evaluates with the same integer
                 accumulator, clipping, output products, and truncating division as C. The
                 C evaluation tool receives the identical FEN list in one process. A single
                 unequal score fails the comparison. This catches layout, perspective,
-                rounding, and feature-index differences before firmware uses the model.
+                rounding, and feature index differences before firmware uses the model.
               </p>
             </CodeStudy>
             <ResourceLinks links={[
@@ -1134,8 +1108,8 @@ for index, (python_score, c_score) in enumerate(
               <p>
                 Each candidate receives the same position once as White and once as
                 Black. This reduces color and opening bias. The arena sends full FENs to
-                each UCI engine and verifies every returned move with
-                <code>python-chess</code> before adding it to the game.
+                each UCI engine and verifies every returned move with the Python chess
+                library before adding it to the game.
               </p>
               <p>
                 The Elo estimate describes only the two engines in that match. Its 95
@@ -1157,7 +1131,7 @@ for index, (python_score, c_score) in enumerate(
             </p>
             <p className="guide-note">
               These matches compare only the tested engines. They do not establish an
-              absolute human Elo. ESP32-P4 search speed is still unmeasured.
+              absolute human Elo. ESP32 P4 search speed is still unmeasured.
             </p>
             <ResourceLinks links={[
               { label: "Project results: profile comparison", href: source("results/profile_comparison.json") },
@@ -1169,8 +1143,8 @@ for index, (python_score, c_score) in enumerate(
 
           <GuideSection id="guide-firmware" number="12" title="Build the ESP32 P4 firmware">
             <p>
-              Build with ESP-IDF 6.0.2 for the <code>esp32p4</code> target. The build
-              embeds <code>models/reference.nnue</code> in mapped read-only flash. An
+              Build with ESP IDF 6.0.2 for the <code>esp32p4</code> target. The build
+              embeds <code>models/reference.nnue</code> in mapped read only flash. An
               uploaded model uses the dedicated NNUE partition. Neither path copies
               the full model to the heap.
             </p>
@@ -1184,10 +1158,10 @@ target_add_binary_data(
               title="Embed the reference model as binary data"
             >
               <p>
-                ESP-IDF places the original model bytes in the application image. Linker
+                ESP IDF places the original model bytes in the application image. Linker
                 symbols expose the first byte and the byte after the model. Firmware
                 passes that address and size to <code>bind_nnue</code>. It does not create
-                a generated C array and does not copy the 328480-byte model into heap RAM.
+                a generated C array and does not copy the 328480 byte model into heap RAM.
               </p>
             </CodeStudy>
             <Code>{`. /home/ishan/esp-idf/export.sh
@@ -1200,7 +1174,7 @@ idf.py merge-bin -o esp32p4_nnue_merged.bin`}</Code>
             <p>
               At boot, <code>app_main</code> initializes chess tables, binds the model,
               allocates the 256 KiB transposition table, installs UART, and starts the
-              binary command loop. The firmware contains no Wi-Fi, Bluetooth, display,
+              binary command loop. The firmware contains no WiFi, Bluetooth, display,
               filesystem, or web server.
             </p>
             <CodeStudy
@@ -1234,15 +1208,15 @@ if (!run_protocol_loop(&context, &port)) {
                 waits for framed commands.
               </p>
               <p>
-                The single-core setting and 32 KiB task stack come from
+                The single core setting and 32 KiB task stack come from
                 <code>esp/sdkconfig.defaults</code>. The firmware adds no network stack,
                 display loop, filesystem, or service that competes with search memory.
               </p>
             </CodeStudy>
             <ResourceLinks links={[
-              { label: "Espressif: ESP-IDF setup for ESP32-P4", href: "https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/get-started/linux-macos-setup-legacy.html" },
+              { label: "Espressif: ESP IDF setup for ESP32 P4", href: "https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/get-started/linux-macos-setup-legacy.html" },
               { label: "Espressif: build and flash a project", href: "https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/get-started/start-project.html" },
-              { label: "Espressif: ESP32-P4 UART API", href: "https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/api-reference/peripherals/uart.html" },
+              { label: "Espressif: ESP32 P4 UART API", href: "https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/api-reference/peripherals/uart.html" },
               { label: "Project firmware: esp/main/app.c", href: source("esp/main/app.c") },
               { label: "Project firmware: esp/main/model_storage.c", href: source("esp/main/model_storage.c") },
               { label: "Project firmware: esp/partitions.csv", href: source("esp/partitions.csv") },
@@ -1300,14 +1274,14 @@ python3 esp/board_client.py --port /dev/ttyACM0 search \
               </p>
               <p>
                 Run <code>info</code> first to verify firmware, model dimensions, model
-                CRC, and transposition-table size. Run <code>bench</code> to exercise one
-                fixed start-position search. Run <code>search</code> with an explicit FEN
+                CRC, and transposition table size. Run <code>bench</code> to exercise one
+                fixed start position search. Run <code>search</code> with an explicit FEN
                 to verify position transfer and a returned legal move.
               </p>
             </CodeStudy>
             <figure className="hardware-figure">
               <img
-                alt="ESP32-P4 development board connected beside a laptop during the first physical test"
+                alt="ESP32 P4 development board connected beside a laptop during the first physical test"
                 decoding="async"
                 height="1350"
                 loading="lazy"
@@ -1315,13 +1289,13 @@ python3 esp/board_client.py --port /dev/ttyACM0 search \
                 width="1800"
               />
               <figcaption>
-                First physical ESP32-P4 test setup. Ishan Kumthekar photograph.
+                First physical ESP32 P4 test setup. Ishan Kumthekar photograph.
               </figcaption>
             </figure>
             <div className="hardware-status">
               <p>
                 The host chess core is verified. Python and C integer scores match. The
-                firmware builds for ESP32-P4 and the first physical boot was observed.
+                firmware builds for ESP32 P4 and the first physical boot was observed.
               </p>
               <p>
                 The UART correction still needs a recorded reflash test. Physical search
@@ -1338,7 +1312,7 @@ python3 esp/board_client.py --port /dev/ttyACM0 search \
             </p>
             <p>
               The connection works from localhost and from an HTTPS deployment such
-              as <code>nnue.ishankumthekar.com</code>. The ESP32-P4 remains connected
+              as <code>nnue.ishankumthekar.com</code>. The ESP32 P4 remains connected
               to the visitor's computer. Serial bytes move directly between that
               browser tab and USB. The hosting server does not receive the position or
               control the board.
@@ -1375,7 +1349,7 @@ view.setUint32(
             >
               <p>
                 The first two bytes are the ASCII marker <code>P4</code>. The next bytes
-                carry protocol version and command. A little-endian 16-bit length tells
+                carry protocol version and command. A little endian 16 bit length tells
                 the receiver where the payload ends. CRC32 covers version, command,
                 length, and payload so damaged frames are rejected before command code
                 reads them.
@@ -1416,12 +1390,12 @@ const deviceResponse = await this.exchange(
                 <code>requestPort</code> runs only after the visitor presses the connect
                 control. The browser permission prompt gives this page access to the one
                 selected device. The hello exchange confirms protocol version. Device
-                info then confirms ESP32-P4 target, model format 3, four king buckets,
+                info then confirms ESP32 P4 target, model format 3, four king buckets,
                 hidden width 128, model size, and active model state.
               </p>
               <p>
                 <code>requestChipSearch</code> sends <code>game.fen()</code> before every
-                search. The result parser reads the fixed 29-byte payload. The returned
+                search. The result parser reads the fixed 29 byte payload. The returned
                 text must match UCI syntax and <code>chess.js</code> must accept it as a
                 legal move before the board changes.
               </p>
@@ -1446,7 +1420,7 @@ validate returned uci move`}</Code>
                   <tr><th>hello</th><td><code>0x01</code></td><td>empty</td><td>version byte</td></tr>
                   <tr><th>device info</th><td><code>0x02</code></td><td>empty</td><td>target and model metadata</td></tr>
                   <tr><th>position</th><td><code>0x20</code></td><td>ASCII FEN</td><td>empty acknowledgement</td></tr>
-                  <tr><th>go</th><td><code>0x21</code></td><td>budget type and u32</td><td>29-byte result</td></tr>
+                  <tr><th>go</th><td><code>0x21</code></td><td>budget type and u32</td><td>29 byte result</td></tr>
                   <tr><th>error</th><td><code>0xff</code></td><td>not a request</td><td>failed command and error code</td></tr>
                 </tbody>
               </table>
@@ -1458,7 +1432,7 @@ validate returned uci move`}</Code>
             </p>
             <figure className="hardware-figure">
               <img
-                alt="Browser chess game connected to the ESP32-P4 development board over USB serial"
+                alt="Browser chess game connected to the ESP32 P4 development board over USB serial"
                 decoding="async"
                 height="1350"
                 loading="lazy"
@@ -1466,14 +1440,14 @@ validate returned uci move`}</Code>
                 width="1800"
               />
               <figcaption>
-                Completed local browser game with the ESP32-P4 connected over USB
+                Completed local browser game with the ESP32 P4 connected over USB
                 serial. Ishan Kumthekar photograph.
               </figcaption>
             </figure>
             <ResourceLinks links={[
-              { label: "Web Incubator CG: Web Serial specification", href: GUIDE_RESOURCES[5] },
-              { label: "Chrome for Developers: Web Serial", href: GUIDE_RESOURCES[6] },
-              { label: "GitHub Pages: HTTPS deployment", href: GUIDE_RESOURCES[7] },
+              { label: "Web Incubator CG: Web Serial specification", href: GUIDE_RESOURCES[4] },
+              { label: "Chrome for Developers: Web Serial", href: GUIDE_RESOURCES[5] },
+              { label: "GitHub Pages: HTTPS deployment", href: GUIDE_RESOURCES[6] },
               { label: "Project browser: web/src/protocol.ts", href: source("web/src/protocol.ts") },
               { label: "Project browser: web/src/device.ts", href: source("web/src/device.ts") },
               { label: "Project browser: web/src/game.ts", href: source("web/src/game.ts") },
@@ -1517,7 +1491,7 @@ if (
               </p>
               <p>
                 A different bucket count or hidden width changes both model layout and C
-                compile-time dimensions. It needs a matching core build plus updated
+                compile time dimensions. It needs a matching core build plus updated
                 browser compatibility constants. Uploading bytes alone cannot change the
                 compiled architecture.
               </p>
@@ -1527,7 +1501,7 @@ if (
               Implement the same hello, device info, position, go, and error messages.
               Accept a complete FEN and return a legal UCI move. Add a target identifier
               in <code>esp/protocol.h</code>, allow it in <code>web/src/device.ts</code>,
-              and add protocol fixtures with a fake serial-port test.
+              and add protocol fixtures with a fake serial port test.
             </p>
             <CodeStudy
               code={`export interface BoardTransport {
@@ -1542,7 +1516,7 @@ if (
             >
               <p>
                 The browser game needs only connection state, one complete FEN setter,
-                and fixed-depth search. The new target can use any board representation,
+                and fixed depth search. The new target can use any board representation,
                 search, or evaluator behind this boundary. It must expose USB serial or a
                 UART bridge and implement the same frame header, CRC32, hello, device
                 info, position, go, and error messages.
