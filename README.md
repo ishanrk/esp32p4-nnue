@@ -1,25 +1,35 @@
-# Uberchess_NN
+# esp32p4-nnue
 
-1) What this is
-This repository is an end to end chess stack with a C engine runtime, a UCI interface, a local playable CLI mode, and a Python neural network training and export pipeline.
+A small chess engine and NNUE project targeting the ESP32-P4 RISC-V microcontroller.
 
-2) Repository map
-`engine/` contains chess runtime and protocol code.
-`train/` contains data, labels, training, and binary export.
-`book/` contains the implementation book.
+The repository currently contains a C chess engine with UCI and local CLI support plus a Python training and weight export pipeline. The current neural evaluator is still a desktop prototype. The next version will use quantized weights and incremental accumulators so evaluation can run efficiently on the ESP32-P4.
 
-3) Build commands
-```powershell
+## target
+
+The hardware target is the ESP32-P4. The engine will run directly on the microcontroller without Linux. Training stays on a desktop machine. The trained weights are exported and compiled or flashed with the engine firmware.
+
+The main measurements will be model size, RAM use, evaluation latency, nodes per second and chess strength. A portable scalar implementation will be kept as the reference implementation. ESP32-P4 specific optimization will be measured against it.
+
+## engine
+
+`engine/` contains the chess engine, move generation, search, evaluation, UCI support and tests.
+
+Build the desktop version with CMake:
+
+```sh
 cmake -S engine -B build
 cmake --build build
 ctest --test-dir build
 ```
 
-4) UCI usage quick start
-```powershell
+Run the UCI engine:
+
+```sh
 ./build/engine
 ```
-Then type:
+
+Example commands:
+
 ```text
 uci
 isready
@@ -28,70 +38,48 @@ go depth 5
 quit
 ```
 
-5) CLI play mode
-```powershell
+The local CLI is available with:
+
+```sh
 ./build/engine --cli
 ```
-Example session:
-```text
-uberchess cli
-type moves like e2e4, type 'go' for engine move, type 'quit' to exit
 
-8  r n b q k b n r
-7  p p p p p p p p
-6  . . . . . . . .
-5  . . . . . . . .
-4  . . . . . . . .
-3  . . . . . . . .
-2  P P P P P P P P
-1  R N B Q K B N R
+## training
 
-   a b c d e f g h
+`train/` contains the current dataset, model, training and weight export code.
 
-cli> e2e4
-cli> go
-engine plays e7e5
-```
+Install the Python dependencies with:
 
-6) Train neural network
-Install Python dependencies:
-```powershell
+```sh
 python -m pip install -r train/requirements.txt
 ```
-Train from random legal positions:
-```powershell
+
+The existing prototype can be trained with:
+
+```sh
 python train/train.py --samples 50000 --epochs 8 --out train/nnue_weights.bin
 ```
-Train from PGN:
-```powershell
+
+PGN input is also supported:
+
+```sh
 python train/train.py --pgn data/games.pgn --samples 200000 --epochs 10 --out train/nnue_weights.bin
 ```
 
-7) Weight export format
-The exported binary is read directly by `engine/src/nnue.c`.
-```text
-magic: "UBNNUE1\0"
-input_dim: uint32
-hidden_dim: uint32
-w1: float[hidden_dim][input_dim]
-b1: float[hidden_dim]
-w2: float[hidden_dim]
-b2: float[1]
-```
+This training path is temporary. It currently uses a simple 768 input network and a basic evaluation target. It will be replaced by the embedded NNUE training pipeline before hardware results are reported.
 
-8) Example workflow
-```powershell
-python train/train.py --samples 30000 --epochs 6 --out train/nnue_weights.bin
-cmake -S engine -B build
-cmake --build build
-./build/engine --cli
-```
+## embedded plan
 
-9) Notes on strength
-The current model pipeline is fully functional and trainable. strength and accuracy depend on data quality and label source. for serious Elo gains, use high quality PGN and a stronger teacher signal.
+The first embedded implementation will use integer inference and incremental accumulator updates during `make_move` and `unmake_move`. A full accumulator refresh will remain available for testing. Both paths must produce the same result.
 
-10) Documentation
-```powershell
-mdbook build book
-```
-Open `book/book/index.html` in a browser.
+After the scalar implementation is correct, the hot NNUE kernels will be optimized for the ESP32-P4. Hardware measurements will use the real board rather than simulator timing.
+
+The project will compare several small network sizes under the same search and time controls. Engine strength will be measured with repeated games rather than prediction loss alone.
+
+## repository
+
+`engine/` contains the runtime and tests.
+
+`train/` contains training and weight export code.
+
+`book/` contains longer implementation notes.
