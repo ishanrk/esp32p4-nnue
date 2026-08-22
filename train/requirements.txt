@@ -1,4 +1,3 @@
 numpy
-torch
 python-chess
-tqdm
+torch

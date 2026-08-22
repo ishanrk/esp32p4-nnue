@@ -1,6 +1,0 @@
-[book]
-title = "Uberchess NN"
-authors = ["cursor"]
-
-[build]
-build-dir = "book"
