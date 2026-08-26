@@ -197,6 +197,8 @@ function guideTests(): void {
     .replace(/<[^>]+>/g, " ");
   assert.doesNotMatch(guideProse, /[-–—]/);
   assert.doesNotMatch(guideProse, /\bbuckets?\b/i);
+  const firstPersonReferences = guideProse.match(/\b(?:I|my|mine)\b/gi) ?? [];
+  assert.ok(firstPersonReferences.length <= 4);
   const firstStep = guideMarkup.slice(
     guideMarkup.indexOf('id="guide-budget"'),
     guideMarkup.indexOf('id="guide-core"'),
