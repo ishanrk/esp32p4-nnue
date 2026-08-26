@@ -180,6 +180,9 @@ function guideTests(): void {
   assert.match(guideMarkup, /images\/reference\/alpha-beta-tree\.svg/);
   assert.match(guideMarkup, /images\/reference\/neural-network-layers\.svg/);
   assert.match(guideMarkup, /images\/esp32-p4-browser-game\.jpg/);
+  assert.match(guideMarkup, /ITS ACTUALLY PLAYING CHESS\./);
+  assert.match(guideMarkup, /Measure your hardware limits/);
+  assert.match(guideMarkup, /Two resources I used heavily/);
   assert.match(guideMarkup, /nnue\.ishankumthekar\.com/);
   assert.ok((guideMarkup.match(/class="code-study"/g) ?? []).length >= 15);
   assert.match(guideMarkup, /typedef uint64_t bitboard_t/);
@@ -189,12 +192,11 @@ function guideTests(): void {
   assert.match(guideMarkup, /build_model_blob/);
   assert.match(guideMarkup, /FrameDecoder/);
   assert.doesNotMatch(guideMarkup, /↗|video-slot|guide-end/);
-  assert.doesNotMatch(
-    guideMarkup
-      .replace(/<pre[\s\S]*?<\/pre>/g, "")
-      .replace(/<[^>]+>/g, " "),
-    /[-–—]/,
-  );
+  const guideProse = guideMarkup
+    .replace(/<pre[\s\S]*?<\/pre>/g, "")
+    .replace(/<[^>]+>/g, " ");
+  assert.doesNotMatch(guideProse, /[-–—]/);
+  assert.doesNotMatch(guideProse, /\bbuckets?\b/i);
   const firstStep = guideMarkup.slice(
     guideMarkup.indexOf('id="guide-budget"'),
     guideMarkup.indexOf('id="guide-core"'),

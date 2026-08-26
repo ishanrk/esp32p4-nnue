@@ -117,6 +117,9 @@ if (!appSource.includes("Playing Your Own Chess Neural Network Hosted on a Micro
 if (!appSource.includes("Waveshare") || !appSource.includes("ESP32 P4NRW32")) {
   throw new Error("play page hardware subtitle is missing");
 }
+if (!appSource.includes("uses NNUE inference")) {
+  throw new Error("play page NNUE explanation is missing");
+}
 for (const removedDecoration of [
   "hero-chess-mark",
   "hero-piece",

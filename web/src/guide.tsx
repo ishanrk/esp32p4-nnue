@@ -7,21 +7,21 @@ function source(path: string): string {
 }
 
 export const GUIDE_STEPS = [
-  { id: "guide-budget", number: "01", title: "Measure the hardware limits" },
-  { id: "guide-core", number: "02", title: "Build the chess engine in C" },
-  { id: "guide-state", number: "03", title: "Store the board and legal moves" },
-  { id: "guide-search", number: "04", title: "Add the chess search" },
-  { id: "guide-profile", number: "05", title: "Choose the NNUE size" },
-  { id: "guide-features", number: "06", title: "Match the Python and C features" },
-  { id: "guide-teacher", number: "07", title: "Create Stockfish training labels" },
-  { id: "guide-shards", number: "08", title: "Prepare the training data" },
-  { id: "guide-training", number: "09", title: "Train the NNUE" },
-  { id: "guide-export", number: "10", title: "Export the NNUE for C" },
-  { id: "guide-selection", number: "11", title: "Test the NNUE sizes" },
-  { id: "guide-firmware", number: "12", title: "Build the ESP32 P4 firmware" },
-  { id: "guide-hardware", number: "13", title: "Test the physical ESP32 P4 board" },
-  { id: "guide-browser", number: "14", title: "Connect the browser to the board" },
-  { id: "guide-adapter", number: "15", title: "Use another NNUE or microcontroller" },
+  { id: "guide-budget", number: "01", title: "Measure your hardware limits" },
+  { id: "guide-core", number: "02", title: "Build your chess engine in C" },
+  { id: "guide-state", number: "03", title: "Store your board and legal moves" },
+  { id: "guide-search", number: "04", title: "Add search to your engine" },
+  { id: "guide-profile", number: "05", title: "Choose a NNUE that fits your hardware" },
+  { id: "guide-features", number: "06", title: "Make Python and C create the same features" },
+  { id: "guide-teacher", number: "07", title: "Create your Stockfish training labels" },
+  { id: "guide-shards", number: "08", title: "Prepare your training data" },
+  { id: "guide-training", number: "09", title: "Train your NNUE" },
+  { id: "guide-export", number: "10", title: "Export your NNUE for C" },
+  { id: "guide-selection", number: "11", title: "Test your NNUE choices" },
+  { id: "guide-firmware", number: "12", title: "Build your ESP32 P4 firmware" },
+  { id: "guide-hardware", number: "13", title: "Test your physical board" },
+  { id: "guide-browser", number: "14", title: "Connect your browser to your board" },
+  { id: "guide-adapter", number: "15", title: "Use your own NNUE or microcontroller" },
 ] as const;
 
 export const GUIDE_RESOURCES = [
@@ -161,14 +161,14 @@ export function Guide() {
         <p className="eyebrow">ESP32 P4 NNUE GUIDE</p>
         <h1>A Small Guide on How to Build Your Own Neural Networks Under Hardware Constraints</h1>
         <p className="guide-lead">
-          This guide follows the exact chess engine, NNUE training, firmware, and
-          browser code used for the Waveshare ESP32 P4 board. Each step links to
-          the project files and the outside references used for that part.
+          I built this around the exact chess engine, NNUE training code, firmware,
+          and browser used on my Waveshare ESP32 P4 board. I will explain what each
+          part does before showing the code that implements it.
         </p>
         <dl className="guide-facts">
           <div><dt>board</dt><dd>Waveshare ESP32 P4</dd></div>
           <div><dt>engine</dt><dd>Portable C11</dd></div>
-          <div><dt>network</dt><dd>4 buckets × 128</dd></div>
+          <div><dt>network</dt><dd>4 king regions × 128 values</dd></div>
           <div><dt>model size</dt><dd>328,480 bytes</dd></div>
         </dl>
       </header>
@@ -190,18 +190,21 @@ export function Guide() {
         </nav>
 
         <article className="guide-content">
-          <GuideSection id="guide-budget" number="01" title="Measure the hardware limits">
+          <GuideSection id="guide-budget" number="01" title="Measure your hardware limits">
             <p>
-              Write down the CPU width, clock speed, flash, internal RAM, external
-              RAM, model storage, search memory, stack size, and serial connection.
-              These limits set the largest network and transposition table that fit.
+              Start by writing down your CPU width, clock speed, flash, internal RAM,
+              external RAM, model storage, search memory, stack size, and connection to
+              the host computer. An NNUE is a neural network built so a chess engine can
+              update its inputs cheaply after every move. Its weights must fit in flash
+              and its working values must fit in RAM while the engine is searching.
             </p>
             <p>
-              This project uses the Waveshare ESP32 P4 Module DEV KIT with an
-              ESP32 P4NRW32 module, 32 MB PSRAM, and 16 MB flash. The NNUE profiles
-              stay below 512 KiB. The selected model is 328,480 bytes. Firmware
-              reserves 256 KiB for the transposition table and 32 KiB for the main
-              task stack. It runs on one core and does not require PSRAM.
+              For example I used a Waveshare ESP32 P4 Module DEV KIT with an ESP32
+              P4NRW32 module, 32 MB PSRAM, and 16 MB flash. I limited every network I
+              tested to 512 KiB. My selected model is 328,480 bytes. I reserved 256 KiB
+              for remembered search positions and 32 KiB for the main task stack. Your
+              board may have a native 64 bit CPU, less flash, or no external RAM, so use
+              your own limits instead of copying mine.
             </p>
             <CodeStudy
               code={`typedef uint64_t bitboard_t;
@@ -213,20 +216,18 @@ _Static_assert(sizeof(move_t) == 4, "move size");`}
               title="Choose integer widths from the data"
             >
               <p>
-                A chessboard has 64 squares. One bit in <code>bitboard_t</code> maps
-                directly to one square. A full board mask can therefore be combined
-                with one AND, OR, XOR, or shift in the C source. The packed move needs
-                only 19 active bits, so <code>uint32_t</code> leaves room for the complete
-                move and keeps each move list entry small.
+                A bitboard is one 64 bit integer where each bit represents one square.
+                That makes attacks and occupied squares easy to combine with AND, OR,
+                XOR, and shifts. A move needs only 19 active bits in my format, so I use
+                one 32 bit integer for its source, destination, promotion, and flags.
               </p>
               <p>
-                The ESP32 P4 uses a 32 bit RISC V core. Its compiler can still implement
-                <code>uint64_t</code>, but many operations become work on two 32 bit
-                halves. An explicit pair of <code>uint32_t</code> values could make that
-                cost visible and give more control over carries and shifts. It would also
-                make every attack mask and bit scan more complicated. This repository
-                keeps the direct 64 bit form until both representations can be measured
-                on the physical board. No pair of halves result exists yet.
+                My ESP32 P4 has a 32 bit RISC V core. It can still run 64 bit bitboard
+                code, but the compiler may turn one source operation into several 32 bit
+                instructions. I kept the 64 bit form because it is direct, readable, and
+                already covered by the chess tests. If your chip handles 64 bit values
+                poorly, benchmark two explicit 32 bit halves after you have a correct
+                reference engine to compare against.
               </p>
             </CodeStudy>
             <figure className="hardware-figure">
@@ -244,23 +245,26 @@ _Static_assert(sizeof(move_t) == 4, "move size");`}
               </figcaption>
             </figure>
             <ResourceLinks links={[
-              { label: "Chess Programming Wiki", href: GUIDE_RESOURCES[0] },
-              { label: "Code Monkey King", href: GUIDE_RESOURCES[1] },
               { label: "Waveshare documentation: ESP32 P4 Module DEV KIT", href: GUIDE_RESOURCES[3] },
               { label: "Project code: train/profiles.py", href: source("train/profiles.py") },
               { label: "Project code: src/nnue_config.h", href: source("src/nnue_config.h") },
               { label: "Project code: esp/sdkconfig.defaults", href: source("esp/sdkconfig.defaults") },
               { label: "Project record: models/reference.json", href: source("models/reference.json") },
             ]} />
+            <p className="guide-note">
+              Two resources I used heavily while learning about chess engines and NNUE
+              were the <a href={GUIDE_RESOURCES[0]}>Chess Programming Wiki</a> and
+              {" "}<a href={GUIDE_RESOURCES[1]}>Code Monkey King</a>.
+            </p>
           </GuideSection>
 
-          <GuideSection id="guide-core" number="02" title="Build the chess engine in C">
+          <GuideSection id="guide-core" number="02" title="Build your chess engine in C">
             <p>
-              Put chess rules, evaluation, and search in one portable C11 core.
-              Compile the same C files for desktop tests and ESP32 P4 firmware. The
-              <code>src</code> directory contains the shared engine. Desktop UCI stays
-              in <code>src/uci.c</code>. Board startup, model storage, and the serial
-              protocol stay in <code>esp</code>.
+              The chess engine is the code that understands the board, generates legal
+              moves, searches future positions, and chooses a move. The NNUE does not
+              choose a move by itself. It gives the search a score for a position. I
+              wrote the engine in portable C11 so I could test it on my laptop and then
+              compile the same chess code for the ESP32 P4.
             </p>
             <CodeStudy
               code={`set(P4_SRC
@@ -275,18 +279,21 @@ _Static_assert(sizeof(move_t) == 4, "move size");`}
 
 add_library(p4core STATIC \${P4_SRC})`}
               path="CMakeLists.txt"
-              title="Keep one shared engine core"
+              title="Compile the same chess code for your laptop and board"
             >
               <p>
-                The root build turns these files into the desktop <code>p4core</code>
-                library. The ESP IDF component lists the same source paths instead of
-                keeping a firmware copy. A move that passes the host tests is therefore
-                handled by the same implementation on the microcontroller.
+                I put the rules, move generation, NNUE evaluation, and search files in
+                <code>src</code>. CMake compiles them into <code>p4core</code> for my
+                laptop. The ESP IDF build points to those exact files for the board. This
+                means a move that passes my laptop tests runs through the same code on
+                the microcontroller.
               </p>
               <p>
-                Platform code stays at the edge. <code>src/uci.c</code> reads desktop
-                UCI commands. <code>esp/main/app.c</code> starts the board and reads UART
-                frames. Both call the public functions declared in <code>src/ch.h</code>.
+                UCI is the text protocol desktop chess programs use to talk to an engine.
+                <code>src/uci.c</code> handles that on my laptop. UART is the serial byte
+                connection used by the board. <code>esp/main/app.c</code> handles that
+                connection. Both front ends call the chess functions declared in
+                <code>src/ch.h</code>.
               </p>
             </CodeStudy>
             <ResourceLinks links={[
@@ -297,11 +304,12 @@ add_library(p4core STATIC \${P4_SRC})`}
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-state" number="03" title="Store the board and legal moves">
+          <GuideSection id="guide-state" number="03" title="Store your board and legal moves">
             <p>
-              The engine stores twelve piece bitboards and three occupancy bitboards.
-              It also stores one piece value for each of the 64 squares. Every move
-              updates both representations.
+              I store the position in two useful forms. Twelve bitboards answer questions
+              about whole sets such as every white knight. A 64 entry square array tells
+              me the exact piece on one square. Every move must update both forms or the
+              position becomes inconsistent.
             </p>
             <CodeStudy
               code={`typedef struct {
@@ -321,26 +329,29 @@ add_library(p4core STATIC \${P4_SRC})`}
     uint8_t en_passant;
 } position_t;`}
               path="src/ch.h"
-              title="Store sets and direct square lookup together"
+              title="Store fast sets and direct square lookup together"
             >
               <p>
-                <code>pieces</code> answers set questions such as every white knight or
-                every occupied square. <code>board</code> answers the different question
-                of which exact piece occupies one square. Search and move generation use
-                both forms without rebuilding either one.
+                <code>pieces</code> holds the piece bitboards. <code>occupancy</code>
+                combines them for White, Black, and the whole board. <code>board</code>
+                gives direct square lookup. I use whichever form makes the current chess
+                question simpler instead of rebuilding one from the other.
               </p>
               <p>
-                <code>key</code> is the incremental Zobrist hash. <code>history</code>
-                records earlier hashes for repetition detection. The accumulators hold
-                both NNUE perspectives inside the position so make and undo can keep the
-                evaluation ready for the next search node.
+                A Zobrist hash is a compact fingerprint of the full position.
+                <code>key</code> updates whenever a piece or rule state changes.
+                <code>history</code> stores older fingerprints so I can detect repetition.
+                The accumulators are the running NNUE hidden values for both sides. I
+                keep them in the position so the next evaluation is ready immediately.
               </p>
               <p>
-                The move clocks preserve FEN state and the fifty move rule.
-                <code>history_count</code> bounds the valid repetition history. The king
-                bucket and mirror arrays cache the active NNUE view for each side. The
-                remaining bytes record the side to move and the two reversible move
-                rights needed by castling and en passant.
+                FEN is the text format used to describe a complete chess position. The
+                clocks preserve its move counters and the fifty move rule.
+                <code>history_count</code> marks how much repetition history is valid.
+                <code>king_bucket</code> is the internal code name for the current king
+                location group. <code>king_mirror</code> records whether that view is
+                mirrored. The final fields preserve the side to move, castling rights,
+                and en passant square.
               </p>
             </CodeStudy>
             <ReferenceFigure
@@ -371,17 +382,17 @@ bits 19..31  reserved
               title="Pack a complete move into 32 bits"
             >
               <p>
-                Source and destination squares each need six bits. Promotion needs three
-                bits. Four flag bits distinguish captures, en passant, castling, and a
-                double pawn push. Search can copy, compare, sort, and store a move as one
-                integer without heap allocation.
+                There are 64 squares, so the source and destination each need six bits.
+                Promotion uses three bits. Four flags record captures, en passant,
+                castling, and a double pawn push. I can then copy, compare, sort, and
+                remember a complete move as one integer without allocating memory.
               </p>
             </CodeStudy>
             <p>
-              Generate pseudo legal moves. Make one move. Reject it when it leaves
-              the moving side&apos;s king in check. Undo it. The undo record restores
-              captured pieces, castling rights, en passant, clocks, the Zobrist hash,
-              and NNUE accumulator state.
+              I first generate pseudo legal moves. That means each piece follows its
+              movement rules but I have not yet proved the king remains safe. I make one
+              candidate move, reject it if my king is attacked, and then undo it. The
+              undo record restores every field changed by that move.
             </p>
             <CodeStudy
               code={`remove_piece(position, from);
@@ -402,15 +413,15 @@ if (king_square == NO_SQUARE ||
             >
               <p>
                 <code>remove_piece</code> and <code>place_piece</code> update the square
-                array, piece bitboards, occupancy, hash, and NNUE features as one state
-                transition. The side changes only after the pieces move. The final king
-                attack test turns a pseudo legal generated move into a legal move.
+                array, bitboards, occupancy, hash, and NNUE features together. I change
+                the side to move only after the pieces are in their new places. The final
+                attack check turns a candidate into a fully legal move.
               </p>
               <p>
-                <code>undo_t</code> saves the old hash, clocks, castling rights, en
-                passant square, history count, moved piece, captured piece, and king
-                view. Undo reverses the piece operations and restores those values. The
-                search never rebuilds the complete position after every child.
+                <code>undo_t</code> is the small receipt for that change. It saves the old
+                hash, clocks, castling rights, en passant square, history count, pieces,
+                and king view. Undo reverses the piece operations and copies those values
+                back instead of rebuilding the whole position.
               </p>
             </CodeStudy>
             <Code>{`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -429,12 +440,13 @@ ctest --test-dir build --output-on-failure`}</Code>
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-search" number="04" title="Add the chess search">
+          <GuideSection id="guide-search" number="04" title="Add search to your engine">
             <p>
-              Use one score from the side to move. Search each child with the sign
-              reversed. Alpha beta stops branches that cannot change the result.
-              Iterative deepening completes depth 1, then 2, then 3, so the engine
-              always has a finished answer.
+              Search is the part that tries legal moves and replies until it reaches a
+              chosen depth. I use negamax, which always scores the position for the side
+              about to move and negates the score after switching sides. Alpha beta
+              avoids branches that cannot improve the result. Iterative deepening runs
+              depth 1, then 2, then 3, so I always have a completed move available.
             </p>
             <CodeStudy
               code={`bool quiet = !(MOVE_FLAGS(move) & MOVE_CAPTURE) &&
@@ -462,18 +474,17 @@ if (!legal_moves) {
               title="Negamax and principal variation search"
             >
               <p>
-                Every returned score belongs to the side that is about to move. Making
-                a move changes that side, so the recursive result is negated. The bounds
-                also change sign and exchange places. This is the negamax form of
-                alpha beta.
+                A ply is one move by one side. After I make a move, the other side owns
+                the next ply, so I negate the returned score. Alpha and beta are the best
+                score limits already known by each side. They also change sign and swap
+                places when the side changes.
               </p>
               <p>
-                The first legal move receives the full search window. Later moves first
-                receive the narrow null window immediately above alpha. Most inferior
-                moves fail inside that narrow window with less work. A late quiet move
-                can first use one less ply. A reduced
-                result above alpha repeats the narrow search at full depth. A full depth
-                result between alpha and beta then receives the complete window.
+                Principal variation search gives the first move the full score range.
+                Later moves get a narrow test around the best score found so far. Most
+                worse moves fail that test cheaply. A late quiet move can start one ply
+                shallower. If it looks promising I search it again at full depth and then
+                with the full score range when necessary.
               </p>
             </CodeStudy>
             <div className="reference-pair">
@@ -506,9 +517,10 @@ if (!legal_moves) {
             </div>
             <h3>Quiescence search</h3>
             <p>
-              At depth zero, quiescence search continues tactical captures before
-              evaluation. This keeps a hanging queen or an unfinished exchange from
-              producing an unstable score at the search boundary.
+              Stopping immediately at depth zero can evaluate the middle of a capture
+              sequence. Quiescence search continues captures and promotions until the
+              position becomes tactically quiet. This prevents a hanging queen or an
+              unfinished exchange from giving me a misleading final score.
             </p>
             <CodeStudy
               code={`static int quiescence_search(search_context_t *context,
@@ -550,19 +562,19 @@ if (!legal_moves) {
               title="Continue unstable positions at depth zero"
             >
               <p>
-                A quiet position can use its static score as a lower bound called stand
-                pat. The search then considers captures and promotions. A checked king
-                cannot stand pat, so <code>tactical_only</code> becomes false and every
-                evasion is generated. Checkmate is returned when none of those moves is
-                legal.
+                Stand pat is the score I get by making no tactical move. I can use it only
+                when the king is not in check. The search then tries captures and
+                promotions. A checked king must generate every escape. If none is legal,
+                the function returns the checkmate score.
               </p>
             </CodeStudy>
-            <h3>The current search result</h3>
+            <h3>What my search returns</h3>
             <p>
-              The engine also uses principal variation search, a fixed transposition
-              table, killer moves, history ordering, one check extension, and late
-              move reduction. <code>search_position</code> returns the best move,
-              score, completed depth, node count, elapsed time, and principal variation.
+              My engine also remembers useful moves for ordering and extends a checked
+              position by one ply. <code>search_position</code> returns the chosen move,
+              its score, completed depth, number of positions searched, elapsed time,
+              and principal variation. The principal variation is the best sequence of
+              moves found during that search.
             </p>
             <CodeStudy
               code={`tt_entry_t *entry =
@@ -580,12 +592,11 @@ if (entry->flag == TT_UPPER_BOUND && score <= alpha) return score;`}
               title="Reuse positions with the transposition table"
             >
               <p>
-                The table count is a power of two. Masking the Zobrist key selects one
-                16 byte entry without division. The full 64 bit key confirms that the
-                slot belongs to this position. An exact score can return immediately.
-                Lower and upper bounds return only when they already prove the current
-                alpha beta result. The stored move still helps move ordering when the
-                stored depth is too shallow for a score cutoff.
+                A transposition table remembers positions already searched. I use the
+                Zobrist fingerprint to select one 16 byte entry. The full fingerprint
+                confirms that the entry belongs to this exact position. A deep enough
+                result can save the entire repeated search. A shallower entry still gives
+                me a promising move to try first.
               </p>
             </CodeStudy>
             <ResourceLinks links={[
@@ -602,11 +613,14 @@ if (entry->flag == TT_UPPER_BOUND && score <= alpha) return score;`}
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-profile" number="05" title="Choose the NNUE size">
+          <GuideSection id="guide-profile" number="05" title="Choose a NNUE that fits your hardware">
             <p>
-              This is a king conditioned NNUE inspired by HalfKP. The king square
-              selects one of four mirrored buckets. The other pieces select sparse
-              piece square features. Each side has one 128 value accumulator.
+              My NNUE groups mirrored king squares into four king regions. A king region
+              is simply a set of nearby king locations that share one learned piece
+              square table. The exact king region and the location of every non king
+              piece select the active inputs. Each side has 128 running hidden values.
+              Those values are called an accumulator because moves add and subtract from
+              them instead of calculating the full network again.
             </p>
             <ReferenceFigure
               alt="Feed forward neural network with input hidden and output layers"
@@ -625,8 +639,8 @@ if (entry->flag == TT_UPPER_BOUND && score <= alpha) return score;`}
               <table>
                 <tbody>
                   <tr><th>perspectives</th><td>2</td></tr>
-                  <tr><th>king buckets</th><td>4</td></tr>
-                  <tr><th>features per bucket</th><td>640</td></tr>
+                  <tr><th>king location groups</th><td>4</td></tr>
+                  <tr><th>features per king group</th><td>640</td></tr>
                   <tr><th>features per perspective</th><td>2,560</td></tr>
                   <tr><th>hidden width</th><td>128</td></tr>
                   <tr><th>feature weights</th><td>signed int8</td></tr>
@@ -657,18 +671,20 @@ PROFILES = (
               title="Calculate each model before training it"
             >
               <p>
-                Each bucket contains 640 piece square features. Every feature owns one
-                signed 8 bit row with <code>hidden_width</code> values. This transformer
-                dominates the file size. The remaining bytes hold the header, output
-                bias, feature bias, and two sets of signed 16 bit output weights.
+                Each king location group contains 640 piece square features. A feature
+                means one piece type, color relationship, and square. Every feature owns
+                one signed 8 bit row with <code>hidden_width</code> values. These rows use
+                most of the model file. The remaining bytes store the header, biases,
+                and output weights.
               </p>
               <Code>{`model bytes = 32 + 6H + 640BH
 32 + 6 × 128 + 640 × 4 × 128 = 328480`}</Code>
               <p>
-                A wider hidden layer gives every active feature more learned values. More
-                king buckets preserve more king location detail. Both consume flash in
-                the product <code>640BH</code>. The four listed profiles stay below the
-                project&apos;s 512 KiB ceiling and make that tradeoff measurable.
+                Hidden width is the number of learned values each active feature adds to
+                the accumulator. A wider layer can learn more detail. More king location
+                groups preserve more information about exactly where the king sits. Both
+                choices consume flash. I tested all four shapes below my 512 KiB limit
+                instead of assuming that the largest one would play best.
               </p>
             </CodeStudy>
             <ResourceLinks links={[
@@ -681,11 +697,13 @@ PROFILES = (
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-features" number="06" title="Match the Python and C features">
+          <GuideSection id="guide-features" number="06" title="Make Python and C create the same features">
             <p>
-              Implement the same feature index in Python and C. The Black view flips
-              ranks. Kings on files e through h mirror the board. The king file selects
-              a bucket. Non king pieces map to ten piece classes.
+              A feature index is the number that identifies one active NNUE input. I
+              create that number in both Python training code and C inference code. The
+              Black view flips the ranks. Kings on files e through h mirror the board.
+              The mirrored king square selects one of four king location groups. Every
+              other piece maps to one of ten piece and color classes.
             </p>
             <CodeStudy
               code={`def _feature_index_from_view(
@@ -706,24 +724,26 @@ PROFILES = (
               title="Create the sparse feature index"
             >
               <p>
-                Perspective normalization makes the friendly side face the same
-                direction in both accumulators. Horizontal mirroring lets symmetric king
-                positions share a bucket. Kings provide the view and are not input
-                features. Friendly pawns through queens use classes zero through four.
-                Opposing pawns through queens use classes five through nine. The final
-                square selects one value inside that piece class.
+                A perspective is one player&apos;s view of the board. I normalize both
+                perspectives so the friendly pieces always face the same direction.
+                Mirroring lets symmetric king positions share one learned table. The king
+                chooses the table but is not itself an input feature. Friendly pawns
+                through queens use classes zero through four. Enemy pieces use classes
+                five through nine. The final square completes the feature number.
               </p>
               <p>
-                <code>encode_position</code> builds the side to move list first and the
-                opponent list second. Each list is padded to 30 entries with a reserved
-                index whose embedding row remains zero. Fixed shapes let PyTorch batch
-                positions without changing the sparse meaning.
+                Sparse means I store only features that are actually present instead of
+                thousands of zero inputs. <code>encode_position</code> builds the side to
+                move list first and the opponent list second. I pad each list to 30
+                entries with a reserved zero row so PyTorch can combine many positions
+                into one training batch.
               </p>
             </CodeStudy>
             <p>
-              A normal move subtracts old feature vectors and adds new ones. Rebuild
-              one perspective only when a king changes its bucket or mirror. Compare
-              every incremental result with a full refresh after make and undo.
+              For a normal move I subtract the old piece feature and add the new one.
+              I rebuild one player&apos;s accumulator only when its king enters a different
+              location group or changes the mirrored view. My tests compare every cheap
+              update with a complete refresh after both make and undo.
             </p>
             <CodeStudy
               code={`void add_nnue_feature(position_t *position, int piece, int square) {
@@ -741,11 +761,10 @@ PROFILES = (
               title="Update both accumulators after a piece change"
             >
               <p>
-                A non king piece appears once in each perspective with a different
-                feature index. Adding that piece adds one signed 8 bit row to each signed
-                16 bit accumulator. Removal subtracts the same rows. A king contributes
-                no row. When a king changes bucket or mirror state, only that king&apos;s
-                perspective is rebuilt from the feature bias and current pieces.
+                Each non king piece produces one feature for each player&apos;s view. Adding
+                the piece adds one signed 8 bit row to each signed 16 bit accumulator.
+                Removing it subtracts those rows. When the king changes location group or
+                mirror state, I rebuild only that king&apos;s view from the current pieces.
               </p>
             </CodeStudy>
             <ResourceLinks links={[
@@ -757,16 +776,20 @@ PROFILES = (
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-teacher" number="07" title="Create Stockfish training labels">
+          <GuideSection id="guide-teacher" number="07" title="Create your Stockfish training labels">
             <p>
-              Use Stockfish scores as training targets. Store a legal FEN and a
-              centipawn score from the side to move. Record the source, license,
-              teacher settings, random seed, and data split.
+              The network needs a target score for every training position. I use
+              Stockfish as the teacher and store each legal FEN with its evaluation in
+              centipawns. One centipawn is one hundredth of a pawn. Positive always means
+              the player about to move is better. I also record where the data came from
+              and every setting needed to reproduce it.
             </p>
-            <h3>Small local data path</h3>
+            <h3>Try the pipeline with a small local file</h3>
             <p>
-              Sample complete PGN games and ask Stockfish for a fixed node search.
-              This path is useful for checking the complete pipeline with a small file.
+              A PGN stores complete played games. I sample positions from those games and
+              ask Stockfish to inspect the same number of search positions for each one.
+              Use this small path first because it catches broken labels before you spend
+              hours preparing a large dataset.
             </p>
             <CodeStudy
               code={`def analyse_with_teacher(
@@ -783,16 +806,15 @@ PROFILES = (
               title="Convert every teacher score to side to move"
             >
               <p>
-                A fixed node limit gives every sampled position the same teacher budget.
-                <code>pov(board.turn)</code> converts the result to the player about to
-                move. Positive labels therefore always favor that player. Mate scores
-                become the bounded score limit and every output is clamped before it is
-                written.
+                A node is one position visited by search. Fixing the node limit gives each
+                sample the same Stockfish budget. <code>pov(board.turn)</code> changes the
+                score to the player about to move. I clamp very large values and convert
+                mate scores to the same bounded numeric range.
               </p>
               <p>
-                The PGN path assigns an entire game to one split before sampling its
-                positions. Related positions from one game cannot leak across training,
-                validation, and test data.
+                I assign each whole game to training, validation, or test before taking
+                positions from it. This prevents nearly identical positions from one game
+                appearing on both sides of the final accuracy check.
               </p>
             </CodeStudy>
             <Code>{`python3 train/label.py \
@@ -800,12 +822,12 @@ PROFILES = (
   build-guide/labels.jsonl \
   --nodes 100 --stride 1 --limit 1000 --min-ply 1 \
   --seed 0 --validation-percent 30 --test-percent 30`}</Code>
-            <h3>Reference model data path</h3>
+            <h3>Prepare enough data for the reference model</h3>
             <p>
-              The shipped model uses the CC0 Lichess Stockfish evaluation database.
-              The importer scanned 47,836,886 records and kept 10,000,000 positions at
-              depth 20 or greater. The split contains 9,000,455 training positions,
-              500,453 validation positions, and 499,092 test positions.
+              For my shipped model I used the CC0 Lichess Stockfish evaluation database.
+              My importer scanned 47,836,886 records and kept 10,000,000 positions with
+              evaluations at depth 20 or greater. I used 9,000,455 for training, 500,453
+              for validation, and 499,092 for the final test.
             </p>
             <CodeStudy
               code={`depth, knodes, score_kind, white_score = _selected_evaluation(record)
@@ -823,11 +845,10 @@ return ImportedEvaluation(
               title="Normalize the large evaluation database"
             >
               <p>
-                The importer validates each FEN and selects the deepest usable evaluation
-                record. Lichess stores the score from White&apos;s point of view. Negating
-                records where Black moves next converts each score to the same side to
-                move convention as the PGN teacher path. Seeded filtering makes the ten
-                million position selection reproducible.
+                The importer rejects invalid positions and chooses the deepest usable
+                score. Lichess stores scores from White&apos;s view. I negate a score when
+                Black moves next so every label uses the same convention. A fixed random
+                seed makes my ten million selected positions reproducible.
               </p>
             </CodeStudy>
             <Code>{`python3 train/import_evals.py \
@@ -837,8 +858,8 @@ return ImportedEvaluation(
   --selection-denominator 4 --seed 7 \
   --validation-percent 5 --test-percent 5 --workers 12`}</Code>
             <p className="guide-note">
-              The Lichess file contains evaluation records rather than original game
-              membership, so the importer splits accepted records individually.
+              Lichess provides evaluation records without the original game membership.
+              I therefore split accepted records individually for this data source.
             </p>
             <ResourceLinks links={[
               { label: "Stockfish: official source", href: "https://github.com/official-stockfish/Stockfish" },
@@ -849,11 +870,12 @@ return ImportedEvaluation(
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-shards" number="08" title="Prepare the training data">
+          <GuideSection id="guide-shards" number="08" title="Prepare your training data">
             <p>
-              Convert every FEN into two fixed lists of active feature indexes and one
-              int16 centipawn label. Save the data in compressed NPZ shards so training
-              does not parse FEN during every epoch.
+              Before training I convert every FEN into the two feature lists described in
+              step 6 and one signed 16 bit score. I save groups of positions as compressed
+              NPZ files. Each group is called a shard. This prevents Python from parsing
+              millions of FEN strings again during every training pass.
             </p>
             <CodeStudy
               code={`def _new_buffer(shard_size: int) -> dict[str, Any]:
@@ -871,26 +893,24 @@ return ImportedEvaluation(
               title="Encode compact fixed shape training rows"
             >
               <p>
-                Each row contains 30 unsigned 16 bit indexes for the side to move view
-                and 30 for the opposing view. The label is one signed 16 bit centipawn
-                value. FEN parsing and feature mapping happen once during preparation.
-                Training later reads ready to batch numeric arrays.
+                One row has 30 feature indexes for the player about to move and 30 for the
+                opponent. It also has one centipawn label. I parse the FEN and calculate
+                the features once here. Training later reads numeric arrays directly.
               </p>
               <p>
-                Full buffers are written with <code>np.savez_compressed</code>. The
-                manifest records the exact profile, mapping version, dtypes, split counts,
-                teacher metadata, and shard names. <code>load_shard</code> rejects wrong
-                shapes, dtypes, feature ranges, and score ranges before training uses a
-                file.
+                A manifest is a small record describing the dataset. Mine stores the
+                network shape, feature mapping version, numeric types, split sizes,
+                teacher settings, and shard names. <code>load_shard</code> checks every
+                shape and value range before training trusts the file.
               </p>
             </CodeStudy>
             <Code>{`python3 train/prep.py \
   data/reference_labels.jsonl data/reference_4x128 \
   --shard-size 250000 --profile 4x128`}</Code>
             <p>
-              Create separate shards for each NNUE size. Store dimensions, split
-              counts, attribution, and teacher settings in the manifest. Validate
-              every shard before training.
+              Create separate shards for each NNUE shape because the feature count can
+              change. Keep the dimensions, split counts, attribution, and teacher
+              settings beside them. Validate every shard before training.
             </p>
             <ResourceLinks links={[
               { label: "Project code: train/prep.py", href: source("train/prep.py") },
@@ -899,11 +919,12 @@ return ImportedEvaluation(
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-training" number="09" title="Train the NNUE">
+          <GuideSection id="guide-training" number="09" title="Train your NNUE">
             <p>
-              Sum the sparse feature rows for both perspectives. Add the feature bias,
-              clip the values, place the side to move accumulator first, and send the
-              256 values through the output layer.
+              Training adjusts the weights so the network prediction approaches the
+              Stockfish label. I add the active feature rows for both player views, add a
+              learned bias, clip the values to the runtime range, and send the combined
+              256 values through one output layer.
             </p>
             <CodeStudy
               code={`class NnueNetwork(torch.nn.Module):
@@ -922,16 +943,15 @@ return ImportedEvaluation(
               title="Train the same accumulator shape used by C"
             >
               <p>
-                The embedding table is the feature transformer. Looking up the active
-                indexes selects only the rows present in the position. Summing those rows
-                and adding one shared bias produces each 128 value accumulator. The
-                padding index owns a zero row and has no effect on the sum.
+                The embedding table stores one learned row for every possible feature.
+                Looking up the active indexes selects only rows present on the board. I
+                add those rows and one learned bias to produce each 128 value accumulator.
+                The padding index points to zeros and changes nothing.
               </p>
               <p>
-                Values are clipped to the floating point equivalent of the runtime range
-                from zero through 127. The side to move accumulator comes first. The
-                opposing accumulator comes second. One linear output produces the
-                centipawn prediction used by the loss.
+                Clipping limits every value from zero through 127 just like the C runtime.
+                I place the player about to move first and the opponent second. The output
+                layer turns those 256 values into one centipawn prediction.
               </p>
             </CodeStudy>
             <Code>{`python3 train/train.py \
@@ -940,10 +960,11 @@ return ImportedEvaluation(
   --score-scale 400 --device auto --workers 0 \
   --weight-decay 0.01`}</Code>
             <p>
-              Training uses AdamW and smooth L1 loss over
-              <code>tanh(score / 400)</code>. Clamp parameters to exportable ranges
-              after every epoch. Keep the checkpoint with the lowest validation loss.
-              Use the test split only after model selection.
+              I use AdamW to update the weights and smooth L1 loss to measure prediction
+              error. An epoch is one full pass through the training data. After each epoch
+              I clamp weights to values the integer model can represent and keep the
+              checkpoint with the lowest validation error. I touch the test split only
+              after choosing the model.
             </p>
             <CodeStudy
               code={`prediction = network(side, opponent)
@@ -964,11 +985,11 @@ is_best = (
               title="Select checkpoints with validation data"
             >
               <p>
-                AdamW updates parameters from each batch. The parameter constraint runs
-                once the epoch is complete so every saved checkpoint remains representable
-                by the integer file format. Validation then measures positions that did
-                not update the weights. Only a lower validation loss replaces the saved
-                checkpoint. The final test split stays outside this selection loop.
+                A batch is the group of positions processed in one update. AdamW changes
+                the weights after each batch. At the end of the epoch I force every value
+                into the exportable range. Validation uses positions that did not update
+                the weights, so a lower validation error is meaningful. The test data
+                remains outside this selection loop.
               </p>
             </CodeStudy>
             <ResourceLinks links={[
@@ -980,11 +1001,12 @@ is_best = (
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-export" number="10" title="Export the NNUE for C">
+          <GuideSection id="guide-export" number="10" title="Export your NNUE for C">
             <p>
-              Write the model in the exact order read by the C loader: header, output
-              bias, feature bias, output weights, and feature weights. Reject wrong
-              dimensions, nonfinite values, unsafe accumulator bias, and saturation.
+              PyTorch checkpoints are not a useful firmware format. I export one small
+              binary file in the exact order my C loader expects: header, output bias,
+              feature bias, output weights, and feature weights. The exporter rejects
+              wrong dimensions, invalid numbers, and values that do not fit.
             </p>
             <CodeStudy
               code={`def build_model_blob(
@@ -1020,17 +1042,17 @@ is_best = (
               title="Write one fixed little endian model layout"
             >
               <p>
-                The header records magic, format version, bucket count, features per
-                bucket, hidden width, activation clip, both quantization scales,
-                perspective count, and final byte size. Feature weights become signed
-                8 bit values. Biases and output weights use the explicit little endian
-                signed 16 bit form. The output bias uses signed 32 bit storage.
+                The header identifies the file and records its version, king location
+                group count, features per group, hidden width, clipping limit, numeric
+                scales, player views, and final size. Feature weights become signed 8 bit
+                values. Biases and output weights use signed 16 bit values. The final
+                output bias uses signed 32 bit storage.
               </p>
               <p>
-                Quantization rounds with fixed scales of 64. Export stops when a value is
-                nonfinite or would saturate its integer type. The C loader checks the same
-                dimensions, offsets, file size, alignment, endianness, and safe bias range
-                before it exposes pointers to the weights.
+                Quantization means converting trained decimal weights into fixed integers.
+                I use fixed scales of 64 and stop if rounding would overflow an integer.
+                The C loader checks the same dimensions, offsets, byte order, file size,
+                alignment, and safe bias range before using any weight pointer.
               </p>
             </CodeStudy>
             <Code>{`python3 train/evaluate.py \
@@ -1043,9 +1065,9 @@ python3 train/compare.py \
   model_4x128_seed7.nnue data/reference_labels.jsonl \
   build/p4eval --limit 1000 --split test`}</Code>
             <p>
-              Run the same positions through the Python integer implementation and
-              the C runtime. Require exact scores. The selected model matched on all
-              1,000 comparison positions.
+              I run the same positions through Python integer inference and the C runtime
+              and require exactly equal scores. My selected model matched on all 1,000
+              comparison positions.
             </p>
             <CodeStudy
               code={`python_scores = [evaluate_integer(model, fen) for fen in fens]
@@ -1069,11 +1091,10 @@ for index, (python_score, c_score) in enumerate(
               title="Require bit exact Python and C scores"
             >
               <p>
-                Python first reads the exported bytes and evaluates with the same integer
-                accumulator, clipping, output products, and truncating division as C. The
-                C evaluation tool receives the identical FEN list in one process. A single
-                unequal score fails the comparison. This catches layout, perspective,
-                rounding, and feature index differences before firmware uses the model.
+                Python reads the exported bytes and repeats the exact integer accumulator,
+                clipping, multiplication, and division used by C. I send the identical FEN
+                list to the C tool. One unequal score fails the comparison and points to a
+                layout, perspective, rounding, or feature mapping bug.
               </p>
             </CodeStudy>
             <ResourceLinks links={[
@@ -1085,12 +1106,12 @@ for index, (python_score, c_score) in enumerate(
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-selection" number="11" title="Test the NNUE sizes">
+          <GuideSection id="guide-selection" number="11" title="Test your NNUE choices">
             <p>
-              Train every NNUE size with the same data, optimizer, batch size,
-              learning rate, epoch count, and seed. Compare validation loss across
-              repeated seeds. Play paired games with the same openings and reversed
-              colors.
+              A larger network is useful only if it plays better enough to justify its
+              flash and inference cost. I train every candidate with the same data,
+              optimizer, batch size, learning rate, epoch count, and random seed. Then I
+              compare validation error and play paired games from identical openings.
             </p>
             <CodeStudy
               code={`for item in opening_suite[:opening_count]:
@@ -1106,15 +1127,15 @@ for index, (python_score, c_score) in enumerate(
               title="Play every opening with both color assignments"
             >
               <p>
-                Each candidate receives the same position once as White and once as
-                Black. This reduces color and opening bias. The arena sends full FENs to
-                each UCI engine and verifies every returned move with the Python chess
-                library before adding it to the game.
+                Paired games give each candidate the same opening once as White and once
+                as Black. This reduces color and opening bias. My arena sends the full FEN
+                to each engine and checks every returned move with the Python chess
+                library before applying it.
               </p>
               <p>
-                The Elo estimate describes only the two engines in that match. Its 95
-                percent uncertainty comes from the observed win, draw, and loss scores.
-                It is not an estimate of human playing strength.
+                The Elo estimate describes only the difference between the two engines in
+                this match. Its uncertainty comes from the wins, draws, and losses. It is
+                not a human playing strength estimate.
               </p>
             </CodeStudy>
             <Code>{`python3 train/arena.py \
@@ -1124,14 +1145,15 @@ for index, (python_score, c_score) in enumerate(
   --openings test/openings.json --opening-count 128 \
   --estimate-elo`}</Code>
             <p>
-              The tested profiles were 4x128, 8x64, 8x96, and 16x48. The 4x128 and
-              8x96 networks were statistically indistinguishable in validation and
-              direct play. The 4x128 model is 163,648 bytes smaller, so it became the
-              provisional reference.
+              I tested shapes 4x128, 8x64, 8x96, and 16x48. The first number is the king
+              location group count. The second is the hidden width. The 4x128 and 8x96
+              networks were indistinguishable in my validation and games. The 4x128 model
+              is 163,648 bytes smaller, so I selected it as the reference.
             </p>
             <p className="guide-note">
-              These matches compare only the tested engines. They do not establish an
-              absolute human Elo. ESP32 P4 search speed is still unmeasured.
+              These matches compare only my tested engines. They do not establish an
+              absolute human Elo. Measure speed again on your actual board because a
+              model that is efficient on my ESP32 P4 may behave differently on your CPU.
             </p>
             <ResourceLinks links={[
               { label: "Project results: profile comparison", href: source("results/profile_comparison.json") },
@@ -1141,12 +1163,12 @@ for index, (python_score, c_score) in enumerate(
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-firmware" number="12" title="Build the ESP32 P4 firmware">
+          <GuideSection id="guide-firmware" number="12" title="Build your ESP32 P4 firmware">
             <p>
-              Build with ESP IDF 6.0.2 for the <code>esp32p4</code> target. The build
-              embeds <code>models/reference.nnue</code> in mapped read only flash. An
-              uploaded model uses the dedicated NNUE partition. Neither path copies
-              the full model to the heap.
+              Firmware is the program that boots directly on your board. I build mine
+              with ESP IDF 6.0.2 for the <code>esp32p4</code> target. The reference NNUE
+              stays in flash where the CPU can read it. A later upload goes into its own
+              flash partition. Neither path wastes RAM by copying the full model.
             </p>
             <CodeStudy
               code={`set(reference_model "\${CMAKE_CURRENT_LIST_DIR}/../models/reference.nnue")
@@ -1158,10 +1180,10 @@ target_add_binary_data(
               title="Embed the reference model as binary data"
             >
               <p>
-                ESP IDF places the original model bytes in the application image. Linker
-                symbols expose the first byte and the byte after the model. Firmware
-                passes that address and size to <code>bind_nnue</code>. It does not create
-                a generated C array and does not copy the 328480 byte model into heap RAM.
+                ESP IDF places the original model bytes inside the application image.
+                Linker symbols give me the start and end addresses. I pass that memory
+                range directly to <code>bind_nnue</code>. The heap is general runtime RAM,
+                so avoiding a full model copy leaves more of it for search.
               </p>
             </CodeStudy>
             <Code>{`. /home/ishan/esp-idf/export.sh
@@ -1172,10 +1194,11 @@ idf.py build
 idf.py size
 idf.py merge-bin -o esp32p4_nnue_merged.bin`}</Code>
             <p>
-              At boot, <code>app_main</code> initializes chess tables, binds the model,
-              allocates the 256 KiB transposition table, installs UART, and starts the
-              binary command loop. The firmware contains no WiFi, Bluetooth, display,
-              filesystem, or web server.
+              My firmware entry function is <code>app_main</code>. At boot it initializes
+              the chess tables, connects the NNUE weights, allocates 256 KiB for
+              remembered search positions, installs the serial driver, and waits for
+              commands. I left out WiFi, Bluetooth, display code, a filesystem, and a
+              web server because none of them helps the engine choose a move.
             </p>
             <CodeStudy
               code={`initialize_chess();
@@ -1201,16 +1224,16 @@ if (!run_protocol_loop(&context, &port)) {
               title="Start only the engine and serial transport"
             >
               <p>
-                Model storage first looks for a committed upload in the dedicated flash
-                partition. A valid uploaded model is memory mapped and bound directly.
-                Otherwise the embedded model becomes active. The transposition table is
-                the large writable allocation. UART is then installed and the firmware
-                waits for framed commands.
+                I first check the dedicated flash area for a complete uploaded model. If
+                it passes validation I read it directly. Otherwise I use the model built
+                into the firmware. The search table is the main writable allocation. I
+                then start UART and wait for complete protocol messages.
               </p>
               <p>
-                The single core setting and 32 KiB task stack come from
-                <code>esp/sdkconfig.defaults</code>. The firmware adds no network stack,
-                display loop, filesystem, or service that competes with search memory.
+                I selected one CPU core and a 32 KiB task stack in
+                <code>esp/sdkconfig.defaults</code>. Your board may need a different stack
+                or memory placement, so inspect its linker size report instead of copying
+                these numbers without checking.
               </p>
             </CodeStudy>
             <ResourceLinks links={[
@@ -1223,11 +1246,11 @@ if (!run_protocol_loop(&context, &port)) {
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-hardware" number="13" title="Test the physical ESP32 P4 board">
+          <GuideSection id="guide-hardware" number="13" title="Test your physical board">
             <p>
-              Connect the cable to the port labeled PWR USB TO UART. Flash one known
-              firmware image. Close every serial monitor before running the board
-              client because only one process can own the port.
+              On my Waveshare board I connect the cable to PWR USB TO UART. Your board
+              label may differ. Flash one known firmware image and close every serial
+              monitor before using the client because only one program can own the port.
             </p>
             <Code>{`cd /home/ishan/esp32p4-nnue/esp
 idf.py -p PORT flash
@@ -1266,17 +1289,16 @@ python3 esp/board_client.py --port /dev/ttyACM0 search \
               title="Test the binary protocol without the website"
             >
               <p>
-                The host client opens one explicit serial path in raw mode. It writes a
-                complete request and feeds any returned byte chunks into the same framed
-                protocol used by the browser. A deadline prevents a disconnected or
-                stalled board from waiting forever. The response command must match the
-                request with its high bit set.
+                Raw mode gives the client the serial bytes without terminal text handling.
+                I open one explicit device path, write a complete request, and feed every
+                returned chunk into the protocol decoder. A deadline stops a disconnected
+                board from waiting forever. The response identifier must match the request.
               </p>
               <p>
-                Run <code>info</code> first to verify firmware, model dimensions, model
-                CRC, and transposition table size. Run <code>bench</code> to exercise one
-                fixed start position search. Run <code>search</code> with an explicit FEN
-                to verify position transfer and a returned legal move.
+                Run <code>info</code> first. It reports the firmware, NNUE shape, model
+                checksum, and search table size. A checksum is a number used to detect
+                changed bytes. Then run <code>bench</code> for a repeatable start position
+                search and <code>search</code> with a FEN to confirm a legal move returns.
               </p>
             </CodeStudy>
             <figure className="hardware-figure">
@@ -1289,45 +1311,46 @@ python3 esp/board_client.py --port /dev/ttyACM0 search \
                 width="1800"
               />
               <figcaption>
-                First physical ESP32 P4 test setup. Ishan Kumthekar photograph.
+                My first physical ESP32 P4 test setup. Ishan Kumthekar photograph.
               </figcaption>
             </figure>
             <div className="hardware-status">
               <p>
-                The host chess core is verified. Python and C integer scores match. The
-                firmware builds for ESP32 P4 and the first physical boot was observed.
+                I verified the host chess core and matched every tested Python and C
+                integer score. The firmware builds for ESP32 P4 and I observed the first
+                physical boot.
               </p>
               <p>
-                The UART correction still needs a recorded reflash test. Physical search
-                speed, power draw, memory headroom, and temperature remain unmeasured.
-                Keep those results separate from the existing host benchmarks.
+                You should still measure search speed, power draw, free memory, and
+                temperature on your own board. Host benchmarks do not answer those
+                physical questions.
               </p>
             </div>
           </GuideSection>
 
-          <GuideSection id="guide-browser" number="14" title="Connect the browser to the board">
+          <GuideSection id="guide-browser" number="14" title="Connect your browser to your board">
             <p>
-              The website does not use an HTTP API. It communicates with the
-              microcontroller through Web Serial.
+              Web Serial is the browser feature that lets a page talk directly to a USB
+              serial device after you grant permission. My website uses it instead of an
+              HTTP server on the board.
             </p>
             <p>
-              The connection works from localhost and from an HTTPS deployment such
-              as <code>nnue.ishankumthekar.com</code>. The ESP32 P4 remains connected
-              to the visitor's computer. Serial bytes move directly between that
-              browser tab and USB. The hosting server does not receive the position or
-              control the board.
+              It works on localhost or an HTTPS site such as
+              <code>nnue.ishankumthekar.com</code>. Your board remains plugged into your
+              computer. Positions and moves travel between that browser tab and USB. My
+              hosting server never receives your chess position or controls the board.
             </p>
             <p>
-              Use a desktop Chromium browser with Web Serial support. Press the
-              connect button and select the board in the browser permission prompt.
-              Close terminal programs and serial monitors first so the browser can
-              open the port.
+              Use Chrome or Edge on a desktop computer. Press connect and choose your
+              board in the browser permission window. Close terminal programs and serial
+              monitors first so the browser can open the port.
             </p>
             <p>
-              Open the port at 115200 baud with eight data bits, one stop bit, no
-              parity, and no flow control. Send a complete FEN before every search.
-              The firmware returns a UCI move. The browser checks that move against
-              the legal moves before applying it.
+              Baud rate is the serial signaling speed. I open the port at 115200 baud
+              with eight data bits, one stop bit, no parity, and no flow control. Before
+              every search the browser sends a complete FEN. The engine searches with
+              NNUE inference and returns a UCI move. The browser confirms that move is
+              legal before changing the board.
             </p>
             <CodeStudy
               code={`const frame = new Uint8Array(HEADER_SIZE + payload.byteLength + CRC_SIZE);
@@ -1348,17 +1371,15 @@ view.setUint32(
               title="Encode the same frame in TypeScript and C"
             >
               <p>
-                The first two bytes are the ASCII marker <code>P4</code>. The next bytes
-                carry protocol version and command. A little endian 16 bit length tells
-                the receiver where the payload ends. CRC32 covers version, command,
-                length, and payload so damaged frames are rejected before command code
-                reads them.
+                A frame is one complete serial message. Mine starts with the ASCII marker
+                <code>P4</code>, then protocol version and command. A 16 bit length tells
+                the receiver where the payload ends. CRC32 is a checksum over the message
+                body, so damaged frames are rejected before command code reads them.
               </p>
               <p>
-                <code>FrameDecoder</code> keeps incomplete bytes between reads. It scans
-                past boot text until it finds the marker, waits for the complete declared
-                length, checks CRC and protocol version, then returns one decoded frame.
-                UART and USB reads do not need to align with message boundaries.
+                USB can split one message across several reads. <code>FrameDecoder</code>
+                keeps incomplete bytes, skips boot text, waits for the declared length,
+                checks the checksum and version, and then returns one complete frame.
               </p>
             </CodeStudy>
             <CodeStudy
@@ -1387,17 +1408,17 @@ const deviceResponse = await this.exchange(
               title="Open the selected port and verify the board"
             >
               <p>
-                <code>requestPort</code> runs only after the visitor presses the connect
-                control. The browser permission prompt gives this page access to the one
-                selected device. The hello exchange confirms protocol version. Device
-                info then confirms ESP32 P4 target, model format 3, four king buckets,
-                hidden width 128, model size, and active model state.
+                <code>requestPort</code> runs only after you press connect. The browser
+                permission window gives this page access to the device you selected. The
+                hello message confirms protocol version. Device info then checks the
+                ESP32 P4 target, model format 3, four king location groups, hidden width
+                128, model size, and active model state.
               </p>
               <p>
                 <code>requestChipSearch</code> sends <code>game.fen()</code> before every
-                search. The result parser reads the fixed 29 byte payload. The returned
-                text must match UCI syntax and <code>chess.js</code> must accept it as a
-                legal move before the board changes.
+                search. It reads depth, time, positions searched, score, and move from the
+                29 byte result. The returned text must match UCI move notation and
+                <code>chess.js</code> must accept it before the board changes.
               </p>
             </CodeStudy>
             <Code>{`request serial port
@@ -1426,22 +1447,21 @@ validate returned uci move`}</Code>
               </table>
             </div>
             <p>
-              Each binary frame contains the P4 marker, protocol version, command,
-              payload length, payload, and CRC32. A successful response sets bit seven
-              on the request command.
+              Every frame contains the P4 marker, version, command, payload length,
+              payload, and checksum. A response sets bit seven on the request command so
+              I can match the reply to the request.
             </p>
             <figure className="hardware-figure">
               <img
-                alt="Browser chess game connected to the ESP32 P4 development board over USB serial"
+                alt="A live browser chess game connected to the ESP32 P4 board"
                 decoding="async"
-                height="1350"
+                height="2160"
                 loading="lazy"
                 src="/images/esp32-p4-browser-game.jpg"
-                width="1800"
+                width="2880"
               />
               <figcaption>
-                Completed local browser game with the ESP32 P4 connected over USB
-                serial. Ishan Kumthekar photograph.
+                ITS ACTUALLY PLAYING CHESS.
               </figcaption>
             </figure>
             <ResourceLinks links={[
@@ -1456,13 +1476,13 @@ validate returned uci move`}</Code>
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-adapter" number="15" title="Use another NNUE or microcontroller">
-            <h3>Use new weights on this board</h3>
+          <GuideSection id="guide-adapter" number="15" title="Use your own NNUE or microcontroller">
+            <h3>Use your own weights on this board</h3>
             <p>
-              Export model format 3 with four buckets, width 128, and 328,480 bytes.
-              Embed the file during the firmware build or upload it with
-              <code>board_client.py</code>. The website needs no change when those
-              values stay the same.
+              If your network uses model format 3, four king location groups, width 128,
+              and 328,480 bytes, you can embed it during the firmware build or upload it
+              with <code>board_client.py</code>. The website needs no change because the
+              shape and serial messages remain identical.
             </p>
             <Code>{`python3 esp/board_client.py \
   --port /dev/ttyACM0 upload path/to/model.nnue`}</Code>
@@ -1483,25 +1503,24 @@ if (
               title="Keep new weights inside the accepted format"
             >
               <p>
-                A replacement network can use new learned weights with no website change
-                when it remains model format 3 with four buckets, width 128, and 328480
-                bytes. The upload client sends length and CRC first, streams ordered
-                chunks, then commits. Firmware maps the completed file, validates the
-                header and safe bias range, and writes the validity marker last.
+                The browser checks the shape reported by your board before starting a
+                game. My upload client sends the byte count and checksum first, streams
+                the file in ordered pieces, and then commits it. Firmware validates the
+                completed header and numeric ranges before marking the model usable.
               </p>
               <p>
-                A different bucket count or hidden width changes both model layout and C
-                compile time dimensions. It needs a matching core build plus updated
-                browser compatibility constants. Uploading bytes alone cannot change the
-                compiled architecture.
+                If you change the number of king location groups or hidden values, you
+                change the binary layout and the C array sizes. Rebuild the engine with
+                matching dimensions and update the browser compatibility constants.
+                Uploading a different number of bytes cannot change compiled C code.
               </p>
             </CodeStudy>
-            <h3>Connect a different microcontroller</h3>
+            <h3>Connect your own microcontroller</h3>
             <p>
-              Implement the same hello, device info, position, go, and error messages.
-              Accept a complete FEN and return a legal UCI move. Add a target identifier
-              in <code>esp/protocol.h</code>, allow it in <code>web/src/device.ts</code>,
-              and add protocol fixtures with a fake serial port test.
+              Your board only needs to implement the hello, device info, position, go,
+              and error messages. It must accept a complete FEN and return a legal UCI
+              move. Give it a target identifier in <code>esp/protocol.h</code>, allow that
+              identifier in <code>web/src/device.ts</code>, and add a fake serial test.
             </p>
             <CodeStudy
               code={`export interface BoardTransport {
@@ -1515,25 +1534,23 @@ if (
               title="Implement the small browser boundary"
             >
               <p>
-                The browser game needs only connection state, one complete FEN setter,
-                and fixed depth search. The new target can use any board representation,
-                search, or evaluator behind this boundary. It must expose USB serial or a
-                UART bridge and implement the same frame header, CRC32, hello, device
-                info, position, go, and error messages.
+                <code>BoardTransport</code> is the small boundary used by the chess page.
+                The page needs connection state, a complete FEN setter, and fixed depth
+                search. Your target can use any board representation, search, or neural
+                network behind that boundary as long as it exposes compatible USB serial.
               </p>
               <p>
-                Device info needs a distinct target identifier and honest model metadata.
-                Position must accept a full legal FEN. Go must return the fixed result with
-                a legal UCI move. Add the target identifier to <code>esp/protocol.h</code>
-                and browser validation. Reuse the C protocol fixtures and fake Web Serial
-                test to prove exact bytes, partial reads, checksum failures, command order,
-                legal move handling, and disconnect behavior.
+                Report an honest target identifier and model shape. Position must accept
+                a full legal FEN. Go must return depth, time, positions searched, score,
+                and a legal UCI move. Reuse the protocol fixtures and fake Web Serial test
+                to check exact bytes, partial reads, damaged messages, command order,
+                legal moves, and disconnects.
               </p>
             </CodeStudy>
             <p>
-              The browser does not depend on the search or NNUE internals. Any engine
-              can connect when it implements the serial protocol and returns legal UCI
-              moves.
+              The browser does not care how your search or NNUE works internally. It can
+              connect to any engine that implements this serial boundary and returns a
+              legal UCI move.
             </p>
             <ResourceLinks links={[
               { label: "Project protocol: esp/protocol.h", href: source("esp/protocol.h") },

@@ -354,8 +354,9 @@ export function App() {
               <p>
                 For this demo and guide I used the Waveshare
                 ESP32 P4 Module DEV KIT with an ESP32 P4NRW32 module. It has 32 MB
-                PSRAM and 16 MB flash. The browser sends each position over USB serial.
-                The microcontroller searches it and returns a legal move.
+                PSRAM and 16 MB flash. The browser feeds it positions over USB serial.
+                The microcontroller searches those positions and uses NNUE inference
+                to evaluate them before sending its move back.
               </p>
             </div>
           </section>
