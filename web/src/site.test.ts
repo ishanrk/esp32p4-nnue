@@ -156,7 +156,6 @@ function guideTests(): void {
   assert.ok(GUIDE_RESOURCES.includes("https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT"));
   assert.ok(GUIDE_RESOURCES.includes("https://wicg.github.io/serial/"));
   assert.ok(GUIDE_RESOURCES.includes("https://developer.chrome.com/docs/capabilities/serial"));
-  assert.ok(GUIDE_RESOURCES.includes("https://docs.github.com/en/pages/getting-started-with-github-pages/securing-your-github-pages-site-with-https"));
 
   assert.equal(siteViewFromHash("#play"), "play");
   assert.equal(siteViewFromHash("#play-content"), "play");
@@ -181,7 +180,7 @@ function guideTests(): void {
   assert.match(guideMarkup, /images\/reference\/neural-network-layers\.svg/);
   assert.match(guideMarkup, /images\/esp32-p4-browser-game\.jpg/);
   assert.match(guideMarkup, /ITS ACTUALLY PLAYING CHESS\./);
-  assert.match(guideMarkup, /Measure your hardware limits/);
+  assert.match(guideMarkup, /Measure your hardware/);
   assert.match(guideMarkup, /Two resources I used heavily/);
   assert.match(guideMarkup, /nnue\.ishankumthekar\.com/);
   assert.ok((guideMarkup.match(/class="code-study"/g) ?? []).length >= 15);
@@ -197,8 +196,11 @@ function guideTests(): void {
     .replace(/<[^>]+>/g, " ");
   assert.doesNotMatch(guideProse, /[-–—]/);
   assert.doesNotMatch(guideProse, /\bbuckets?\b/i);
+  assert.doesNotMatch(guideProse, /\bboundar(?:y|ies)\b/i);
+  assert.doesNotMatch(guideMarkup, /GitHub Pages/);
   const firstPersonReferences = guideProse.match(/\b(?:I|my|mine)\b/gi) ?? [];
-  assert.ok(firstPersonReferences.length <= 4);
+  assert.ok(firstPersonReferences.length >= 8);
+  assert.ok(firstPersonReferences.length <= 16);
   const firstStep = guideMarkup.slice(
     guideMarkup.indexOf('id="guide-budget"'),
     guideMarkup.indexOf('id="guide-core"'),

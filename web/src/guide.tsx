@@ -7,21 +7,21 @@ function source(path: string): string {
 }
 
 export const GUIDE_STEPS = [
-  { id: "guide-budget", number: "01", title: "Measure your hardware limits" },
-  { id: "guide-core", number: "02", title: "Build your chess engine in C" },
-  { id: "guide-state", number: "03", title: "Store your board and legal moves" },
-  { id: "guide-search", number: "04", title: "Add search to your engine" },
-  { id: "guide-profile", number: "05", title: "Choose a NNUE that fits your hardware" },
-  { id: "guide-features", number: "06", title: "Make Python and C create the same features" },
-  { id: "guide-teacher", number: "07", title: "Create your Stockfish training labels" },
-  { id: "guide-shards", number: "08", title: "Prepare your training data" },
-  { id: "guide-training", number: "09", title: "Train your NNUE" },
-  { id: "guide-export", number: "10", title: "Export your NNUE for C" },
-  { id: "guide-selection", number: "11", title: "Test your NNUE choices" },
-  { id: "guide-firmware", number: "12", title: "Build your ESP32 P4 firmware" },
-  { id: "guide-hardware", number: "13", title: "Test your physical board" },
-  { id: "guide-browser", number: "14", title: "Connect your browser to your board" },
-  { id: "guide-adapter", number: "15", title: "Use your own NNUE or microcontroller" },
+  { id: "guide-budget", number: "01", title: "Measure your hardware" },
+  { id: "guide-core", number: "02", title: "Build the chess engine" },
+  { id: "guide-state", number: "03", title: "Store the position and moves" },
+  { id: "guide-search", number: "04", title: "Add search" },
+  { id: "guide-profile", number: "05", title: "Choose the NNUE size" },
+  { id: "guide-features", number: "06", title: "Match the Python and C features" },
+  { id: "guide-teacher", number: "07", title: "Create Stockfish labels" },
+  { id: "guide-shards", number: "08", title: "Prepare the training data" },
+  { id: "guide-training", number: "09", title: "Train the NNUE" },
+  { id: "guide-export", number: "10", title: "Export the NNUE" },
+  { id: "guide-selection", number: "11", title: "Test the model choices" },
+  { id: "guide-firmware", number: "12", title: "Build the firmware" },
+  { id: "guide-hardware", number: "13", title: "Test the board" },
+  { id: "guide-browser", number: "14", title: "Connect the browser" },
+  { id: "guide-adapter", number: "15", title: "Use another NNUE or chip" },
 ] as const;
 
 export const GUIDE_RESOURCES = [
@@ -31,7 +31,6 @@ export const GUIDE_RESOURCES = [
   "https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT",
   "https://wicg.github.io/serial/",
   "https://developer.chrome.com/docs/capabilities/serial",
-  "https://docs.github.com/en/pages/getting-started-with-github-pages/securing-your-github-pages-site-with-https",
 ] as const;
 
 type Resource = {
@@ -162,7 +161,7 @@ export function Guide() {
         <h1>A Small Guide on How to Build Your Own Neural Networks Under Hardware Constraints</h1>
         <p className="guide-lead">
           This guide follows the chess engine, NNUE training code, firmware, and browser
-          used with the Waveshare ESP32 P4 board. Each part is explained in plain terms
+          I used with my Waveshare ESP32 P4 board. Each part is explained in plain terms
           before the code that implements it.
         </p>
         <dl className="guide-facts">
@@ -190,7 +189,7 @@ export function Guide() {
         </nav>
 
         <article className="guide-content">
-          <GuideSection id="guide-budget" number="01" title="Measure your hardware limits">
+          <GuideSection id="guide-budget" number="01" title="Measure your hardware">
             <p>
               Start by writing down your CPU width, clock speed, flash, internal RAM,
               external RAM, model storage, search memory, stack size, and connection to
@@ -199,8 +198,8 @@ export function Guide() {
               and its working values must fit in RAM while the engine is searching.
             </p>
             <p>
-              This build uses a Waveshare ESP32 P4 Module DEV KIT with an ESP32 P4NRW32
-              module, 32 MB PSRAM, and 16 MB flash. The network limit was 512 KiB. The
+              For this build I used a Waveshare ESP32 P4 Module DEV KIT with an ESP32 P4NRW32
+              module, 32 MB PSRAM, and 16 MB flash. I set a 512 KiB network limit. The
               selected model is 328,480 bytes, with 256 KiB reserved for remembered search
               positions and a 32 KiB main task stack. Another board might have a native
               64 bit CPU, less flash, or no external RAM, so measure its limits first.
@@ -212,7 +211,7 @@ typedef uint32_t move_t;
 _Static_assert(sizeof(bitboard_t) == 8, "bitboard size");
 _Static_assert(sizeof(move_t) == 4, "move size");`}
               path="src/ch.h"
-              title="Choose integer widths from the data"
+              title="Pick the integer widths"
             >
               <p>
                 A bitboard is one 64 bit integer where each bit represents one square.
@@ -257,13 +256,13 @@ _Static_assert(sizeof(move_t) == 4, "move size");`}
             </p>
           </GuideSection>
 
-          <GuideSection id="guide-core" number="02" title="Build your chess engine in C">
+          <GuideSection id="guide-core" number="02" title="Build the chess engine">
             <p>
               The chess engine is the code that understands the board, generates legal
               moves, searches future positions, and chooses a move. The NNUE does not
               choose a move by itself. It gives the search a score for a position. The
-              engine is portable C11, so the same chess code can be tested on a laptop
-              and compiled for the ESP32 P4.
+              engine is portable C11, so I can test the same chess code on a laptop and
+              compile it for the ESP32 P4.
             </p>
             <CodeStudy
               code={`set(P4_SRC
@@ -278,7 +277,7 @@ _Static_assert(sizeof(move_t) == 4, "move size");`}
 
 add_library(p4core STATIC \${P4_SRC})`}
               path="CMakeLists.txt"
-              title="Compile the same chess code for your laptop and board"
+              title="Compile the same engine twice"
             >
               <p>
                 The rules, move generation, NNUE evaluation, and search files live in
@@ -302,7 +301,7 @@ add_library(p4core STATIC \${P4_SRC})`}
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-state" number="03" title="Store your board and legal moves">
+          <GuideSection id="guide-state" number="03" title="Store the position and moves">
             <p>
               The position is stored in two useful forms. Twelve bitboards answer questions
               about whole sets such as every white knight. A 64 entry square array gives
@@ -327,7 +326,7 @@ add_library(p4core STATIC \${P4_SRC})`}
     uint8_t en_passant;
 } position_t;`}
               path="src/ch.h"
-              title="Store fast sets and direct square lookup together"
+              title="Store the board two ways"
             >
               <p>
                 <code>pieces</code> holds the piece bitboards. <code>occupancy</code>
@@ -377,7 +376,7 @@ bits 19..31  reserved
 #define PACK_MOVE(from, to, promotion, flags) \\
     ((move_t)((from) | ((to) << 6) | ((promotion) << 12) | ((flags) << 15)))`}
               path="src/ch.h"
-              title="Pack a complete move into 32 bits"
+              title="Pack each move into 32 bits"
             >
               <p>
                 There are 64 squares, so the source and destination each need six bits.
@@ -407,7 +406,7 @@ if (king_square == NO_SQUARE ||
     return false;
 }`}
               path="src/position.c"
-              title="Make the move then reject an exposed king"
+              title="Check king safety"
             >
               <p>
                 <code>remove_piece</code> and <code>place_piece</code> update the square
@@ -438,7 +437,7 @@ ctest --test-dir build --output-on-failure`}</Code>
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-search" number="04" title="Add search to your engine">
+          <GuideSection id="guide-search" number="04" title="Add search">
             <p>
               Search is the part that tries legal moves and replies until it reaches a
               chosen depth. Negamax always scores the position for the side
@@ -469,7 +468,7 @@ if (!legal_moves) {
     }
 }`}
               path="src/search.c"
-              title="Negamax and principal variation search"
+              title="Search with negamax"
             >
               <p>
                 A ply is one move by one side. After a move, the other side owns the next
@@ -557,7 +556,7 @@ if (!legal_moves) {
     return alpha;
 }`}
               path="src/search.c"
-              title="Continue unstable positions at depth zero"
+              title="Add quiescence search"
             >
               <p>
                 Stand pat is the score before making another tactical move. It is safe only
@@ -587,7 +586,7 @@ if (entry->flag == TT_EXACT) return score;
 if (entry->flag == TT_LOWER_BOUND && score >= beta) return score;
 if (entry->flag == TT_UPPER_BOUND && score <= alpha) return score;`}
               path="src/search.c"
-              title="Reuse positions with the transposition table"
+              title="Reuse earlier searches"
             >
               <p>
                 A transposition table remembers positions already searched. The Zobrist
@@ -611,7 +610,7 @@ if (entry->flag == TT_UPPER_BOUND && score <= alpha) return score;`}
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-profile" number="05" title="Choose a NNUE that fits your hardware">
+          <GuideSection id="guide-profile" number="05" title="Choose the NNUE size">
             <p>
               This NNUE groups mirrored king squares into four king regions. A king region
               is simply a set of nearby king locations that share one learned piece
@@ -666,7 +665,7 @@ PROFILES = (
     NnueProfile("16x48", 16, 48),
 )`}
               path="train/profiles.py"
-              title="Calculate each model before training it"
+              title="Calculate the model size"
             >
               <p>
                 Each king location group contains 640 piece square features. A feature
@@ -681,7 +680,7 @@ PROFILES = (
                 Hidden width is the number of learned values each active feature adds to
                 the accumulator. A wider layer can learn more detail. More king location
                 groups preserve more information about exactly where the king sits. Both
-                choices consume flash. Four shapes below the 512 KiB limit were tested
+                choices consume flash. I tested four shapes below the 512 KiB limit
                 rather than assuming the largest one would play best.
               </p>
             </CodeStudy>
@@ -695,7 +694,7 @@ PROFILES = (
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-features" number="06" title="Make Python and C create the same features">
+          <GuideSection id="guide-features" number="06" title="Match the Python and C features">
             <p>
               A feature index is the number that identifies one active NNUE input. The
               same calculation runs in the Python training code and C inference code. The
@@ -719,7 +718,7 @@ PROFILES = (
     piece_class = piece_type if own_piece else 5 + piece_type
     return bucket * FEATURES_PER_BUCKET + piece_class * 64 + normalized_square`}
               path="train/features.py"
-              title="Create the sparse feature index"
+              title="Create each feature index"
             >
               <p>
                 A perspective is one player&apos;s view of the board. Both perspectives are
@@ -756,7 +755,7 @@ PROFILES = (
     }
 }`}
               path="src/nnue.c"
-              title="Update both accumulators after a piece change"
+              title="Update the accumulators"
             >
               <p>
                 Each non king piece produces one feature for each player&apos;s view. Adding
@@ -774,7 +773,7 @@ PROFILES = (
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-teacher" number="07" title="Create your Stockfish training labels">
+          <GuideSection id="guide-teacher" number="07" title="Create Stockfish labels">
             <p>
               The network needs a target score for every training position. This pipeline
               uses Stockfish as the teacher and stores each legal FEN with its evaluation in
@@ -782,7 +781,7 @@ PROFILES = (
               the player about to move is better. The source and every setting needed to
               reproduce the data are recorded with it.
             </p>
-            <h3>Try the pipeline with a small local file</h3>
+            <h3>Label a small dataset</h3>
             <p>
               A PGN stores complete played games. Sample positions from those games and
               ask Stockfish to inspect the same number of search positions for each one.
@@ -801,7 +800,7 @@ PROFILES = (
         raise ValueError("teacher returned an empty score")
     return clip_score(score)`}
               path="train/label.py"
-              title="Convert every teacher score to side to move"
+              title="Normalize Stockfish scores"
             >
               <p>
                 A node is one position visited by search. Fixing the node limit gives each
@@ -820,7 +819,7 @@ PROFILES = (
   build-guide/labels.jsonl \
   --nodes 100 --stride 1 --limit 1000 --min-ply 1 \
   --seed 0 --validation-percent 30 --test-percent 30`}</Code>
-            <h3>Prepare enough data for the reference model</h3>
+            <h3>Prepare the full dataset</h3>
             <p>
               For the shipped model I used the CC0 Lichess Stockfish evaluation database.
               The importer scanned 47,836,886 records and kept 10,000,000 positions with
@@ -840,7 +839,7 @@ return ImportedEvaluation(
     piece_count=len(board.piece_map()),
 )`}
               path="train/import_evals.py"
-              title="Normalize the large evaluation database"
+              title="Import the Lichess evaluations"
             >
               <p>
                 The importer rejects invalid positions and chooses the deepest usable
@@ -868,7 +867,7 @@ return ImportedEvaluation(
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-shards" number="08" title="Prepare your training data">
+          <GuideSection id="guide-shards" number="08" title="Prepare the training data">
             <p>
               Before training, convert every FEN into the two feature lists described in
               step 6 and one signed 16 bit score. Save groups of positions as compressed
@@ -888,7 +887,7 @@ return ImportedEvaluation(
         "count": 0,
     }`}
               path="train/prep.py"
-              title="Encode compact fixed shape training rows"
+              title="Encode the training rows"
             >
               <p>
                 One row has 30 feature indexes for the player about to move and 30 for the
@@ -917,7 +916,7 @@ return ImportedEvaluation(
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-training" number="09" title="Train your NNUE">
+          <GuideSection id="guide-training" number="09" title="Train the NNUE">
             <p>
               Training adjusts the weights so the network prediction approaches the
               Stockfish label. The network adds the active feature rows for both player
@@ -938,7 +937,7 @@ return ImportedEvaluation(
         opponent = torch.clamp(opponent, 0.0, clip)
         return self.output(torch.cat((side, opponent), 1)).squeeze(1)`}
               path="train/net.py"
-              title="Train the same accumulator shape used by C"
+              title="Match the C accumulator"
             >
               <p>
                 The embedding table stores one learned row for every possible feature.
@@ -980,7 +979,7 @@ is_best = (
     or validation["loss"] < best_validation["loss"]
 )`}
               path="train/train.py"
-              title="Select checkpoints with validation data"
+              title="Select a checkpoint"
             >
               <p>
                 A batch is the group of positions processed in one update. AdamW changes
@@ -999,7 +998,7 @@ is_best = (
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-export" number="10" title="Export your NNUE for C">
+          <GuideSection id="guide-export" number="10" title="Export the NNUE">
             <p>
               PyTorch checkpoints are not a useful firmware format. Export one small
               binary file in the exact order the C loader expects: header, output bias,
@@ -1037,7 +1036,7 @@ is_best = (
         raise RuntimeError("bad model size")
     return blob`}
               path="train/export.py"
-              title="Write one fixed little endian model layout"
+              title="Write the model file"
             >
               <p>
                 The header identifies the file and records its version, king location
@@ -1086,7 +1085,7 @@ for index, (python_score, c_score) in enumerate(
             f"python {python_score} c {c_score}"
         )`}
               path="train/compare.py"
-              title="Require bit exact Python and C scores"
+              title="Compare Python and C scores"
             >
               <p>
                 Python reads the exported bytes and repeats the exact integer accumulator,
@@ -1104,7 +1103,7 @@ for index, (python_score, c_score) in enumerate(
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-selection" number="11" title="Test your NNUE choices">
+          <GuideSection id="guide-selection" number="11" title="Test the model choices">
             <p>
               A larger network is useful only if it plays better enough to justify its
               flash and inference cost. Train every candidate with the same data,
@@ -1122,7 +1121,7 @@ for index, (python_score, c_score) in enumerate(
             white, black, opening, depth, max_plies
         )`}
               path="train/arena.py"
-              title="Play every opening with both color assignments"
+              title="Play paired games"
             >
               <p>
                 Paired games give each candidate the same opening once as White and once
@@ -1143,7 +1142,7 @@ for index, (python_score, c_score) in enumerate(
   --openings test/openings.json --opening-count 128 \
   --estimate-elo`}</Code>
             <p>
-              The test covered shapes 4x128, 8x64, 8x96, and 16x48. The first number is the king
+              I tested shapes 4x128, 8x64, 8x96, and 16x48. The first number is the king
               location group count. The second is the hidden width. The 4x128 and 8x96
               networks were indistinguishable in validation and games. The 4x128 model
               is 163,648 bytes smaller, so it became the reference.
@@ -1161,10 +1160,10 @@ for index, (python_score, c_score) in enumerate(
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-firmware" number="12" title="Build your ESP32 P4 firmware">
+          <GuideSection id="guide-firmware" number="12" title="Build the firmware">
             <p>
-              Firmware is the program that boots directly on your board. This one uses
-              ESP IDF 6.0.2 for the <code>esp32p4</code> target. The reference NNUE
+              Firmware is the program that boots directly on your board. I built this one
+              with ESP IDF 6.0.2 for the <code>esp32p4</code> target. The reference NNUE
               stays in flash where the CPU can read it. A later upload goes into its own
               flash partition. Neither path wastes RAM by copying the full model.
             </p>
@@ -1175,7 +1174,7 @@ target_add_binary_data(
     RENAME_TO reference_nnue
 )`}
               path="esp/CMakeLists.txt"
-              title="Embed the reference model as binary data"
+              title="Embed the model"
             >
               <p>
                 ESP IDF places the original model bytes inside the application image.
@@ -1219,7 +1218,7 @@ if (!run_protocol_loop(&context, &port)) {
     ESP_LOGE(firmware_log_tag, "uart receive failed");
 }`}
               path="esp/main/app.c"
-              title="Start only the engine and serial transport"
+              title="Start the firmware"
             >
               <p>
                 Startup first checks the dedicated flash area for a complete uploaded model.
@@ -1244,9 +1243,9 @@ if (!run_protocol_loop(&context, &port)) {
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-hardware" number="13" title="Test your physical board">
+          <GuideSection id="guide-hardware" number="13" title="Test the board">
             <p>
-              On the Waveshare board, connect the cable to PWR USB TO UART. Another board
+              On my Waveshare board, connect the cable to PWR USB TO UART. Another board
               may use a different label. Flash one known firmware image and close every
               serial monitor before using the client because only one program can own the port.
             </p>
@@ -1284,7 +1283,7 @@ python3 esp/board_client.py --port /dev/ttyACM0 search \
                 )
             return response_payload`}
               path="esp/board_client.py"
-              title="Test the binary protocol without the website"
+              title="Test the serial protocol"
             >
               <p>
                 Raw mode gives the client the serial bytes without terminal text handling.
@@ -1327,10 +1326,10 @@ python3 esp/board_client.py --port /dev/ttyACM0 search \
             </div>
           </GuideSection>
 
-          <GuideSection id="guide-browser" number="14" title="Connect your browser to your board">
+          <GuideSection id="guide-browser" number="14" title="Connect the browser">
             <p>
               Web Serial is the browser feature that lets a page talk directly to a USB
-              serial device after you grant permission. This site uses it instead of an
+              serial device after you grant permission. My site uses it instead of an
               HTTP server on the board.
             </p>
             <p>
@@ -1367,7 +1366,7 @@ view.setUint32(
   true,
 );`}
               path="web/src/protocol.ts"
-              title="Encode the same frame in TypeScript and C"
+              title="Encode serial messages"
             >
               <p>
                 A frame is one complete serial message. This one starts with the ASCII marker
@@ -1404,7 +1403,7 @@ const deviceResponse = await this.exchange(
   COMMAND_TIMEOUT_MS,
 );`}
               path="web/src/device.ts"
-              title="Open the selected port and verify the board"
+              title="Open and check the board"
             >
               <p>
                 <code>requestPort</code> runs only after you press connect. The browser
@@ -1466,17 +1465,15 @@ validate returned uci move`}</Code>
             <ResourceLinks links={[
               { label: "Web Incubator CG: Web Serial specification", href: GUIDE_RESOURCES[4] },
               { label: "Chrome for Developers: Web Serial", href: GUIDE_RESOURCES[5] },
-              { label: "GitHub Pages: HTTPS deployment", href: GUIDE_RESOURCES[6] },
               { label: "Project browser: web/src/protocol.ts", href: source("web/src/protocol.ts") },
               { label: "Project browser: web/src/device.ts", href: source("web/src/device.ts") },
               { label: "Project browser: web/src/game.ts", href: source("web/src/game.ts") },
-              { label: "Project tests: web/src/site.test.ts", href: source("web/src/site.test.ts") },
               { label: "Project firmware protocol: esp/protocol.h", href: source("esp/protocol.h") },
             ]} />
           </GuideSection>
 
-          <GuideSection id="guide-adapter" number="15" title="Use your own NNUE or microcontroller">
-            <h3>Use your own weights on this board</h3>
+          <GuideSection id="guide-adapter" number="15" title="Use another NNUE or chip">
+            <h3>Use new weights</h3>
             <p>
               If your network uses model format 3, four king location groups, width 128,
               and 328,480 bytes, you can embed it during the firmware build or upload it
@@ -1499,7 +1496,7 @@ if (
   throw new Error("Board NNUE model size is incompatible");
 }`}
               path="web/src/device.ts"
-              title="Keep new weights inside the accepted format"
+              title="Validate new weights"
             >
               <p>
                 The browser checks the shape reported by your board before starting a
@@ -1514,7 +1511,7 @@ if (
                 Uploading a different number of bytes cannot change compiled C code.
               </p>
             </CodeStudy>
-            <h3>Connect your own microcontroller</h3>
+            <h3>Connect another chip</h3>
             <p>
               Your board only needs to implement the hello, device info, position, go,
               and error messages. It must accept a complete FEN and return a legal UCI
@@ -1530,13 +1527,13 @@ if (
   searchDepth(depth: number): Promise<SearchResult>;
 }`}
               path="web/src/device.ts"
-              title="Implement the small browser boundary"
+              title="Use one browser interface"
             >
               <p>
-                <code>BoardTransport</code> is the small boundary used by the chess page.
+                <code>BoardTransport</code> is the small interface used by the chess page.
                 The page needs connection state, a complete FEN setter, and fixed depth
                 search. Your target can use any board representation, search, or neural
-                network behind that boundary as long as it exposes compatible USB serial.
+                network as long as it exposes compatible USB serial.
               </p>
               <p>
                 Report an honest target identifier and model shape. Position must accept
@@ -1548,7 +1545,7 @@ if (
             </CodeStudy>
             <p>
               The browser does not care how your search or NNUE works internally. It can
-              connect to any engine that implements this serial boundary and returns a
+              connect to any engine that follows this serial protocol and returns a
               legal UCI move.
             </p>
             <ResourceLinks links={[
