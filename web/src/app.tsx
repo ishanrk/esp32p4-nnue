@@ -522,7 +522,6 @@ export function App() {
         <span>Chess NNUE running on an ESP32 P4</span>
         <div>
           <a href="https://github.com/ishanrk/esp32p4-nnue">source</a>
-          <a href="/THIRD_PARTY_LICENSES.txt">licenses</a>
           <a href="https://ishankumthekar.com">ishankumthekar.com</a>
         </div>
       </footer>
