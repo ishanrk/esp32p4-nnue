@@ -1,6 +1,6 @@
-# ESP32 P4 NNUE
+# ESP32 P4 NNUE (Essentially A NN hosted on a Microccontroller)
 
-C11 chess engine with an integer NNUE targeting the Waveshare ESP32 P4.
+C11 chess engine with an integer NNUE targeting the board Waveshare ESP32 P4.
 
 The desktop UCI engine and ESP-IDF firmware compile the same chess core. The reference network is a `4x128` NNUE using 4 king regions, 128 hidden values, `int8` feature weights, `int16` accumulators, and a 328,480-byte model.
 
