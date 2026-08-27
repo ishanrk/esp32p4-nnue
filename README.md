@@ -1,4 +1,4 @@
-# ESP32 P4 NNUE (Essentially A NN hosted on a Microccontroller)
+# ESP32 P4 NNUE (Essentially A NN hosted on a Microcontroller)
 
 C11 chess engine with an integer NNUE targeting the board Waveshare ESP32 P4.
 
