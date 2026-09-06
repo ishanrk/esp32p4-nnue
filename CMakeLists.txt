@@ -7,6 +7,11 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 option(P4_NATIVE "use host cpu flags" OFF)
 option(P4_SAN "use sanitizers" OFF)
+set(P4_SANITIZERS "address,undefined" CACHE STRING "gcc or clang sanitizers")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+if(NOT CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR NOT UNIX)
+	message(FATAL_ERROR "host build requires gcc or clang on a posix host")
+endif()
 
 set(P4_NNUE_PROFILE "4x128" CACHE STRING "compile time nnue profile")
 set_property(CACHE P4_NNUE_PROFILE PROPERTY STRINGS 4x128 8x64 8x96 16x48)
@@ -44,11 +49,7 @@ target_compile_definitions(
     P4_NNUE_HIDDEN_SIZE=${P4_NNUE_WIDTH}
 )
 
-if(MSVC)
-    set(P4_WARNINGS /W4)
-else()
     set(P4_WARNINGS
-        -O3
         -Wall
         -Wextra
         -Wshadow
@@ -60,17 +61,19 @@ else()
     if(P4_NATIVE)
         target_compile_options(p4core PRIVATE -march=native)
     endif()
-    if(P4_SAN)
-        target_compile_options(p4core PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
-        target_link_options(p4core PUBLIC -fsanitize=address,undefined)
-    endif()
+add_library(p4diagnostics INTERFACE)
+if(P4_SAN)
+	target_compile_options(p4diagnostics INTERFACE -fsanitize=${P4_SANITIZERS} -fno-omit-frame-pointer)
+	target_link_options(p4diagnostics INTERFACE -fsanitize=${P4_SANITIZERS})
 endif()
+target_link_libraries(p4core PUBLIC p4diagnostics)
 target_compile_options(p4core PRIVATE ${P4_WARNINGS})
 
 include(CheckIPOSupported)
 check_ipo_supported(RESULT P4_IPO)
-if(P4_IPO)
-    set_property(TARGET p4core PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+if(P4_IPO AND NOT P4_SAN)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set_property(TARGET p4core PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 endif()
 
 add_executable(p4nnue src/main.c src/uci.c)
@@ -99,6 +102,7 @@ if(BUILD_TESTING)
 
     add_executable(p4protocoltest test/protocol_test.c esp/protocol.c)
     target_include_directories(p4protocoltest PRIVATE esp)
+    target_link_libraries(p4protocoltest PRIVATE p4diagnostics)
     target_compile_options(p4protocoltest PRIVATE ${P4_WARNINGS})
     add_test(NAME p4protocol COMMAND p4protocoltest)
 
@@ -155,7 +159,19 @@ if(BUILD_TESTING)
                     COMMAND ${Python3_EXECUTABLE}
                         ${CMAKE_CURRENT_SOURCE_DIR}/train/test_training.py
                 )
+            else()
+				message(STATUS "skipped p4training because torch is unavailable")
+                add_test(NAME p4training COMMAND ${CMAKE_COMMAND} -E echo "SKIP torch unavailable")
+                set_tests_properties(p4training PROPERTIES SKIP_REGULAR_EXPRESSION "SKIP")
             endif()
+        else()
+			message(STATUS "skipped optional python suites because chess or numpy is unavailable")
+            foreach(P4_TEST p4data p4model p4arena p4training)
+                add_test(NAME ${P4_TEST} COMMAND ${CMAKE_COMMAND} -E echo "SKIP chess or numpy unavailable")
+                set_tests_properties(${P4_TEST} PROPERTIES SKIP_REGULAR_EXPRESSION "SKIP")
+            endforeach()
         endif()
+    else()
+		message(STATUS "skipped python suites because python is unavailable")
     endif()
 endif()

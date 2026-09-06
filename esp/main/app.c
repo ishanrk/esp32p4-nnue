@@ -125,7 +125,7 @@ static board_protocol_error_t search_protocol_position(
     firmware_context_t *context = argument;
     if (!context->position_valid) return BOARD_ERROR_POSITION_REQUIRED;
     search_limits_t limits = {.move_time_ms = BOARD_PROTOCOL_MAX_TIME_MS,
-		.max_ply = 16, .poll = poll_firmware_search};
+		.max_ply = 12, .poll = poll_firmware_search};
     if (budget_type == BOARD_GO_DEPTH) {
         limits.depth = (int)budget;
     } else if (budget_type == BOARD_GO_TIME_MS) {
@@ -147,7 +147,7 @@ static board_protocol_error_t run_protocol_benchmark(
     set_start_position(&context->position);
     clear_transposition_table(&context->table);
     search_limits_t limits = {.depth = 5, .move_time_ms = BOARD_PROTOCOL_MAX_TIME_MS,
-		.max_ply = 16, .poll = poll_firmware_search};
+		.max_ply = 12, .poll = poll_firmware_search};
     search_result_t search = search_position(
         &context->position, &context->table, limits, NULL, NULL);
     copy_search_result(context, &search, result);

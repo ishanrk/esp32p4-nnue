@@ -42,7 +42,7 @@ idf.py build
 
 The firmware embeds `models/reference.nnue` as its default network and can also load a compatible network from flash.
 
-Firmware 1.2 uses ESP-IDF 6.0.2 and retains protocol version 1. Search requests accept depth 1–12 or time 1–5000 ms. Depth requests and BENCH also have a 5000 ms cap; the returned depth is the last completed iteration. Search yields every 64 visited nodes and has a 16-ply recursion limit. The browser requests 2000 ms and waits up to 10 seconds for the reply. A timeout or disconnect does not cancel computation on the chip; commands remain serialized until search returns. Time limits are cooperative, with polling and scheduler overshoot. These are firmware policies, not measured board latency or stack guarantees.
+Firmware 1.2 uses ESP-IDF 6.0.2 and retains protocol version 1. Search requests accept depth 1–12 or time 1–5000 ms. Depth requests and BENCH also have a 5000 ms cap; the returned depth is the last completed iteration. Search yields every 64 visited nodes and has a 12-ply recursion limit. The browser requests 2000 ms and waits up to 10 seconds for the reply. A timeout or disconnect does not cancel computation on the chip; commands remain serialized until search returns. Time limits are cooperative, with polling and scheduler overshoot. These are firmware policies, not measured board latency or stack guarantees.
 
 ```bash
 python3 esp/board_client.py --port /dev/ttyACM0 info
