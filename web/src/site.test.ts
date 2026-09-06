@@ -215,7 +215,7 @@ function guideTests(): void {
 
 class FakeTransport implements SearchTransport {
   positions: string[] = [];
-  depths: number[] = [];
+  times: number[] = [];
 
   constructor(private readonly result: SearchResult) {}
 
@@ -223,8 +223,8 @@ class FakeTransport implements SearchTransport {
     this.positions.push(fen);
   }
 
-  async searchDepth(depth: number): Promise<SearchResult> {
-    this.depths.push(depth);
+  async searchTime(moveTimeMs: number): Promise<SearchResult> {
+    this.times.push(moveTimeMs);
     return this.result;
   }
 }
@@ -283,11 +283,11 @@ async function integrationTests(): Promise<void> {
   applyHumanMove(fakeGame, "w", "d2", "d4");
   const expectedFen = fakeGame.fen();
   const fake = new FakeTransport(searchResult("d7d5"));
-  const result = await requestChipSearch(fake, fakeGame, 5);
+  const result = await requestChipSearch(fake, fakeGame, 2000);
   assert.equal(result?.move, "d7d5");
   assert.equal(applyUciMove(fakeGame, result?.move ?? "")?.san, "d5");
   assert.deepEqual(fake.positions, [expectedFen]);
-  assert.deepEqual(fake.depths, [5]);
+  assert.deepEqual(fake.times, [2000]);
 
   const rejectedGame = new Chess();
   applyHumanMove(rejectedGame, "w", "e2", "e4");
@@ -337,6 +337,9 @@ class FakeSerialPort extends EventTarget {
         const command = frame[3];
         this.writes.push(command);
         if (command === COMMAND.go) {
+          const request = new FrameDecoder().feed(frame)[0];
+          assert.equal(request.payload[0], 2);
+          assert.equal(new DataView(request.payload.buffer, request.payload.byteOffset).getUint32(1, true), 2000);
           const payload = new FrameDecoder().feed(hex(GO_RESPONSE))[0].payload.slice();
           new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
             .setUint32(25, 0x28dea5dc, true);
@@ -403,7 +406,7 @@ async function serialTransportTest(): Promise<void> {
     });
     assert.equal(info.target, 1);
     await board.setPosition(DEFAULT_POSITION);
-    const result = await board.searchDepth(5);
+    const result = await board.searchTime(2000);
     assert.equal(result.move, "e2e4");
     assert.deepEqual(port.writes, [
       COMMAND.hello,

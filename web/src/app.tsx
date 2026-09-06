@@ -27,7 +27,7 @@ import {
 } from "./game";
 import { modelStateName, type DeviceInfo, type SearchResult } from "./protocol";
 
-const SEARCH_DEPTH = 5;
+const SEARCH_TIME_MS = 2_000;
 const SIDE_CHOICES: Array<{ value: SideChoice; label: string }> = [
   { value: "white", label: "White" },
   { value: "black", label: "Black" },
@@ -221,7 +221,7 @@ export function App() {
     setSelected(null);
     setActivity("chip thinking");
     try {
-      const result = await requestChipSearch(board, activeGame, SEARCH_DEPTH);
+      const result = await requestChipSearch(board, activeGame, SEARCH_TIME_MS);
       if (token !== gameToken.current || board !== boardRef.current) return;
       if (!result) return;
       const move = applyUciMove(activeGame, result.move);

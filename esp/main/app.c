@@ -6,6 +6,7 @@
 #include "esp_log.h"
 #include "driver/uart.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "sdkconfig.h"
 
 #include <limits.h>
@@ -109,6 +110,13 @@ static void copy_search_result(firmware_context_t *context,
     result->model_crc32 = context->model_storage.active_crc32;
 }
 
+static bool poll_firmware_search(void *argument) {
+	(void)argument;
+	vTaskDelay(1);
+	return false;
+}
+
+
 static board_protocol_error_t search_protocol_position(
     void *argument,
     uint8_t budget_type,
@@ -116,7 +124,8 @@ static board_protocol_error_t search_protocol_position(
     board_search_result_t *result) {
     firmware_context_t *context = argument;
     if (!context->position_valid) return BOARD_ERROR_POSITION_REQUIRED;
-    search_limits_t limits = {0};
+    search_limits_t limits = {.move_time_ms = BOARD_PROTOCOL_MAX_TIME_MS,
+		.max_ply = 16, .poll = poll_firmware_search};
     if (budget_type == BOARD_GO_DEPTH) {
         limits.depth = (int)budget;
     } else if (budget_type == BOARD_GO_TIME_MS) {
@@ -137,7 +146,8 @@ static board_protocol_error_t run_protocol_benchmark(
     bool saved_position_valid = context->position_valid;
     set_start_position(&context->position);
     clear_transposition_table(&context->table);
-    search_limits_t limits = {.depth = 5};
+    search_limits_t limits = {.depth = 5, .move_time_ms = BOARD_PROTOCOL_MAX_TIME_MS,
+		.max_ply = 16, .poll = poll_firmware_search};
     search_result_t search = search_position(
         &context->position, &context->table, limits, NULL, NULL);
     copy_search_result(context, &search, result);

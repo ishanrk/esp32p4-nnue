@@ -274,6 +274,10 @@ def set_position(board, fen):
 
 
 def run_search(board, fen, depth, time_ms, timeout):
+    if depth is not None and not 1 <= depth <= 12:
+        raise ValueError("depth must be between 1 and 12 with a five second search cap")
+    if depth is None and (time_ms is None or not 1 <= time_ms <= 5000):
+        raise ValueError("time budget must be between 1 and 5000 milliseconds")
     set_position(board, fen)
     if depth is not None:
         budget_type = GO_DEPTH

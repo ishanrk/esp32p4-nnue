@@ -427,6 +427,10 @@ static void test_position_and_search(board_protocol_t *protocol,
     }
 
     go[0] = BOARD_GO_TIME_MS;
+    write_u32_le(go + 1, BOARD_PROTOCOL_MAX_TIME_MS + 1);
+    clear_output(output);
+    send_request(protocol, output, BOARD_COMMAND_GO, go, sizeof(go));
+    expect_true("oversized time rejected", output->data[3] == BOARD_COMMAND_ERROR);
     write_u32_le(go + 1, 100);
     clear_output(output);
     send_request(protocol, output, BOARD_COMMAND_GO, go, sizeof(go));

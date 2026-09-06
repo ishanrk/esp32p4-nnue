@@ -26,7 +26,7 @@ const EXPECTED_MODEL_BYTES = 328_480;
 const MODEL_EMBEDDED = 1;
 const MODEL_UPLOADED = 2;
 const COMMAND_TIMEOUT_MS = 5_000;
-const SEARCH_TIMEOUT_MS = 60_000;
+const SEARCH_TIMEOUT_MS = 10_000;
 
 type SerialOpenOptions = {
   baudRate: number;
@@ -65,6 +65,7 @@ export interface BoardTransport {
   disconnect(): Promise<void>;
   setPosition(fen: string): Promise<void>;
   searchDepth(depth: number): Promise<SearchResult>;
+  searchTime(moveTimeMs: number): Promise<SearchResult>;
 }
 
 export class SerialBoard implements BoardTransport {
@@ -118,11 +119,21 @@ export class SerialBoard implements BoardTransport {
   }
 
   searchDepth(depth: number): Promise<SearchResult> {
+    return this.searchBudget(GO_BUDGET.depth, depth);
+  }
+
+
+  searchTime(moveTimeMs: number): Promise<SearchResult> {
+    return this.searchBudget(GO_BUDGET.timeMs, moveTimeMs);
+  }
+
+
+  private searchBudget(budgetType: 1 | 2, budget: number): Promise<SearchResult> {
     return this.enqueue(async () => {
       this.requireReady();
       const response = await this.exchange(
         COMMAND.go,
-        encodeGoPayload(GO_BUDGET.depth, depth),
+        encodeGoPayload(budgetType, budget),
         SEARCH_TIMEOUT_MS,
       );
       const result = decodeSearchResult(response.payload);
@@ -225,7 +236,7 @@ export class SerialBoard implements BoardTransport {
       rejectResponse = reject;
     });
     const timeout = setTimeout(() => {
-      void this.shutdown(new Error("Board response timed out"));
+      void this.shutdown(new Error("Board response timed out; disconnect does not cancel chip computation"));
     }, timeoutMs);
     this.pending = {
       command,

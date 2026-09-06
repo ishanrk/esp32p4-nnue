@@ -12,7 +12,7 @@ export type SideChoice = "white" | "black" | "random";
 
 export type SearchTransport = {
   setPosition(fen: string): Promise<void>;
-  searchDepth(depth: number): Promise<SearchResult>;
+  searchTime(moveTimeMs: number): Promise<SearchResult>;
 };
 
 export type GameResult = {
@@ -66,11 +66,11 @@ export function applyUciMove(game: Chess, uci: string): Move | null {
 export async function requestChipSearch(
   transport: SearchTransport,
   game: Chess,
-  depth: number,
+  moveTimeMs: number,
 ): Promise<SearchResult | null> {
   if (game.isGameOver()) return null;
   await transport.setPosition(game.fen());
-  return transport.searchDepth(depth);
+  return transport.searchTime(moveTimeMs);
 }
 
 export function describeGameResult(

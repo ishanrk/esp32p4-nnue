@@ -106,6 +106,7 @@ bool model_storage_init(model_storage_t *storage,
 }
 
 void model_storage_deinit(model_storage_t *storage) {
+    unload_nnue();
     unmap_model(storage);
     memset(storage, 0, sizeof(*storage));
 }
@@ -159,7 +160,8 @@ board_protocol_error_t model_storage_commit(model_storage_t *storage) {
     if (!map_uploaded_model(storage, &model, &handle)) {
         return BOARD_ERROR_STORAGE;
     }
-    if (!validate_nnue(model, storage->upload.expected_bytes)) {
+    if (board_protocol_crc32(model, storage->upload.expected_bytes) != storage->upload.expected_crc32 ||
+        !validate_nnue(model, storage->upload.expected_bytes)) {
         esp_partition_munmap(handle);
         return BOARD_ERROR_MODEL_INVALID;
     }
