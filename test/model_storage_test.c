@@ -98,7 +98,7 @@ int main(void) {
 	set_start_position(&position);
 	transposition_table_t table = {0};
 	check(resize_transposition_table(&table, 1), "table allocation");
-	search_result_t before = search_position(&position, &table, (search_limits_t){2, 0}, NULL, NULL);
+	search_result_t before = search_position(&position, &table, (search_limits_t){.depth = 2, .move_time_ms = 0}, NULL, NULL);
 	check(before.score == -100 && position.accumulator[0][0] == 100, "uploaded evaluation");
 	uint64_t generation = nnue_generation();
 	check(model_storage_begin(&storage, 1, 0) != BOARD_ERROR_NONE, "bad size");
@@ -110,7 +110,7 @@ int main(void) {
 	check(storage.active_state == BOARD_MODEL_EMBEDDED && !mappings, "fallback active after error");
 	check(position.accumulator[0][0] == 0, "fallback accumulator refreshed");
 	for (size_t i = 0; i < table.count; ++i) check(!table.entries[i].key, "fallback table cleared");
-	search_result_t after = search_position(&position, &table, (search_limits_t){2, 0}, NULL, NULL);
+	search_result_t after = search_position(&position, &table, (search_limits_t){.depth = 2, .move_time_ms = 0}, NULL, NULL);
 	check(after.score == 100, "fallback search");
 	fail_erase = false;
 	prepare_upload(&storage, uploaded);

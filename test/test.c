@@ -1313,7 +1313,7 @@ static void test_terminal_search(void) {
         &position, "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"));
     position_t initial = position;
     search_result_t result = search_position(
-        &position, NULL, (search_limits_t){3, 0}, NULL, NULL);
+        &position, NULL, (search_limits_t){.depth = 3, .move_time_ms = 0}, NULL, NULL);
     expect_true("checkmate score", result.score < -29000);
     expect_u64("checkmate best move", result.best_move, 0);
     expect_position_state(&position, &initial);
@@ -1324,7 +1324,7 @@ static void test_terminal_search(void) {
 	expect_true("quiescence stalemate cutoff", quiescence_search(&context, &position, -2000, -1000, 1) == 0);
 	expect_true("mate at fifty fen", set_position_fen(
 		&position, "7k/6Q1/5K2/8/8/8/8/8 b - - 100 1"));
-	result = search_position(&position, NULL, (search_limits_t){1, 0}, NULL, NULL);
+	result = search_position(&position, NULL, (search_limits_t){.depth = 1, .move_time_ms = 0}, NULL, NULL);
 	expect_true("mate before fifty move draw", result.score == -SCORE_MATE && !result.best_move);
 	expect_true("quiescence mate before draw", quiescence_search(&context, &position, -SCORE_INFINITY, SCORE_INFINITY, 1) == -SCORE_MATE + 1);
 
@@ -1332,7 +1332,7 @@ static void test_terminal_search(void) {
         &position, "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1"));
     initial = position;
     result = search_position(
-        &position, NULL, (search_limits_t){3, 0}, NULL, NULL);
+        &position, NULL, (search_limits_t){.depth = 3, .move_time_ms = 0}, NULL, NULL);
     expect_u64("stalemate score", result.score, 0);
     expect_u64("stalemate best move", result.best_move, 0);
     expect_position_state(&position, &initial);
@@ -1346,7 +1346,7 @@ static void test_terminal_search(void) {
     int mating_score = 0;
     for (int run = 0; run < 3; ++run) {
         result = search_position(
-            &position, NULL, (search_limits_t){4, 0}, NULL, NULL);
+            &position, NULL, (search_limits_t){.depth = 4, .move_time_ms = 0}, NULL, NULL);
         expect_true("mate in one score", result.score > 29000);
         if (!run) mating_score = result.score;
         expect_u64("stable mate score", result.score, mating_score);
@@ -1361,7 +1361,7 @@ static void test_terminal_search(void) {
         &position, "7k/8/5K2/4Q3/8/8/8/8 w - - 0 1"));
     initial = position;
     result = search_position(
-        &position, NULL, (search_limits_t){5, 0}, NULL, NULL);
+        &position, NULL, (search_limits_t){.depth = 5, .move_time_ms = 0}, NULL, NULL);
     expect_true("forced mate score", result.score > 29000);
     char move_text[6];
     move_to_uci(result.best_move, move_text);
@@ -1375,7 +1375,7 @@ static void test_draw_search(void) {
         &position, "7k/8/8/8/8/8/6Q1/6K1 w - - 100 1"));
     position_t initial = position;
     search_result_t result = search_position(
-        &position, NULL, (search_limits_t){3, 0}, NULL, NULL);
+        &position, NULL, (search_limits_t){.depth = 3, .move_time_ms = 0}, NULL, NULL);
     expect_u64("fifty move score", result.score, 0);
     expect_true("fifty move fallback",
                 search_move_is_legal(&position, result.best_move));
@@ -1395,7 +1395,7 @@ static void test_draw_search(void) {
     }
     initial = position;
     result = search_position(
-        &position, NULL, (search_limits_t){3, 0}, NULL, NULL);
+        &position, NULL, (search_limits_t){.depth = 3, .move_time_ms = 0}, NULL, NULL);
     expect_u64("repetition score", result.score, 0);
     expect_true("repetition fallback",
                 search_move_is_legal(&position, result.best_move));
@@ -1447,10 +1447,10 @@ static void test_deterministic_search(void) {
     position_t initial = position;
     expect_u64("one legal evasion", count_legal_moves(&position), 1);
     search_result_t first = search_position(
-        &position, NULL, (search_limits_t){4, 0}, NULL, NULL);
+        &position, NULL, (search_limits_t){.depth = 4, .move_time_ms = 0}, NULL, NULL);
     for (int run = 0; run < 3; ++run) {
         search_result_t result = search_position(
-            &position, NULL, (search_limits_t){4, 0}, NULL, NULL);
+            &position, NULL, (search_limits_t){.depth = 4, .move_time_ms = 0}, NULL, NULL);
         expect_u64("deterministic score", result.score, first.score);
         expect_u64("deterministic move", result.best_move, first.best_move);
         expect_true("deterministic legal move",
@@ -1473,7 +1473,7 @@ static void test_transposition_table_search(void) {
     expect_true("table search fen", set_position_fen(
         &position, "7k/8/5K2/4Q3/8/8/8/8 w - - 0 1"));
     position_t initial = position;
-    search_limits_t limits = {5, 0};
+    search_limits_t limits = {.depth = 5, .move_time_ms = 0};
     search_result_t no_table = search_position(
         &position, NULL, limits, NULL, NULL);
 
@@ -1507,11 +1507,11 @@ static void test_transposition_table_search(void) {
         &position, parent_move, &parent_undo));
     position_t child = position;
     search_result_t reused_child = search_position(
-        &position, &table, (search_limits_t){3, 0}, NULL, NULL);
+        &position, &table, (search_limits_t){.depth = 3, .move_time_ms = 0}, NULL, NULL);
     clear_transposition_table(&table);
     expect_true("table clear", table_is_clear(&table));
     search_result_t clear_child = search_position(
-        &position, &table, (search_limits_t){3, 0}, NULL, NULL);
+        &position, &table, (search_limits_t){.depth = 3, .move_time_ms = 0}, NULL, NULL);
     expect_u64("mate table score", reused_child.score, clear_child.score);
     expect_u64("mate table move", reused_child.best_move,
                clear_child.best_move);
@@ -1525,11 +1525,11 @@ static void test_transposition_table_search(void) {
     initial = position;
     clear_transposition_table(&table);
     no_table = search_position(
-        &position, NULL, (search_limits_t){4, 0}, NULL, NULL);
+        &position, NULL, (search_limits_t){.depth = 4, .move_time_ms = 0}, NULL, NULL);
     empty_table = search_position(
-        &position, &table, (search_limits_t){4, 0}, NULL, NULL);
+        &position, &table, (search_limits_t){.depth = 4, .move_time_ms = 0}, NULL, NULL);
     reused_table = search_position(
-        &position, &table, (search_limits_t){4, 0}, NULL, NULL);
+        &position, &table, (search_limits_t){.depth = 4, .move_time_ms = 0}, NULL, NULL);
     expect_u64("evasion empty table score", empty_table.score,
                no_table.score);
     expect_u64("evasion reused table score", reused_table.score,
@@ -1566,7 +1566,7 @@ static void test_search_timeout(void) {
     expect_true("timeout table", resize_transposition_table(&table, 1));
     search_trace_t trace = {0};
     search_result_t result = search_position(
-        &position, &table, (search_limits_t){0, 10},
+        &position, &table, (search_limits_t){.depth = 0, .move_time_ms = 10},
         record_search_iteration, &trace);
     expect_true("timeout legal move",
                 search_move_is_legal(&position, result.best_move));
@@ -1598,7 +1598,7 @@ static void test_evaluator_changes(void *memory) {
 	set_start_position(&position);
 	transposition_table_t table = {0};
 	expect_true("model switch table", resize_transposition_table(&table, 1));
-	search_result_t a = search_position(&position, &table, (search_limits_t){2, 0}, NULL, NULL);
+	search_result_t a = search_position(&position, &table, (search_limits_t){.depth = 2, .move_time_ms = 0}, NULL, NULL);
 	expect_true("model a score", a.score == 100);
 	uint64_t generation = nnue_generation();
 	position_t saved = position;
@@ -1612,9 +1612,9 @@ static void test_evaluator_changes(void *memory) {
 	expect_true("constant model b", bind_nnue(memory, NNUE_FILE_SIZE));
 	synchronize_evaluator(&position, &table);
 	expect_true("model switch clears table", table_is_clear(&table));
-	search_result_t warm = search_position(&position, &table, (search_limits_t){2, 0}, NULL, NULL);
+	search_result_t warm = search_position(&position, &table, (search_limits_t){.depth = 2, .move_time_ms = 0}, NULL, NULL);
 	clear_transposition_table(&table);
-	search_result_t cold = search_position(&position, &table, (search_limits_t){2, 0}, NULL, NULL);
+	search_result_t cold = search_position(&position, &table, (search_limits_t){.depth = 2, .move_time_ms = 0}, NULL, NULL);
 	expect_true("model b warm and cold", warm.score == -100 && cold.score == warm.score);
 	for (int sign = -1; sign <= 1; sign += 2) {
 		unload_nnue();
@@ -1623,7 +1623,7 @@ static void test_evaluator_changes(void *memory) {
 		synchronize_evaluator(&position, &table);
 		expect_true("raw inference retained", evaluate_nnue(&position) == sign * 40000);
 		expect_true("search inference clamped", evaluate(&position) == sign * SCORE_EVAL_MAX);
-		search_result_t result = search_position(&position, &table, (search_limits_t){2, 0}, NULL, NULL);
+		search_result_t result = search_position(&position, &table, (search_limits_t){.depth = 2, .move_time_ms = 0}, NULL, NULL);
 		expect_true("extreme search score", result.score == sign * SCORE_EVAL_MAX);
 	}
 	unload_nnue();

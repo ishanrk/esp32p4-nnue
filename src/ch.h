@@ -176,6 +176,9 @@ typedef struct {
 typedef struct {
     int depth;
     uint64_t move_time_ms;
+    bool (*poll)(void *context);
+    void *poll_context;
+    int max_ply;
 } search_limits_t;
 
 typedef struct {
@@ -250,6 +253,7 @@ search_result_t search_position(position_t *position,
                                 void *context);
 
 uint64_t current_time_ms(void);
+uint64_t current_time_us(void);
 void run_uci_loop(transposition_table_t *table, const char *model_path);
 
 #endif

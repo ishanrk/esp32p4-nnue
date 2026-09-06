@@ -10,27 +10,30 @@ typedef struct {
     int history_scores[PIECE_COUNT][64];
     position_t pv_position;
     uint64_t nodes;
-    uint64_t deadline_ms;
+    uint64_t start_ms;
+    search_limits_t limits;
     move_t root_best_move;
     bool stop;
 } search_context_t;
 
 bool resize_transposition_table_bytes(transposition_table_t *table,
                                       size_t bytes) {
-    free_transposition_table(table);
     size_t requested = bytes / sizeof(tt_entry_t);
-    if (!requested) return true;
+    if (!requested) { free_transposition_table(table); return true; }
     size_t count = 1;
     while ((count << 1) <= requested) count <<= 1;
-    table->entries = calloc(count, sizeof(*table->entries));
-    if (!table->entries) return false;
+    tt_entry_t *entries = calloc(count, sizeof(*entries));
+    if (!entries) return false;
+    free_transposition_table(table);
+    table->entries = entries;
     table->count = count;
     return true;
 }
 
 bool resize_transposition_table(transposition_table_t *table,
                                 size_t megabytes) {
-    return resize_transposition_table_bytes(table, megabytes << 20);
+    if (megabytes > SIZE_MAX / (1024u * 1024u)) return false;
+    return resize_transposition_table_bytes(table, megabytes * (1024u * 1024u));
 }
 
 void free_transposition_table(transposition_table_t *table) {
@@ -139,11 +142,9 @@ static void store_transposition_entry(search_context_t *context,
 
 static void count_node(search_context_t *context) {
     ++context->nodes;
-    if ((context->nodes & 2047u) == 0 &&
-        context->deadline_ms &&
-        current_time_ms() >= context->deadline_ms) {
-        context->stop = true;
-    }
+	if (context->nodes != 1 && (context->nodes & 63u)) return;
+	if (context->limits.poll && context->limits.poll(context->limits.poll_context)) context->stop = true;
+	if (context->limits.move_time_ms && current_time_ms() - context->start_ms >= context->limits.move_time_ms) context->stop = true;
 }
 
 static int score_move(search_context_t *context,
@@ -201,7 +202,7 @@ static int quiescence_search(search_context_t *context,
     count_node(context);
     if (context->stop) return 0;
     bool in_check = side_in_check(position, position->side_to_move);
-	if (position_is_draw(position) || ply >= MAX_PLY - 1) {
+	if (position_is_draw(position) || ply >= (context->limits.max_ply ? context->limits.max_ply : MAX_PLY - 1)) {
 		if (!has_legal_move(position)) return in_check ? -SCORE_MATE + ply : 0;
 		return position_is_draw(position) ? 0 : evaluate(position);
 	}
@@ -241,7 +242,7 @@ static int principal_variation_search(search_context_t *context,
     count_node(context);
     if (context->stop) return 0;
     bool in_check = side_in_check(position, position->side_to_move);
-	if (position_is_draw(position) || ply >= MAX_PLY - 1) {
+	if (position_is_draw(position) || ply >= (context->limits.max_ply ? context->limits.max_ply : MAX_PLY - 1)) {
 		if (!has_legal_move(position)) return in_check ? -SCORE_MATE + ply : 0;
 		return position_is_draw(position) ? 0 : evaluate(position);
 	}
@@ -380,13 +381,14 @@ search_result_t search_position(position_t *position,
     if (!context) return result;
     context->table = table;
     uint64_t start_ms = current_time_ms();
-    context->deadline_ms = limits.move_time_ms
-                               ? start_ms + limits.move_time_ms
-                               : 0;
+    context->start_ms = start_ms;
+    context->limits = limits;
+    if (context->limits.max_ply < 1 || context->limits.max_ply >= MAX_PLY) context->limits.max_ply = MAX_PLY - 1;
     int max_depth = limits.depth > 0 ? limits.depth : 64;
     if (max_depth >= MAX_PLY) max_depth = MAX_PLY - 1;
 
     for (int depth = 1; depth <= max_depth; ++depth) {
+        if (limits.poll && limits.poll(limits.poll_context)) break;
         context->root_best_move = 0;
         int score = principal_variation_search(
             context, position, depth, -SCORE_INFINITY, SCORE_INFINITY, 0);

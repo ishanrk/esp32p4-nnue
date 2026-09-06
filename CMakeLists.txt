@@ -74,7 +74,8 @@ if(P4_IPO)
 endif()
 
 add_executable(p4nnue src/main.c src/uci.c)
-target_link_libraries(p4nnue PRIVATE p4core)
+find_package(Threads REQUIRED)
+target_link_libraries(p4nnue PRIVATE p4core Threads::Threads)
 target_compile_options(p4nnue PRIVATE ${P4_WARNINGS})
 
 add_executable(p4eval src/eval_tool.c)
@@ -109,6 +110,9 @@ if(BUILD_TESTING)
 
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
+		if(P4_NNUE_PROFILE STREQUAL "4x128")
+			add_test(NAME p4uci COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_uci.py $<TARGET_FILE:p4nnue>)
+		endif()
         add_test(
             NAME p4boardclient
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_board_client.py

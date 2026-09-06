@@ -2,7 +2,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 
 typedef struct {
     const char *name;
@@ -25,10 +24,7 @@ static const benchmark_position_t search_positions[] = {
 };
 
 static uint64_t time_us(void) {
-    struct timespec time;
-    if (!timespec_get(&time, TIME_UTC)) return 0;
-    return (uint64_t)time.tv_sec * UINT64_C(1000000) +
-           (uint64_t)time.tv_nsec / 1000u;
+    return current_time_us();
 }
 
 static int compare_u64(const void *left, const void *right) {
@@ -80,7 +76,7 @@ static bool benchmark_search(int depth, int repetitions) {
             }
             clear_transposition_table(&table);
             uint64_t start = time_us();
-            search_limits_t limits = {depth, 0};
+            search_limits_t limits = {.depth = depth, .move_time_ms = 0};
             search_result_t result = search_position(
                 &position, &table, limits, NULL, NULL);
             times[repetition] = time_us() - start;
