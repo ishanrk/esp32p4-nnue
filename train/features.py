@@ -85,8 +85,19 @@ def feature_index(
 
 def parse_fen(fen: str) -> tuple[int, list[tuple[int, int]], list[int]]:
     fields = fen.split()
-    if len(fields) < 2 or fields[1] not in ("w", "b"):
+    if len(fields) not in (4, 6) or fields[1] not in ("w", "b"):
         raise ValueError("bad fen")
+    if fields[2] != "-" and (
+        any(symbol not in "KQkq" for symbol in fields[2])
+        or len(set(fields[2])) != len(fields[2])
+    ):
+        raise ValueError("bad castling rights")
+    if len(fields) == 6:
+        if any(not value.isascii() or not value.isdecimal() or len(value) > 5
+               for value in fields[4:]):
+            raise ValueError("bad fen counters")
+        if not 0 <= int(fields[4]) <= 65535 or not 1 <= int(fields[5]) <= 65535:
+            raise ValueError("bad fen counters")
     ranks = fields[0].split("/")
     if len(ranks) != 8:
         raise ValueError("bad fen board")
@@ -118,6 +129,23 @@ def parse_fen(fen: str) -> tuple[int, list[tuple[int, int]], list[int]]:
     if sum(piece % 6 != 5 for piece, _ in pieces) > MAX_ACTIVE_FEATURES:
         raise ValueError("too many nonking pieces")
     side = 0 if fields[1] == "w" else 1
+    for color in (0, 1):
+        if sum((piece >= 6) == bool(color) for piece, _ in pieces) > 16:
+            raise ValueError("too many pieces")
+        if sum(piece == color * 6 for piece, _ in pieces) > 8:
+            raise ValueError("too many pawns")
+    if any(piece % 6 == 0 and square // 8 in (0, 7) for piece, square in pieces):
+        raise ValueError("pawn on back rank")
+    if max(abs(kings[0] % 8 - kings[1] % 8), abs(kings[0] // 8 - kings[1] // 8)) <= 1:
+        raise ValueError("adjacent kings")
+    if fields[3] != "-":
+        ep = fields[3]
+        if len(ep) != 2 or ep[0] not in "abcdefgh" or ep[1] != ("6" if side == 0 else "3"):
+            raise ValueError("bad en passant square")
+        square = (int(ep[1]) - 1) * 8 + ord(ep[0]) - ord("a")
+        pawn_square = square + (-8 if side == 0 else 8)
+        if any(location == square for _, location in pieces) or (6 if side == 0 else 0, pawn_square) not in pieces:
+            raise ValueError("bad en passant pawn")
     return side, pieces, kings
 
 

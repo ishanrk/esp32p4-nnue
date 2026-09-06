@@ -266,6 +266,33 @@ static void test_fen_loading(void) {
         &position, "4k3/8/8/8/8/8/8/4K3 w - d6x 0 1"));
     expect_true("invalid zero run", !set_position_fen(
         &position, "4k3/8/8/8/8/8/8/4K03 w - - 0 1"));
+	set_start_position(&position);
+	position_t saved = position;
+	static const char *invalid[] = {
+		"", "not a fen", "4k3/8/8/8/8/8/8/4K3", "4k3/8/8/8/8/8/8/4K3 w - a",
+		"4k3/8/8/8/8/8/8/4K3 w - - 65536 1",
+		"4k3/8/8/8/8/8/8/4K3 w - - 0 0",
+		"4k3/8/8/8/8/8/8/4K3 w - - 0 1 garbage",
+		"4k3/8/8/8/8/8/8/4K3 w KK - 0 1",
+		"4k3/8/8/8/8/8/8/4K3 w - - -1 1",
+		"4k3/pppppppp/pppppppp/8/8/PPPPPPPP/PPPPPPPP/4K3 w - - 0 1",
+		"4k3/8/8/8/8/8/8/P3K3 w - - 0 1",
+		"8/8/8/8/8/8/4k3/4K3 w - - 0 1"
+	};
+	for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+		expect_true("reject invalid fen", !set_position_fen(&position, invalid[i]));
+		expect_memory("failed fen preserves position", &position, &saved, sizeof(position));
+	}
+	const char *fen = "4k3/8/8/8/8/8/8/4K3 w - -";
+	for (size_t size = 0; size < strlen(fen); ++size) {
+		char *prefix = malloc(size + 1);
+		memcpy(prefix, fen, size);
+		prefix[size] = 0;
+		expect_true("reject truncated fen", !set_position_fen(&position, prefix));
+		free(prefix);
+	}
+	expect_true("four field fen", set_position_fen(&position, fen));
+	expect_u64("default fullmove", position.fullmove_number, 1);
 }
 
 static void expect_position_state(const position_t *position,

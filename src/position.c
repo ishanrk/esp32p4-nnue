@@ -157,13 +157,41 @@ uint64_t calculate_position_hash(const position_t *position) {
     return k;
 }
 
-bool set_position_fen(position_t *position, const char *fen) {
+static bool parse_fen_number(const char *text, size_t size, uint16_t *value) {
+	unsigned number = 0;
+	if (!size) return false;
+	for (size_t i = 0; i < size; ++i) {
+		if (text[i] < '0' || text[i] > '9') return false;
+		unsigned digit = (unsigned)(text[i] - '0');
+		if (number > (UINT16_MAX - digit) / 10u) return false;
+		number = number * 10u + digit;
+	}
+	*value = (uint16_t)number;
+	return true;
+}
+
+
+static bool parse_position_fen(position_t *position, const char *fen) {
+	const char *fields[6];
+	size_t sizes[6];
+	int count = 0;
+	if (!fen) return false;
+	const char *cursor = fen;
+	while (*cursor) {
+		if (strchr(" \t\r\n", *cursor)) { ++cursor; continue; }
+		if (count == 6) return false;
+		fields[count] = cursor;
+		while (*cursor && !strchr(" \t\r\n", *cursor)) ++cursor;
+		sizes[count] = (size_t)(cursor - fields[count]);
+		++count;
+	}
+	if (count != 4 && count != 6) return false;
     clear_position(position);
     int rank = 7;
     int file = 0;
-    const char *cursor = fen;
+    cursor = fields[0];
 
-    while (*cursor && *cursor != ' ') {
+    while (cursor != fields[0] + sizes[0]) {
         if (*cursor == '/') {
             if (file != 8 || !rank) return false;
             --rank;
@@ -179,57 +207,58 @@ bool set_position_fen(position_t *position, const char *fen) {
         }
         ++cursor;
     }
-    if (rank != 0 || file != 8 || *cursor++ != ' ') return false;
-
+    if (rank != 0 || file != 8 || sizes[1] != 1) return false;
+    cursor = fields[1];
     if (*cursor == 'w') position->side_to_move = WHITE;
     else if (*cursor == 'b') position->side_to_move = BLACK;
     else return false;
-    ++cursor;
-    if (*cursor++ != ' ') return false;
-
+    cursor = fields[2];
     position->castling = 0;
-    if (*cursor == '-') ++cursor;
+    if (*cursor == '-' && sizes[2] == 1) ++cursor;
     else {
-        while (*cursor && *cursor != ' ') {
-            if (*cursor == 'K') position->castling |= CASTLE_WHITE_KING;
-            else if (*cursor == 'Q') position->castling |= CASTLE_WHITE_QUEEN;
-            else if (*cursor == 'k') position->castling |= CASTLE_BLACK_KING;
-            else if (*cursor == 'q') position->castling |= CASTLE_BLACK_QUEEN;
+        while (cursor != fields[2] + sizes[2]) {
+			int right;
+            if (*cursor == 'K') right = CASTLE_WHITE_KING;
+            else if (*cursor == 'Q') right = CASTLE_WHITE_QUEEN;
+            else if (*cursor == 'k') right = CASTLE_BLACK_KING;
+            else if (*cursor == 'q') right = CASTLE_BLACK_QUEEN;
             else return false;
+			if (position->castling & right) return false;
+			position->castling |= (uint8_t)right;
             ++cursor;
         }
     }
-    if (*cursor++ != ' ') return false;
-
-    if (*cursor == '-') {
+    cursor = fields[3];
+    if (*cursor == '-' && sizes[3] == 1) {
         position->en_passant = NO_SQUARE;
         ++cursor;
     } else {
-        if (cursor[0] < 'a' || cursor[0] > 'h' ||
+        if (sizes[3] != 2 || cursor[0] < 'a' || cursor[0] > 'h' ||
             cursor[1] < '1' || cursor[1] > '8') return false;
         position->en_passant =
             (uint8_t)MAKE_SQUARE(cursor[0] - 'a', cursor[1] - '1');
         cursor += 2;
     }
-    if (*cursor && *cursor != ' ' && *cursor != '\r' && *cursor != '\n') {
-        return false;
-    }
-
-    if (*cursor == ' ') {
-        char *end;
-        position->halfmove_clock = (uint16_t)strtoul(++cursor, &end, 10);
-        cursor = end;
-        if (*cursor == ' ') {
-            position->fullmove_number = (uint16_t)strtoul(++cursor, &end, 10);
-        }
-    }
+	if (count == 6 &&
+		(!parse_fen_number(fields[4], sizes[4], &position->halfmove_clock) ||
+		 !parse_fen_number(fields[5], sizes[5], &position->fullmove_number) ||
+		 !position->fullmove_number)) return false;
 
     position->key = calculate_position_hash(position);
     position->history_count = 1;
     position->history[0] = position->key;
-    refresh_nnue(position);
     return position_is_valid(position);
 }
+
+
+bool set_position_fen(position_t *position, const char *fen) {
+	position_t candidate;
+	if (!position || !parse_position_fen(&candidate, fen)) return false;
+	refresh_nnue(&candidate);
+	*position = candidate;
+	return true;
+}
+
 
 void set_start_position(position_t *position) {
     set_position_fen(position, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
@@ -277,6 +306,15 @@ bool position_is_valid(const position_t *position) {
     if (bit_count(position->pieces[WHITE_KING]) != 1 ||
         bit_count(position->pieces[BLACK_KING]) != 1) return false;
     if (position->occupancy[WHITE] & position->occupancy[BLACK]) return false;
+	if (bit_count(position->occupancy[ALL_PIECES]) > NNUE_MAX_ACTIVE_FEATURES + 2 ||
+		bit_count(position->occupancy[WHITE]) > 16 ||
+		bit_count(position->occupancy[BLACK]) > 16 ||
+		bit_count(position->pieces[WHITE_PAWN]) > 8 ||
+		bit_count(position->pieces[BLACK_PAWN]) > 8 ||
+		((position->pieces[WHITE_PAWN] | position->pieces[BLACK_PAWN]) &
+		 UINT64_C(0xff000000000000ff)) ||
+		(king_attacks[find_king_square(position, WHITE)] & position->pieces[BLACK_KING]) ||
+		!position->fullmove_number) return false;
     if (position->side_to_move > BLACK ||
         position->castling > 15 ||
         position->en_passant > NO_SQUARE) return false;
@@ -372,7 +410,7 @@ bool make_move(position_t *position, move_t move, undo_t *undo) {
         position->key ^= zobrist_en_passant[position->en_passant & 7];
     }
     position->en_passant = NO_SQUARE;
-    ++position->halfmove_clock;
+    if (position->halfmove_clock < UINT16_MAX) ++position->halfmove_clock;
     if (piece_type(piece) == PAWN || captured != NO_PIECE) position->halfmove_clock = 0;
     position->castling &= castling_mask(from);
     position->castling &= castling_mask(to);
@@ -417,7 +455,7 @@ bool make_move(position_t *position, move_t move, undo_t *undo) {
     }
     position->side_to_move = (uint8_t)opponent;
     position->key ^= zobrist_side;
-    if (side == BLACK) ++position->fullmove_number;
+    if (side == BLACK && position->fullmove_number < UINT16_MAX) ++position->fullmove_number;
     if (position->history_count < POSITION_HISTORY_SIZE) {
         position->history[position->history_count++] = position->key;
     }

@@ -9,6 +9,7 @@ from features import (
     feature_index,
     king_bucket,
     king_mirror,
+    parse_fen,
 )
 from profiles import (
     ACCUMULATOR_BIAS_MAX,
@@ -24,6 +25,20 @@ FIXTURES = Path(__file__).parents[1] / "test" / "nnue_features.txt"
 
 
 class FeatureMappingTest(unittest.TestCase):
+    def test_fen_bounds(self) -> None:
+        parse_fen("4k3/8/8/8/8/8/8/4K3 w - -")
+        for fen in (
+            "4k3/8/8/8/8/8/8/4K3 w - - 65536 1",
+            "4k3/8/8/8/8/8/8/4K3 w - - 0 0",
+            "4k3/8/8/8/8/8/8/4K3 w - - 0 1 garbage",
+            "4k3/8/8/8/8/8/8/P3K3 w - - 0 1",
+            "4k3/pppppppp/pppppppp/8/8/PPPPPPPP/PPPPPPPP/4K3 w - - 0 1",
+            "4k3/8/8/8/8/8/8/4K3 w - d6 0 1",
+        ):
+            with self.subTest(fen=fen), self.assertRaises(ValueError):
+                parse_fen(fen)
+
+
     def test_shared_fixtures(self) -> None:
         fixture_profile = get_profile("8x64")
         fixture_count = 0
