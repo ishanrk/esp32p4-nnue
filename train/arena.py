@@ -3,11 +3,17 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 from pathlib import Path
+import selectors
 import subprocess
+import time
 from typing import Any
 
 import chess
+import chess.pgn
+
+from evidence import engine_metadata, model_metadata, source_metadata
 
 
 OPENINGS = (
@@ -44,15 +50,19 @@ def load_openings(path: str | Path) -> list[dict[str, str]]:
 
 class UciEngine:
     def __init__(
-        self, executable: str | Path, model: str | Path | None
+        self, executable: str | Path, model: str | Path | None, *, timeout: float = 15.0
     ) -> None:
         self.executable = str(Path(executable).resolve())
         self.model = str(Path(model).resolve()) if model is not None else None
+        self.timeout = timeout
+        self.output = b""
+        self.diagnostics = b""
+        self.searches: list[dict[str, Any]] = []
         self.process = subprocess.Popen(
             [self.executable, "--classical"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
         )
@@ -80,14 +90,35 @@ class UciEngine:
         if self.process.stdout is None:
             raise RuntimeError("engine output closed")
         lines = []
-        while True:
-            line = self.process.stdout.readline()
-            if not line:
-                raise RuntimeError("engine stopped unexpectedly")
-            text = line.strip()
-            lines.append(text)
-            if text.startswith(expected):
-                return lines
+        deadline = time.monotonic() + self.timeout
+        with selectors.DefaultSelector() as selector:
+            selector.register(self.process.stdout, selectors.EVENT_READ)
+            selector.register(self.process.stderr, selectors.EVENT_READ)
+            while True:
+                while b"\n" in self.output:
+                    line, self.output = self.output.split(b"\n", 1)
+                    text = line.decode("utf-8", errors="replace").strip()
+                    lines.append(text)
+                    if len(lines) > 4096:
+                        raise RuntimeError("engine output limit exceeded")
+                    if text == expected or text.startswith(expected + " "):
+                        return lines
+                remaining = deadline - time.monotonic()
+                events = selector.select(max(0, remaining))
+                if remaining <= 0 or not events:
+                    raise RuntimeError(f"engine timeout waiting for {expected}: {self.executable}; stderr {self.diagnostics.decode(errors='replace')}; last output {lines[-8:]}")
+                for key, _ in events:
+                    chunk = os.read(key.fileobj.fileno(), 65536)
+                    if not chunk:
+                        if key.fileobj is self.process.stdout:
+                            raise RuntimeError(f"engine stopped while waiting for {expected}: {self.executable}; return code {self.process.poll()}; stderr {self.diagnostics.decode(errors='replace')}")
+                        selector.unregister(key.fileobj)
+                    elif key.fileobj is self.process.stderr:
+                        self.diagnostics = (self.diagnostics + chunk)[-8192:]
+                    else:
+                        self.output += chunk
+                        if len(self.output) > 65536:
+                            raise RuntimeError("engine line limit exceeded")
 
     def new_game(self) -> None:
         self._send("ucinewgame")
@@ -95,7 +126,10 @@ class UciEngine:
         self._read_until("readyok")
 
     def best_move(self, board: chess.Board, depth: int) -> chess.Move:
-        self._send(f"position fen {board.fen(en_passant='fen')}")
+        root = board.root().fen(en_passant="fen")
+        moves = " ".join(move.uci() for move in board.move_stack)
+        self._send(f"position fen {root}" + (f" moves {moves}" if moves else ""))
+        start = time.monotonic()
         self._send(f"go depth {depth}")
         lines = self._read_until("bestmove")
         fields = lines[-1].split()
@@ -104,6 +138,9 @@ class UciEngine:
         move = chess.Move.from_uci(fields[1])
         if move not in board.legal_moves:
             raise RuntimeError(f"engine returned illegal move {move}")
+        self.searches.append({"elapsed_ms": (time.monotonic() - start) * 1000,
+                              "fen": board.fen(en_passant="fen"), "move": move.uci(), "valid": True,
+                              "output": lines})
         return move
 
     def close(self) -> None:
@@ -113,10 +150,13 @@ class UciEngine:
             except OSError:
                 self.process.kill()
             try:
-                self.process.wait(timeout=5)
+                self.process.wait(timeout=min(self.timeout, 1.0))
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait()
+        for stream in (self.process.stdin, self.process.stdout, self.process.stderr):
+            if stream is not None:
+                stream.close()
 
 
 def opening_board(moves: tuple[str, ...]) -> chess.Board:
@@ -135,6 +175,7 @@ def play_game(
     opening: tuple[str, ...] | str,
     depth: int,
     max_plies: int,
+    record: dict[str, Any] | None = None,
 ) -> tuple[chess.Color | None, str, int]:
     board = (
         chess.Board(opening)
@@ -149,6 +190,13 @@ def play_game(
         board.push(engine.best_move(board, depth))
         played += 1
     outcome = board.outcome(claim_draw=True)
+    if record is not None:
+        game = chess.pgn.Game.from_board(board)
+        game.headers["Result"] = board.result(claim_draw=True) if outcome else "1/2-1/2"
+        game.headers["Termination"] = outcome.termination.name.lower() if outcome else "max plies adjudication"
+        record.update({"initial_fen": board.root().fen(en_passant="fen"),
+                       "moves": [move.uci() for move in board.move_stack],
+                       "pgn": str(game), "final_fen": board.fen(en_passant="fen")})
     if outcome is None:
         return None, "max plies", played
     return outcome.winner, outcome.termination.name.lower(), played
@@ -210,8 +258,9 @@ def run_match(
                 for engine_a_white in (True, False):
                     white = engine_a if engine_a_white else engine_b
                     black = engine_b if engine_a_white else engine_a
+                    record: dict[str, Any] = {}
                     winner, termination, plies = play_game(
-                        white, black, opening, depth, max_plies
+                        white, black, opening, depth, max_plies, record
                     )
                     if winner is None:
                         score = 0.5
@@ -222,6 +271,7 @@ def run_match(
                     scores.append(score)
                     games.append(
                         {
+                            **record,
                             "engine_a_color": (
                                 "white" if engine_a_white else "black"
                             ),
@@ -239,6 +289,11 @@ def run_match(
     draws = scores.count(0.5)
     losses = scores.count(0.0)
     result: dict[str, Any] = {
+        "evidence": {"execution": "host", "source": source_metadata(),
+                     "engine_a": engine_metadata(engine_a_path), "engine_b": engine_metadata(engine_b_path),
+                     "model_a": model_metadata(model_a_path), "model_b": model_metadata(model_b_path),
+                     "tt_bytes": 1048576, "rating_scope": "fixed depth engine comparison only",
+                     "searches_a": engine_a.searches, "searches_b": engine_b.searches},
         "configuration": {
             "color_reversal": True,
             "depth": depth,
