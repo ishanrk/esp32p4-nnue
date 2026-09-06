@@ -386,6 +386,7 @@ search_result_t search_position(position_t *position,
     if (context->limits.max_ply < 1 || context->limits.max_ply >= MAX_PLY) context->limits.max_ply = MAX_PLY - 1;
     int max_depth = limits.depth > 0 ? limits.depth : 64;
     if (max_depth >= MAX_PLY) max_depth = MAX_PLY - 1;
+    if (max_depth > context->limits.max_ply) max_depth = context->limits.max_ply;
 
     for (int depth = 1; depth <= max_depth; ++depth) {
         if (limits.poll && limits.poll(limits.poll_context)) break;

@@ -31,6 +31,19 @@ ctest --test-dir build --output-on-failure
 
 Model paths are explicit and relative to the launching shell unless absolute. A requested model that cannot be loaded exits with an error. `--classical` (also the no-argument UCI-compatible mode) starts the handcrafted evaluator and reports that identity. UCI `setoption name EvalFile value PATH` activates a model; `<empty>` selects classical evaluation. Evaluator changes refresh the current position and clear cached search scores. Raw integer inference remains available through `p4eval`; search clamps predictions to ±29000 centipawns to reserve mate scores.
 
+The host build supports GCC or Clang on POSIX systems. `go infinite` stays active until `stop`; `isready` remains responsive during search. Position, model, and Hash changes join the search worker before mutation. Missing optional Python dependencies are reported as skipped suites.
+
+```bash
+cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug -DP4_SAN=ON
+cmake --build build-debug --parallel
+ctest --test-dir build-debug --output-on-failure
+python3 train/benchmark.py build/p4bench models/reference.nnue
+python3 train/arena.py build/p4nnue models/reference.nnue build/p4nnue classic \
+  --depth 1 --max-plies 4 --opening-count 1
+```
+
+The benchmark captures host and compiler identity, source state, binary/model hashes, raw timings, and checked incremental/full-refresh comparisons. The two tiny arena games save move sequences and PGN; max-plies draws are labeled and imply no playing-strength rating. The guide explains the operations included in each timing. Historical files under `results/` are preserved; their earlier experiments are not reproduced by these commands.
+
 ## ESP32 P4
 
 ```bash

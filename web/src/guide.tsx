@@ -324,6 +324,7 @@ add_library(p4core STATIC \${P4_SRC})`}
     uint8_t side_to_move;
     uint8_t castling;
     uint8_t en_passant;
+    uint8_t history_head;
 } position_t;`}
               path="src/ch.h"
               title="Store the board two ways"
@@ -416,14 +417,26 @@ if (king_square == NO_SQUARE ||
               </p>
               <p>
                 <code>undo_t</code> is the small receipt for that change. It saves the old
-                hash, clocks, castling rights, en passant square, history count, pieces,
-                and king view. Undo reverses the piece operations and copies those values
-                back instead of rebuilding the whole position.
+                overwritten history entry, clocks, castling rights, en passant square,
+                history count, pieces, and king view. Undo reverses the hash changes and
+                piece operations. The position remains 2768 bytes and the undo record
+                remains 24 bytes for the reference shape.
               </p>
             </CodeStudy>
             <Code>{`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure`}</Code>
+            <p>
+              FEN input is parsed into a temporary position before activation. Four
+              fields default to counters zero and one; six fields require counters
+              within unsigned 16 bit storage and a positive fullmove number. Invalid
+              input preserves the previous position. Material is limited to sixteen
+              pieces and eight pawns per side, with one king each, no adjacent kings,
+              and no pawns on the first or last rank. This checks engine assumptions
+              without proving historical reachability. External moves pass through
+              <code>parse_uci_move</code>; the fast <code>make_move</code> path assumes
+              generated piece geometry and checks king safety.
+            </p>
             <ResourceLinks links={[
               { label: "Chess Programming Wiki: Bitboards", href: "https://www.chessprogramming.org/Bitboards" },
               { label: "Chess Programming Wiki: Move Generation", href: "https://www.chessprogramming.org/Move_Generation" },
@@ -527,10 +540,13 @@ if (!legal_moves) {
                              int ply) {
     count_node(context);
     if (context->stop) return 0;
-    if (ply >= MAX_PLY - 1) return evaluate(position);
-    if (position_is_draw(position)) return 0;
     bool in_check = side_in_check(position, position->side_to_move);
+	if (position_is_draw(position) || ply >= (context->limits.max_ply ? context->limits.max_ply : MAX_PLY - 1)) {
+		if (!has_legal_move(position)) return in_check ? -SCORE_MATE + ply : 0;
+		return position_is_draw(position) ? 0 : evaluate(position);
+	}
     if (!in_check) {
+		if (!has_legal_move(position)) return 0;
         int score = evaluate(position);
         if (score >= beta) return score;
         if (score > alpha) alpha = score;
@@ -560,7 +576,10 @@ if (!legal_moves) {
             >
               <p>
                 Stand pat is the score before making another tactical move. It is safe only
-                when the king is not in check. The search then tries captures and
+                when the king is not in check and has a legal move. A short legal move
+                probe checks king steps first and stops at the first valid move. This
+                extra work prevents stalemate from returning a stand pat score, even
+                on a cutoff. The search then tries captures and
                 promotions. A checked king must generate every escape. If none is legal,
                 the function returns the checkmate score.
               </p>
@@ -590,7 +609,7 @@ if (entry->flag == TT_UPPER_BOUND && score <= alpha) return score;`}
             >
               <p>
                 A transposition table remembers positions already searched. The Zobrist
-                fingerprint selects one 16 byte entry. The full fingerprint
+                fingerprint, halfmove clock, and reversible history select one 16 byte entry. The full fingerprint
                 confirms that the entry belongs to this exact position. A deep enough
                 result can save the entire repeated search. A shallower entry still gives
                 the engine a promising move to try first.
@@ -741,6 +760,15 @@ PROFILES = (
               player&apos;s accumulator is rebuilt only when its king enters a different
               location group or changes the mirrored view. Tests compare every cheap
               update with a complete refresh after both make and undo.
+            </p>
+            <p>
+              From the starting position, e2e4 removes feature 1931 and adds 1947 in
+              White&apos;s view, then removes 2291 and adds 2275 in Black&apos;s view.
+              Undo applies the opposite vector changes and restores rule state and the
+              overwritten history entry. Moving a king from d1 to e1 keeps the same
+              location group but flips the mirror, so every non king feature in that
+              perspective must be rebuilt. Castling also moves a rook; en passant removes
+              the captured pawn from a square other than the destination.
             </p>
             <CodeStudy
               code={`void add_nnue_feature(position_t *position, int piece, int square) {
@@ -1063,8 +1091,9 @@ python3 train/compare.py \
   build/p4eval --limit 1000 --split test`}</Code>
             <p>
               Run the same positions through Python integer inference and the C runtime,
-              then require exactly equal scores. The selected model matched all 1,000
-              comparison positions.
+              then require exactly equal scores. The historical model record reports 1,000 matching
+              comparison positions. This cleanup reran the small shared parity fixtures;
+              it did not reproduce that historical experiment.
             </p>
             <CodeStudy
               code={`python_scores = [evaluate_integer(model, fen) for fen in fens]
@@ -1125,7 +1154,7 @@ for index, (python_score, c_score) in enumerate(
             >
               <p>
                 Paired games give each candidate the same opening once as White and once
-                as Black. This reduces color and opening bias. The arena sends the full FEN
+                as Black. This reduces color and opening bias. The arena sends the initial FEN and subsequent moves
                 to each engine and checks every returned move with the Python chess
                 library before applying it.
               </p>
@@ -1142,7 +1171,7 @@ for index, (python_score, c_score) in enumerate(
   --openings test/openings.json --opening-count 128 \
   --estimate-elo`}</Code>
             <p>
-              I tested shapes 4x128, 8x64, 8x96, and 16x48. The first number is the king
+              I previously tested shapes 4x128, 8x64, 8x96, and 16x48. The first number is the king
               location group count. The second is the hidden width. The 4x128 and 8x96
               networks were indistinguishable in validation and games. The 4x128 model
               is 163,648 bytes smaller, so it became the reference.
@@ -1223,14 +1252,19 @@ if (!run_protocol_loop(&context, &port)) {
               <p>
                 Startup first checks the dedicated flash area for a complete uploaded model.
                 If it passes validation, the firmware reads it directly. Otherwise it uses
-                the model built into the firmware. The search table is the main writable
+                the model built into the firmware. Starting an upload switches to this
+                embedded fallback before erasing flash. The validity marker is written
+                last after checksum and format validation. An interrupted overwrite
+                guarantees access to the embedded fallback, not preservation of the old upload. The search table is the main writable
                 allocation. UART then waits for complete protocol messages.
               </p>
               <p>
                 This build uses one CPU core and a 32 KiB task stack in
                 <code>esp/sdkconfig.defaults</code>. Your board may need a different stack
-                or memory placement, so inspect its linker size report instead of copying
-                these numbers without checking.
+                or memory placement. Search has a twelve ply recursion cap, yields every
+                64 nodes, and has a maximum five second budget even for depth requests
+                and BENCH. Compiler stack reports guide this cap; physical stack high
+                water marks and watchdog behavior still require measurement.
               </p>
             </CodeStudy>
             <ResourceLinks links={[
@@ -1314,9 +1348,9 @@ python3 esp/board_client.py --port /dev/ttyACM0 search \
             </figure>
             <div className="hardware-status">
               <p>
-                The host chess core is verified and every tested Python and C integer score
-                matches. The firmware builds for ESP32 P4 and the board completed its first
-                physical boot.
+                The host suites include matching Python and C integer scores. Firmware 1.2
+                compiles with ESP IDF 6.0.2. The earlier photographs and guide record a
+                physical boot; this cleanup did not flash or run a board.
               </p>
               <p>
                 You should still measure search speed, power draw, free memory, and
@@ -1415,7 +1449,10 @@ const deviceResponse = await this.exchange(
               <p>
                 <code>requestChipSearch</code> sends <code>game.fen()</code> before every
                 search. It reads depth, time, positions searched, score, and move from the
-                29 byte result. The returned text must match UCI move notation and
+                29 byte result. A two second search request has a ten second browser
+                timeout. Disconnecting or timing out does not cancel chip computation.
+                The browser keeps full game history for adjudication; each FEN sent to
+                firmware starts a fresh search history. The returned text must match UCI move notation and
                 <code>chess.js</code> must accept it before the board changes.
               </p>
             </CodeStudy>
@@ -1427,7 +1464,7 @@ send device info
 validate target and model
 send complete fen
 wait for acknowledgement
-send depth 5 search
+send time budget 2000 ms search
 read 29 byte result
 validate returned uci move`}</Code>
             <div className="table-wrap" tabIndex={0}>
@@ -1478,7 +1515,7 @@ validate returned uci move`}</Code>
               If your network uses model format 3, four king location groups, width 128,
               and 328,480 bytes, you can embed it during the firmware build or upload it
               with <code>board_client.py</code>. The website needs no change because the
-              shape and serial messages remain identical.
+                shape and serial messages remain identical.
             </p>
             <Code>{`python3 esp/board_client.py \
   --port /dev/ttyACM0 upload path/to/model.nnue`}</Code>
@@ -1525,13 +1562,14 @@ if (
   disconnect(): Promise<void>;
   setPosition(fen: string): Promise<void>;
   searchDepth(depth: number): Promise<SearchResult>;
+  searchTime(moveTimeMs: number): Promise<SearchResult>;
 }`}
               path="web/src/device.ts"
               title="Use one browser interface"
             >
               <p>
                 <code>BoardTransport</code> is the small interface used by the chess page.
-                The page needs connection state, a complete FEN setter, and fixed depth
+                The page needs connection state, a complete FEN setter, and timed
                 search. Your target can use any board representation, search, or neural
                 network as long as it exposes compatible USB serial.
               </p>
@@ -1556,6 +1594,82 @@ if (
               { label: "Project browser tests: web/src/site.test.ts", href: source("web/src/site.test.ts") },
             ]} />
           </GuideSection>
+
+            <h3>Explain the core contracts</h3>
+            <p>
+              <a href={source("src/nnue.c")}>Model binding</a> borrows immutable bytes
+              aligned for 16 bit reads on a little endian host. File loading owns its
+              allocation until replacement or unload. A successful activation changes
+              the evaluator generation; rejected loads leave it unchanged.
+              <a href={source("src/evaluate.c")}>Evaluator synchronization</a> refreshes
+              the current position and clears the table after any activation, including
+              fallback activation followed by a storage error.
+            </p>
+            <p>
+              With at most 30 active features, the lowest accumulator is
+              <code> negative 28928 + 30 × negative 128 = negative 32768</code>;
+              the highest is <code>28957 + 30 × 127 = 32767</code>.
+              Raw inference keeps the C and Python integer contract. Search clamps that
+              result to ±29000. Mate is 30000 minus distance and infinity is 32000.
+              Table entries fit signed 16 bit scores, normalize mate distance when
+              storing and probing, and distinguish exact, lower, and upper bounds.
+            </p>
+            <p>
+              <a href={source("src/search.c")}>Search draw handling</a> gives mate
+              precedence over the fifty move shortcut. Two occurrences in the supplied
+              history count as a search cycle, while the browser adjudicates threefold
+              repetition. FEN alone has no earlier positions. The ring retains 256
+              positions and restores overwritten entries on undo. Table keys include
+              ordered reversible history and the clock, reducing reuse across contexts.
+              Hashing retains an en passant field even without an available capture,
+              so repetition detection is conservative in that case.
+            </p>
+            <p>
+              <a href={source("src/uci.c")}>Host UCI</a> starts in classical mode unless
+              a model path is supplied. One worker owns search state; the input loop can
+              answer isready or request stop. It joins the worker before changing the
+              model, position, or table. Infinite search waits for stop even after finding
+              mate. Firmware runs commands serially and cooperatively yields within its
+              enforced budget. Neither adapter permits concurrent model mutation.
+            </p>
+            <Code>{`./build/p4nnue --model models/reference.nnue
+./build/p4nnue --classical
+python3 train/benchmark.py build/p4bench models/reference.nnue
+python3 train/arena.py build/p4nnue models/reference.nnue build/p4nnue classic \
+  --depth 1 --max-plies 4 --opening-count 1`}</Code>
+            <p>
+              <a href={source("src/profile_bench.c")}>The update demonstration</a> checks
+              accumulators and raw scores over ordinary moves, en passant, castling,
+              promotion, and king view changes. Its timed comparison includes make and
+              undo with two evaluations on one side, and two full refreshes of prebuilt
+              positions with the same evaluations on the other. Parsing and parity
+              checks are outside timing; the refresh side excludes board mutation.
+              This measures those operations, not full search scaling or ESP throughput.
+              <a href={source("train/benchmark.py")}>Captured output</a> includes raw
+              repetitions, binary and model hashes, compiler flags, source state, and CPU.
+              Arena output includes legal moves and replayable PGN, with max plies
+              draws labeled explicitly. Historical result files remain historical;
+              missing original logs are not recreated by this demonstration.
+            </p>
+            <h3>Five questions to rehearse</h3>
+            <dl>
+              <dt>Why can one pawn move update the network cheaply?</dt>
+              <dd><a href={source("src/position.c")}>make_move</a> removes its old feature vector
+                and adds its new one in both perspectives. Undo reverses those changes.</dd>
+              <dt>Why rebuild when a king crosses from d1 to e1?</dt>
+              <dd><a href={source("src/nnue.c")}>nnue_king_mirror</a> changes even though the
+                location group stays equal, changing every piece square index in that view.</dd>
+              <dt>Why can a valid model still need a score clamp?</dt>
+              <dd>Representable output weights can predict more than a mate score.
+                <a href={source("src/evaluate.c")}>evaluate</a> reserves search scores while
+                <a href={source("src/nnue.c")}>evaluate_nnue</a> preserves raw parity.</dd>
+              <dt>What makes a model switch safe?</dt>
+              <dd>Stop the search owner, validate and activate bytes, then refresh and clear
+                cached scores. Storage errors after fallback activation require the same synchronization.</dd>
+              <dt>What does the firmware build prove?</dt>
+              <dd>Compilation and image size checks pass. They do not establish physical
+                search latency, stack margin, watchdog behavior, power draw, or playing strength.</dd>
+            </dl>
 
         </article>
       </div>

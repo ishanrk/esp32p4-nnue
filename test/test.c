@@ -1589,6 +1589,30 @@ static void test_search_structure_sizes(void) {
 }
 
 
+static bool cancel_test_search(void *argument) {
+	int *calls = argument;
+	++*calls;
+	return true;
+}
+
+
+static void test_search_control(void) {
+	position_t position;
+	set_start_position(&position);
+	position_t initial = position;
+	int calls = 0;
+	search_limits_t limits = {.depth = 6, .poll = cancel_test_search, .poll_context = &calls};
+	search_result_t result = search_position(&position, NULL, limits, NULL, NULL);
+	expect_true("cancel before first iteration", calls == 1 && result.depth == 0);
+	expect_true("cancel keeps legal fallback", search_move_is_legal(&position, result.best_move));
+	expect_position_state(&position, &initial);
+	limits = (search_limits_t){.depth = 6, .max_ply = 2};
+	result = search_position(&position, NULL, limits, NULL, NULL);
+	expect_true("bounded search depth", result.depth == 2);
+	expect_position_state(&position, &initial);
+}
+
+
 static void test_evaluator_changes(void *memory) {
 	unload_nnue();
 	clear_network_parameters(memory);
@@ -1600,6 +1624,15 @@ static void test_evaluator_changes(void *memory) {
 	expect_true("model switch table", resize_transposition_table(&table, 1));
 	search_result_t a = search_position(&position, &table, (search_limits_t){.depth = 2, .move_time_ms = 0}, NULL, NULL);
 	expect_true("model a score", a.score == 100);
+	expect_true("table history fixture", set_position_fen(&position, "7k/8/8/8/8/8/8/KN6 w - - 0 1"));
+	search_position(&position, &table, (search_limits_t){.depth = 3}, NULL, NULL);
+	expect_true("table fifty fixture", set_position_fen(&position, "7k/8/8/8/8/8/8/KN6 w - - 98 1"));
+	search_result_t history_warm = search_position(&position, &table, (search_limits_t){.depth = 3}, NULL, NULL);
+	clear_transposition_table(&table);
+	search_result_t history_cold = search_position(&position, &table, (search_limits_t){.depth = 3}, NULL, NULL);
+	expect_true("history table scores agree", history_warm.score == 0 && history_cold.score == 0);
+	set_start_position(&position);
+	search_position(&position, &table, (search_limits_t){.depth = 2}, NULL, NULL);
 	uint64_t generation = nnue_generation();
 	position_t saved = position;
 	expect_true("failed load", !load_nnue("/no/such/p4-model"));
@@ -1702,6 +1735,7 @@ int main(void) {
     test_transposition_table_search();
     test_search_timeout();
     test_evaluator_changes(network);
+    test_search_control();
 
     unload_nnue();
     free(network);
