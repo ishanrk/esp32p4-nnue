@@ -4,9 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define SCORE_INFINITY 32000
-#define SCORE_MATE 30000
-
 typedef struct {
     transposition_table_t *table;
     move_t killer_moves[MAX_PLY][2];
@@ -337,6 +334,7 @@ search_result_t search_position(position_t *position,
                                 search_info_fn info,
                                 void *context_argument) {
     search_result_t result;
+    synchronize_evaluator(position, table);
     memset(&result, 0, sizeof(result));
     search_context_t *context = calloc(1, sizeof(*context));
     if (!context) return result;

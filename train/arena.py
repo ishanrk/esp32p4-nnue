@@ -49,7 +49,7 @@ class UciEngine:
         self.executable = str(Path(executable).resolve())
         self.model = str(Path(model).resolve()) if model is not None else None
         self.process = subprocess.Popen(
-            [self.executable],
+            [self.executable, "--classical"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,

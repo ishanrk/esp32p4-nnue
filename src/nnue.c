@@ -15,6 +15,7 @@ typedef struct {
 } network_t;
 
 static network_t network;
+static uint64_t network_generation;
 
 _Static_assert(sizeof(NNUE_MAGIC) == NNUE_MAGIC_SIZE, "nnue magic size");
 _Static_assert((int)NNUE_PERSPECTIVE_COUNT == (int)COLOR_COUNT,
@@ -108,6 +109,7 @@ static bool bind_network(const void *data, size_t size, bool owns_memory) {
     network.memory = owns_memory ? (void *)data : NULL;
     network.owns_memory = owns_memory;
     network.loaded = true;
+    ++network_generation;
     return true;
 }
 
@@ -143,12 +145,18 @@ bool load_nnue(const char *path) {
 }
 
 void unload_nnue(void) {
+    if (network.loaded) ++network_generation;
     if (network.owns_memory) free(network.memory);
     memset(&network, 0, sizeof(network));
 }
 
 bool nnue_is_loaded(void) {
     return network.loaded;
+}
+
+
+uint64_t nnue_generation(void) {
+	return network_generation;
 }
 
 static int perspective_square(int square, int perspective, bool mirror) {

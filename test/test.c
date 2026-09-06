@@ -1537,6 +1537,51 @@ static void test_search_structure_sizes(void) {
     expect_u64("search result size", sizeof(search_result_t), 544);
 }
 
+
+static void test_evaluator_changes(void *memory) {
+	unload_nnue();
+	clear_network_parameters(memory);
+	write_i32_le(memory, NNUE_OUTPUT_BIAS_OFFSET, 100 * 4096);
+	expect_true("constant model a", bind_nnue(memory, NNUE_FILE_SIZE));
+	position_t position;
+	set_start_position(&position);
+	transposition_table_t table = {0};
+	expect_true("model switch table", resize_transposition_table(&table, 1));
+	search_result_t a = search_position(&position, &table, (search_limits_t){2, 0}, NULL, NULL);
+	expect_true("model a score", a.score == 100);
+	uint64_t generation = nnue_generation();
+	position_t saved = position;
+	expect_true("failed load", !load_nnue("/no/such/p4-model"));
+	synchronize_evaluator(&position, &table);
+	expect_u64("failed load generation", nnue_generation(), generation);
+	expect_memory("failed load state", &position, &saved, sizeof(position));
+	expect_true("failed load table preserved", !table_is_clear(&table));
+	unload_nnue();
+	write_i32_le(memory, NNUE_OUTPUT_BIAS_OFFSET, -100 * 4096);
+	expect_true("constant model b", bind_nnue(memory, NNUE_FILE_SIZE));
+	synchronize_evaluator(&position, &table);
+	expect_true("model switch clears table", table_is_clear(&table));
+	search_result_t warm = search_position(&position, &table, (search_limits_t){2, 0}, NULL, NULL);
+	clear_transposition_table(&table);
+	search_result_t cold = search_position(&position, &table, (search_limits_t){2, 0}, NULL, NULL);
+	expect_true("model b warm and cold", warm.score == -100 && cold.score == warm.score);
+	for (int sign = -1; sign <= 1; sign += 2) {
+		unload_nnue();
+		write_i32_le(memory, NNUE_OUTPUT_BIAS_OFFSET, sign * 163840000);
+		expect_true("extreme valid model", bind_nnue(memory, NNUE_FILE_SIZE));
+		synchronize_evaluator(&position, &table);
+		expect_true("raw inference retained", evaluate_nnue(&position) == sign * 40000);
+		expect_true("search inference clamped", evaluate(&position) == sign * SCORE_EVAL_MAX);
+		search_result_t result = search_position(&position, &table, (search_limits_t){2, 0}, NULL, NULL);
+		expect_true("extreme search score", result.score == sign * SCORE_EVAL_MAX);
+	}
+	unload_nnue();
+	synchronize_evaluator(&position, &table);
+	expect_true("classical switch clears table", table_is_clear(&table));
+	expect_true("classical start eval", evaluate(&position) == 0);
+	free_transposition_table(&table);
+}
+
 int main(void) {
     initialize_chess();
     test_search_structure_sizes();
@@ -1604,6 +1649,7 @@ int main(void) {
     test_deterministic_search();
     test_transposition_table_search();
     test_search_timeout();
+    test_evaluator_changes(network);
 
     unload_nnue();
     free(network);

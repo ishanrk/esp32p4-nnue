@@ -58,6 +58,7 @@ enum {
     MAX_PLY = 128,
     POSITION_HISTORY_SIZE = 256
 };
+enum { SCORE_INFINITY = 32000, SCORE_MATE = 30000, SCORE_EVAL_MAX = 29000 };
 enum {
     NNUE_FORMAT_VERSION = 3,
     NNUE_PERSPECTIVE_COUNT = 2,
@@ -168,6 +169,7 @@ _Static_assert(sizeof(tt_entry_t) == 16, "transposition entry size");
 typedef struct {
     tt_entry_t *entries;
     size_t count;
+    uint64_t evaluator_generation;
 } transposition_table_t;
 
 typedef struct {
@@ -220,6 +222,8 @@ bool validate_nnue(const void *data, size_t size);
 bool bind_nnue(const void *data, size_t size);
 void unload_nnue(void);
 bool nnue_is_loaded(void);
+uint64_t nnue_generation(void);
+void synchronize_evaluator(position_t *position, transposition_table_t *table);
 int nnue_king_bucket(int king_square, int perspective);
 bool nnue_king_mirror(int king_square, int perspective);
 int nnue_feature_index(int king_square,
@@ -245,6 +249,6 @@ search_result_t search_position(position_t *position,
                                 void *context);
 
 uint64_t current_time_ms(void);
-void run_uci_loop(transposition_table_t *table);
+void run_uci_loop(transposition_table_t *table, const char *model_path);
 
 #endif

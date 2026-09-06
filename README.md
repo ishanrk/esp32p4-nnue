@@ -26,8 +26,10 @@ results/    model comparison results
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
-./build/p4nnue
+./build/p4nnue --model models/reference.nnue
 ```
+
+Model paths are explicit and relative to the launching shell unless absolute. A requested model that cannot be loaded exits with an error. `--classical` (also the no-argument UCI-compatible mode) starts the handcrafted evaluator and reports that identity. UCI `setoption name EvalFile value PATH` activates a model; `<empty>` selects classical evaluation. Evaluator changes refresh the current position and clear cached search scores. Raw integer inference remains available through `p4eval`; search clamps predictions to ±29000 centipawns to reserve mate scores.
 
 ## ESP32 P4
 

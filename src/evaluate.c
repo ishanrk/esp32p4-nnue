@@ -18,7 +18,12 @@ static int piece_square_value(int type, int square, int color) {
 }
 
 int evaluate(const position_t *position) {
-    if (nnue_is_loaded()) return evaluate_nnue(position);
+    if (nnue_is_loaded()) {
+		int score = evaluate_nnue(position);
+		if (score > SCORE_EVAL_MAX) return SCORE_EVAL_MAX;
+		if (score < -SCORE_EVAL_MAX) return -SCORE_EVAL_MAX;
+		return score;
+	}
     int score = 0;
     for (int piece = 0; piece < PIECE_COUNT; ++piece) {
         int color = piece_color(piece);
@@ -31,4 +36,14 @@ int evaluate(const position_t *position) {
         }
     }
     return position->side_to_move == WHITE ? score : -score;
+}
+
+
+void synchronize_evaluator(position_t *position, transposition_table_t *table) {
+	if (table && table->evaluator_generation == nnue_generation()) return;
+	if (position) refresh_nnue(position);
+	if (table) {
+		clear_transposition_table(table);
+		table->evaluator_generation = nnue_generation();
+	}
 }

@@ -61,7 +61,7 @@ static board_protocol_error_t begin_model_upload(void *argument,
     firmware_context_t *context = argument;
     board_protocol_error_t error = model_storage_begin(
         &context->model_storage, model_bytes, model_crc32);
-    if (!error && context->position_valid) refresh_nnue(&context->position);
+    synchronize_evaluator(context->position_valid ? &context->position : NULL, &context->table);
     return error;
 }
 
@@ -77,7 +77,7 @@ static board_protocol_error_t commit_model_upload(void *argument) {
     firmware_context_t *context = argument;
     board_protocol_error_t error = model_storage_commit(
         &context->model_storage);
-    if (!error && context->position_valid) refresh_nnue(&context->position);
+    synchronize_evaluator(context->position_valid ? &context->position : NULL, &context->table);
     return error;
 }
 

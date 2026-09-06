@@ -9,9 +9,9 @@ static void print_search_info(const search_result_t *result, void *context) {
     printf("info depth %d nodes %llu time %llu ", result->depth,
            (unsigned long long)result->nodes,
            (unsigned long long)result->elapsed_ms);
-    if (result->score > 29000) {
+    if (result->score > SCORE_MATE - MAX_PLY) {
         printf("score mate %d ", (30000 - result->score + 1) / 2);
-    } else if (result->score < -29000) {
+    } else if (result->score < -SCORE_MATE + MAX_PLY) {
         printf("score mate -%d ", (30000 + result->score + 1) / 2);
     } else {
         printf("score cp %d ", result->score);
@@ -32,27 +32,32 @@ static void print_search_info(const search_result_t *result, void *context) {
 }
 
 static void set_uci_position(position_t *position, char *line) {
+    position_t candidate;
     char *moves = strstr(line, " moves ");
     if (moves) *moves = '\0';
 
-    if (!strncmp(line, "position startpos", 17)) {
-        set_start_position(position);
+    if (!strcmp(line, "position startpos")) {
+        set_start_position(&candidate);
     } else if (!strncmp(line, "position fen ", 13)) {
-        set_position_fen(position, line + 13);
+        if (!set_position_fen(&candidate, line + 13)) {
+			puts("info string invalid position fen");
+			return;
+		}
     } else {
         return;
     }
 
-    if (!moves) return;
+    if (!moves) { *position = candidate; return; }
     char *move_text = moves + 7;
     for (char *token = strtok(move_text, " \t\r\n");
          token;
          token = strtok(NULL, " \t\r\n")) {
-        move_t move = parse_uci_move(position, token);
-        if (!move) break;
+        move_t move = parse_uci_move(&candidate, token);
+        if (!move) { puts("info string invalid position move"); return; }
         undo_t undo;
-        if (!make_move(position, move, &undo)) break;
+        if (!make_move(&candidate, move, &undo)) return;
     }
+    *position = candidate;
 }
 
 static search_limits_t parse_search_limits(position_t *position, char *line) {
@@ -95,19 +100,24 @@ static search_limits_t parse_search_limits(position_t *position, char *line) {
     return limits;
 }
 
-void run_uci_loop(transposition_table_t *table) {
+void run_uci_loop(transposition_table_t *table, const char *model_path) {
     position_t position;
     set_start_position(&position);
+    synchronize_evaluator(&position, table);
+    char active_model[4096];
+    snprintf(active_model, sizeof(active_model), "%s", model_path ? model_path : "<empty>");
 
     char line[4096];
     while (fgets(line, sizeof(line), stdin)) {
+        line[strcspn(line, "\r\n")] = 0;
         if (!strcmp(line, "uci\n") || !strcmp(line, "uci\r\n") ||
             !strcmp(line, "uci")) {
             puts("id name esp32p4 nnue");
             puts("id author ishan kumthekar");
 #ifndef ESP_PLATFORM
             puts("option name Hash type spin default 1 min 1 max 256");
-            puts("option name EvalFile type string default nn.bin");
+            printf("option name EvalFile type string default %s\n", active_model);
+            printf("info string evaluator %s model %s\n", nnue_is_loaded() ? "nnue" : "classical", active_model);
 #endif
             puts("uciok");
         } else if (!strncmp(line, "isready", 7)) {
@@ -126,15 +136,22 @@ void run_uci_loop(transposition_table_t *table) {
         } else if (!strncmp(line, "setoption name EvalFile value ", 30)) {
             char *path = line + 30;
             path[strcspn(path, "\r\n")] = '\0';
-            if (load_nnue(path)) {
-                refresh_nnue(&position);
+            if (!strcmp(path, "<empty>")) {
+				unload_nnue();
+				synchronize_evaluator(&position, table);
+				snprintf(active_model, sizeof(active_model), "%s", path);
+				puts("info string evaluator classical");
+            } else if (load_nnue(path)) {
+                synchronize_evaluator(&position, table);
+                snprintf(active_model, sizeof(active_model), "%s", path);
                 puts("info string nn loaded");
+                printf("info string evaluator nnue model %s\n", active_model);
             } else {
                 puts("info string nn load failed");
             }
 #endif
         } else if (!strncmp(line, "go ", 3) ||
-                   !strcmp(line, "go\n") ||
+                   !strcmp(line, "go") ||
                    !strcmp(line, "go\r\n")) {
             char copy[4096];
             memcpy(copy, line, sizeof(copy));

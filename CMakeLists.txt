@@ -101,6 +101,12 @@ if(BUILD_TESTING)
     target_compile_options(p4protocoltest PRIVATE ${P4_WARNINGS})
     add_test(NAME p4protocol COMMAND p4protocoltest)
 
+	add_executable(p4storagetest test/model_storage_test.c esp/main/model_storage.c esp/protocol.c)
+	target_include_directories(p4storagetest PRIVATE test/stubs esp esp/main)
+	target_link_libraries(p4storagetest PRIVATE p4core)
+	target_compile_options(p4storagetest PRIVATE ${P4_WARNINGS})
+	add_test(NAME p4storage COMMAND p4storagetest)
+
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
         add_test(
