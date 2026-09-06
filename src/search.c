@@ -47,12 +47,47 @@ void clear_transposition_table(transposition_table_t *table) {
 
 static bool position_is_draw(const position_t *position) {
     if (position->halfmove_clock >= 100) return true;
-    int end = (int)position->history_count - 1 - position->halfmove_clock;
-    if (end < 0) end = 0;
-    for (int i = (int)position->history_count - 3; i >= end; i -= 2) {
-        if (position->history[i] == position->key) return true;
-    }
+	for (int age = 2; age < position->history_count && age <= position->halfmove_clock; age += 2) {
+		int index = (position->history_head + POSITION_HISTORY_SIZE - 1 - age) % POSITION_HISTORY_SIZE;
+		if (position->history[index] == position->key) return true;
+	}
     return false;
+}
+
+
+static uint64_t search_position_key(const position_t *position) {
+	uint64_t key = position->key ^ ((uint64_t)position->halfmove_clock * UINT64_C(0x9e3779b97f4a7c15));
+	int count = position->history_count;
+	if (count > position->halfmove_clock + 1) count = position->halfmove_clock + 1;
+	for (int age = count - 1; age >= 0; --age) {
+		int index = (position->history_head + POSITION_HISTORY_SIZE - 1 - age) % POSITION_HISTORY_SIZE;
+		key = ((key << 7) | (key >> 57)) ^ position->history[index];
+		key *= UINT64_C(0x9e3779b97f4a7c15);
+	}
+	return key;
+}
+
+
+static bool has_legal_move(position_t *position) {
+	int side = position->side_to_move;
+	int king = find_king_square(position, side);
+	bitboard_t targets = king_attacks[king] & ~position->occupancy[ALL_PIECES];
+	while (targets) {
+		move_t move = PACK_MOVE(king, pop_first_square(&targets), 0, 0);
+		undo_t undo;
+		if (!make_move(position, move, &undo)) continue;
+		undo_move(position, move, &undo);
+		return true;
+	}
+	move_list_t list;
+	generate_moves(position, &list, false);
+	for (int i = 0; i < list.count; ++i) {
+		undo_t undo;
+		if (!make_move(position, list.moves[i], &undo)) continue;
+		undo_move(position, list.moves[i], &undo);
+		return true;
+	}
+	return false;
 }
 
 static int probe_transposition_table(search_context_t *context,
@@ -165,10 +200,13 @@ static int quiescence_search(search_context_t *context,
                              int ply) {
     count_node(context);
     if (context->stop) return 0;
-    if (ply >= MAX_PLY - 1) return evaluate(position);
-    if (position_is_draw(position)) return 0;
     bool in_check = side_in_check(position, position->side_to_move);
+	if (position_is_draw(position) || ply >= MAX_PLY - 1) {
+		if (!has_legal_move(position)) return in_check ? -SCORE_MATE + ply : 0;
+		return position_is_draw(position) ? 0 : evaluate(position);
+	}
     if (!in_check) {
+		if (!has_legal_move(position)) return 0;
         int score = evaluate(position);
         if (score >= beta) return score;
         if (score > alpha) alpha = score;
@@ -202,19 +240,21 @@ static int principal_variation_search(search_context_t *context,
                                       int ply) {
     count_node(context);
     if (context->stop) return 0;
-    if (ply >= MAX_PLY - 1) return evaluate(position);
-    if (position_is_draw(position)) return 0;
-
     bool in_check = side_in_check(position, position->side_to_move);
+	if (position_is_draw(position) || ply >= MAX_PLY - 1) {
+		if (!has_legal_move(position)) return in_check ? -SCORE_MATE + ply : 0;
+		return position_is_draw(position) ? 0 : evaluate(position);
+	}
     if (in_check) ++depth;
     if (depth <= 0) {
         return quiescence_search(context, position, alpha, beta, ply);
     }
 
     int original_alpha = alpha;
+    uint64_t key = search_position_key(position);
     move_t table_move = 0;
     int table_score = probe_transposition_table(
-        context, position->key, depth, alpha, beta, ply, &table_move);
+        context, key, depth, alpha, beta, ply, &table_move);
     if (table_score != SCORE_INFINITY && ply) return table_score;
 
     move_list_t list;
@@ -292,7 +332,7 @@ static int principal_variation_search(search_context_t *context,
     int flag = best_score <= original_alpha
                    ? TT_UPPER_BOUND
                    : best_score >= beta ? TT_LOWER_BOUND : TT_EXACT;
-    store_transposition_entry(context, position->key, depth, best_score,
+    store_transposition_entry(context, key, depth, best_score,
                               flag, best_move, ply);
     if (!ply) context->root_best_move = best_move;
     return best_score;
@@ -320,9 +360,9 @@ static int reconstruct_principal_variation(position_t *line,
         if (!make_principal_variation_move(line, move)) break;
         variation[count++] = move;
         if (position_is_draw(line) || !table || !table->count) break;
-        const tt_entry_t *entry =
-            &table->entries[line->key & (table->count - 1)];
-        if (entry->key != line->key) break;
+        uint64_t key = search_position_key(line);
+        const tt_entry_t *entry = &table->entries[key & (table->count - 1)];
+        if (entry->key != key) break;
         move = entry->move;
     }
     return count;

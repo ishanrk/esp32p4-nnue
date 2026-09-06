@@ -159,7 +159,7 @@ uint64_t calculate_position_hash(const position_t *position) {
 
 static bool parse_fen_number(const char *text, size_t size, uint16_t *value) {
 	unsigned number = 0;
-	if (!size) return false;
+	if (!size || size > 5) return false;
 	for (size_t i = 0; i < size; ++i) {
 		if (text[i] < '0' || text[i] > '9') return false;
 		unsigned digit = (unsigned)(text[i] - '0');
@@ -247,6 +247,7 @@ static bool parse_position_fen(position_t *position, const char *fen) {
     position->key = calculate_position_hash(position);
     position->history_count = 1;
     position->history[0] = position->key;
+    position->history_head = 1;
     return position_is_valid(position);
 }
 
@@ -394,7 +395,7 @@ bool make_move(position_t *position, move_t move, undo_t *undo) {
             rank_delta < -1 || rank_delta > 1) return false;
     }
 
-    undo->key = position->key;
+    undo->history_key = position->history[position->history_head];
     undo->halfmove_clock = position->halfmove_clock;
     undo->fullmove_number = position->fullmove_number;
     undo->history_count = position->history_count;
@@ -456,9 +457,9 @@ bool make_move(position_t *position, move_t move, undo_t *undo) {
     position->side_to_move = (uint8_t)opponent;
     position->key ^= zobrist_side;
     if (side == BLACK && position->fullmove_number < UINT16_MAX) ++position->fullmove_number;
-    if (position->history_count < POSITION_HISTORY_SIZE) {
-        position->history[position->history_count++] = position->key;
-    }
+	position->history[position->history_head] = position->key;
+	position->history_head = (uint8_t)((position->history_head + 1u) % POSITION_HISTORY_SIZE);
+	if (position->history_count < POSITION_HISTORY_SIZE) ++position->history_count;
 
     int king_square = find_king_square(position, side);
     if (king_square == NO_SQUARE || square_is_attacked(position, king_square, opponent)) {
@@ -473,6 +474,8 @@ void undo_move(position_t *position, move_t move, const undo_t *undo) {
     int to = MOVE_TO(move);
     int flags = MOVE_FLAGS(move);
     int side = position->side_to_move ^ 1;
+	position->key ^= zobrist_side ^ zobrist_castling[position->castling];
+	if (position->en_passant != NO_SQUARE) position->key ^= zobrist_en_passant[position->en_passant & 7];
     bool rebuild_king_view =
         nnue_is_loaded() && piece_type(undo->moved_piece) == KING &&
         (position->king_bucket[side] != undo->king_bucket ||
@@ -507,9 +510,12 @@ void undo_move(position_t *position, move_t move, const undo_t *undo) {
     position->halfmove_clock = undo->halfmove_clock;
     position->fullmove_number = undo->fullmove_number;
     position->history_count = undo->history_count;
+	position->history_head = (uint8_t)((position->history_head + POSITION_HISTORY_SIZE - 1u) % POSITION_HISTORY_SIZE);
+	position->history[position->history_head] = undo->history_key;
     position->king_bucket[side] = undo->king_bucket;
     position->king_mirror[side] = undo->king_mirror;
-    position->key = undo->key;
+	position->key ^= zobrist_castling[position->castling];
+	if (position->en_passant != NO_SQUARE) position->key ^= zobrist_en_passant[position->en_passant & 7];
     if (rebuild_king_view) refresh_nnue_perspective(position, side);
 }
 

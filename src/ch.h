@@ -141,10 +141,11 @@ typedef struct {
     uint8_t side_to_move;
     uint8_t castling;
     uint8_t en_passant;
+    uint8_t history_head;
 } position_t;
 
 typedef struct {
-    uint64_t key;
+    uint64_t history_key;
     uint16_t halfmove_clock;
     uint16_t fullmove_number;
     uint16_t history_count;

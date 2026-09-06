@@ -1,4 +1,5 @@
 #include "ch.h"
+#include "../src/search.c"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -321,6 +322,8 @@ static void expect_position_state(const position_t *position,
     expect_u64("restored hash", position->key, expected->key);
     expect_u64("restored history count", position->history_count,
                expected->history_count);
+	expect_u64("restored history head", position->history_head, expected->history_head);
+	expect_memory("restored history", position->history, expected->history, sizeof(position->history));
 }
 
 static move_t find_generated_move(const position_t *position,
@@ -1314,6 +1317,16 @@ static void test_terminal_search(void) {
     expect_true("checkmate score", result.score < -29000);
     expect_u64("checkmate best move", result.best_move, 0);
     expect_position_state(&position, &initial);
+	search_context_t context = {0};
+	expect_true("quiescence stalemate fen", set_position_fen(
+		&position, "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1"));
+	expect_true("quiescence stalemate", quiescence_search(&context, &position, -SCORE_INFINITY, SCORE_INFINITY, 1) == 0);
+	expect_true("quiescence stalemate cutoff", quiescence_search(&context, &position, -2000, -1000, 1) == 0);
+	expect_true("mate at fifty fen", set_position_fen(
+		&position, "7k/6Q1/5K2/8/8/8/8/8 b - - 100 1"));
+	result = search_position(&position, NULL, (search_limits_t){1, 0}, NULL, NULL);
+	expect_true("mate before fifty move draw", result.score == -SCORE_MATE && !result.best_move);
+	expect_true("quiescence mate before draw", quiescence_search(&context, &position, -SCORE_INFINITY, SCORE_INFINITY, 1) == -SCORE_MATE + 1);
 
     expect_true("stalemate fen", set_position_fen(
         &position, "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1"));
@@ -1387,6 +1400,44 @@ static void test_draw_search(void) {
     expect_true("repetition fallback",
                 search_move_is_legal(&position, result.best_move));
     expect_position_state(&position, &initial);
+}
+
+
+static void test_long_history(void) {
+	position_t position;
+	set_start_position(&position);
+	position_t initial = position;
+	move_t moves[284];
+	undo_t undo[284];
+	const char *cycle[] = {"g1f3", "g8f6", "f3g1", "f6g8"};
+	for (int i = 0; i < 284; ++i) {
+		const char *text = i < 280 ? cycle[i % 4] :
+			i == 280 ? "e2e4" : i == 281 ? "g8f6" : i == 282 ? "g1f3" : "f6g8";
+		moves[i] = parse_uci_move(&position, text);
+		expect_true("long history legal", moves[i] && make_move(&position, moves[i], &undo[i]));
+	}
+	expect_true("history tracks latest key", position.history[(position.history_head + 255u) % 256u] == position.key);
+	expect_true("pawn move ends repetition window", !position_is_draw(&position));
+	move_t move = parse_uci_move(&position, "f3g1");
+	undo_t last;
+	expect_true("long history repetition move", make_move(&position, move, &last));
+	move_t black = parse_uci_move(&position, "g8f6");
+	undo_t black_undo;
+	expect_true("long history repeated side", make_move(&position, black, &black_undo));
+	expect_true("long history repetition found", position_is_draw(&position));
+	undo_move(&position, black, &black_undo);
+	undo_move(&position, move, &last);
+	for (int i = 283; i >= 0; --i) undo_move(&position, moves[i], &undo[i]);
+	expect_position_state(&position, &initial);
+	position_t different = position;
+	different.halfmove_clock = 99;
+	expect_true("table distinguishes halfmove context", search_position_key(&position) != search_position_key(&different));
+	different = position;
+	different.history_count = 2;
+	different.history_head = 2;
+	different.history[1] = position.key;
+	different.halfmove_clock = position.halfmove_clock = 1;
+	expect_true("table distinguishes history context", search_position_key(&position) != search_position_key(&different));
 }
 
 static void test_deterministic_search(void) {
@@ -1646,6 +1697,7 @@ int main(void) {
 
     test_terminal_search();
     test_draw_search();
+    test_long_history();
     test_deterministic_search();
     test_transposition_table_search();
     test_search_timeout();
