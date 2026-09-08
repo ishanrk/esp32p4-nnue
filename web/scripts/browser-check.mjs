@@ -33,12 +33,14 @@ try {
       return clone.textContent;
     });
     assert.doesNotMatch(prose,/[-–—/]/,`public prose in ${route}`);
+    assert.doesNotMatch(prose,/Physical engine|Game ready|The chip chooses each move/i);
+    assert.equal(await page.locator('main a[href*=".md"]').count(),0,`no raw Markdown destinations in ${route}`);
     const contrastFailures = await page.evaluate(() => {
       const rgb = value => value.match(/[\d.]+/g)?.map(Number);
       const luminance = color => color.slice(0,3).map(value => {
         const s = value/255; return s <= .04045 ? s/12.92 : ((s+.055)/1.055)**2.4;
       }).reduce((sum,value,index)=>sum+value*[.2126,.7152,.0722][index],0);
-      return [...document.querySelectorAll("main p, main h1, main h2, main label, main summary, main th, main td, main button:not(:disabled), nav a")].flatMap(element => {
+      return [...document.querySelectorAll("main p, main h1, main h2, main h3, main a, main label, main summary, main th, main td, main button:not(:disabled), nav a")].flatMap(element => {
         if (!element.getBoundingClientRect().width || !element.textContent.trim()) return [];
         const style = getComputedStyle(element);
         const foreground = rgb(style.color);
@@ -59,8 +61,21 @@ try {
     const assets = await page.locator("main img").evaluateAll(images => images.map(image => image.getAttribute("src")));
     for (const asset of assets) assert.equal((await page.request.get(asset)).status(),200,asset);
     for (const link of await page.locator('main a[href^="/docs/"]').evaluateAll(xs=>xs.map(x=>x.getAttribute("href")))) assert.equal((await page.request.get(link)).status(),200,link);
-    if (["play","setup","integration"].includes(route)) await page.screenshot({path:resolve(evidence,`after-${route}.png`)});
+    if (["play","setup","integration","how-it-works"].includes(route)) await page.screenshot({path:resolve(evidence,`after-${route}.png`)});
   }
+  await page.goto("http://127.0.0.1:4173/#setup");
+  await page.locator(".setup-connector img").scrollIntoViewIfNeeded();
+  await page.locator(".setup-connector img").evaluate(image => image.decode());
+  await page.locator(".setup-connector").screenshot({path:resolve(evidence,"after-setup-connector.png")});
+  await page.locator(".setup-playing").scrollIntoViewIfNeeded();
+  await page.locator(".setup-playing img").evaluate(image => image.decode());
+  await page.locator(".setup-playing").screenshot({path:resolve(evidence,"after-setup-game-photo.png")});
+  await page.goto("http://127.0.0.1:4173/#how-it-works");
+  await page.getByRole("link",{name:"Search",exact:true}).click();
+  assert.ok(await page.locator("#guide-search").evaluate(section => Math.abs(section.getBoundingClientRect().top) < 200));
+  await page.goto("http://127.0.0.1:4173/#guide-inference");
+  await page.locator("#guide-inference").waitFor();
+  await page.waitForFunction(() => Math.abs(document.getElementById("guide-inference").getBoundingClientRect().top) < 200);
   for(const width of [390,768]) {
     await page.setViewportSize({width,height:844});
     await page.goto("http://127.0.0.1:4173/#play");
@@ -69,6 +84,12 @@ try {
     await page.goto("http://127.0.0.1:4173/#setup"); await page.locator("h1").waitFor();
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth),true,`width ${width}`);
     await page.screenshot({path:resolve(evidence,`after-narrow-${width}.png`)});
+    for (const route of ["integration", "how-it-works"]) {
+      await page.goto(`http://127.0.0.1:4173/#${route}`);
+      await page.locator("h1").waitFor();
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth),true,`${route} width ${width}`);
+      await page.screenshot({path:resolve(evidence,`after-${route}-narrow-${width}.png`)});
+    }
   }
   await page.setViewportSize({width:1366,height:768});
   await page.goto("http://127.0.0.1:4173/#play");
@@ -141,7 +162,8 @@ try {
   await page.screenshot({path:resolve(evidence,"custom-host-live-app-test.png")});
   await page.getByRole("button",{name:"Black",exact:true}).click();
   await page.locator(".engine-response").waitFor({timeout:15000});
-  assert.equal((await page.locator(".board-meta span").first().innerText()).toLowerCase(),"black board orientation");
+  assert.equal(await page.locator(".chessboard").getAttribute("aria-label"),"chessboard from black side");
+  assert.equal(await page.locator(".chessboard [data-square]").first().getAttribute("data-square"),"h1");
   await page.getByRole("button",{name:"disconnect board",exact:true}).click();
   await page.getByRole("button",{name:"Connect board",exact:true}).waitFor();
   await page.keyboard.press("Tab");

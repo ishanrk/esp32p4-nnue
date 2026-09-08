@@ -44,7 +44,7 @@ const PROMOTIONS: Array<{ value: PieceSymbol; label: string }> = [
 
 type ConnectionState = "disconnected" | "connecting" | "connected" | "disconnecting";
 type PromotionChoice = { from: Square; to: Square };
-export type SiteView = "play" | "setup" | "integration" | "how" | "recorded" | "results";
+export type SiteView = "play" | "setup" | "integration" | "how" | "results";
 
 const Guide = lazy(async () => import("./guide").then((module) => ({ default: module.Guide })));
 
@@ -112,9 +112,9 @@ export function App() {
   useEffect(() => {
     document.title = siteView === "play"
       ? "Play | ESP32 P4 NNUE"
-      : `${siteView === "setup" ? "Set up a board" : siteView === "integration" ? "Connect your own engine" : siteView === "recorded" ? "Recorded game" : siteView === "results" ? "Results" : "How it works"} | ESP32 P4 NNUE`;
+      : `${siteView === "setup" ? "Set up a board" : siteView === "integration" ? "Connect your own engine" : siteView === "results" ? "Results" : "How it works"} | ESP32 P4 NNUE`;
     window.scrollTo(0, 0);
-  }, [siteHash, siteView]);
+  }, [siteView]);
 
   useEffect(() => {
     if (!thinking) {
@@ -371,20 +371,15 @@ export function App() {
           <span aria-hidden="true" className="view-anchor" id="play" />
           <section className="play-intro" aria-labelledby="page-title">
             <div className="play-intro-copy">
-              <p className="eyebrow">Chess on your board</p>
-              <h1 id="page-title">Play against your chip</h1>
+              <h1 id="page-title">ESP32 P4 chess engine</h1>
               <p>
-                The chip chooses each move. This page displays the game.
+                I built this chess engine to run on an ESP32 P4. Connect your board to play, or read the guides to follow the code.
               </p>
             </div>
           </section>
 
           <section className="play-area" aria-label="Hardware chess game">
             <div className="board-column">
-              <div className="board-meta" aria-hidden="true">
-                <span>{boardOrientation === "w" ? "White" : "Black"} board orientation</span>
-                <span>{boardRef.current?.capabilities?.engineName ?? "Physical engine"}</span>
-              </div>
               <div className="board-frame">
                 <Chessboard
                   disabled={boardDisabled}
@@ -473,7 +468,7 @@ export function App() {
                   <p className="support-note">Use Chrome or Edge on a secure page to connect a board</p>
                 )}
               </div>
-              <p className="journey-links"><a href="#setup">Set up a board</a><a href="#recorded">Recorded game and photographs</a><a href="#results">Results</a></p>
+              <p className="journey-links"><a href="#setup">Set up your board</a><a href="#how-it-works">Read the engine guide</a><a href="#results">Results</a></p>
               {thinking && <p>{boardRef.current?.capabilities && !(boardRef.current.capabilities.features & 2)
                 ? `Requested depth ${Math.min(5, boardRef.current.capabilities.maximumDepth)}`
                 : `Requested ${Math.min(SEARCH_TIME_MS, boardRef.current?.capabilities?.maximumTimeMs ?? SEARCH_TIME_MS) / 1000} seconds. This is a search budget, not an exact completion time.`}</p>}
@@ -557,7 +552,7 @@ export function App() {
       )}
 
       <footer className="site-footer">
-        <span>Chess on a connected microcontroller</span>
+        <span>Ishan Kumthekar</span>
         <div>
           <a href="/THIRD_PARTY_LICENSES.txt">Asset credits and licenses</a>
           <a href="https://github.com/ishanrk/esp32p4-nnue">source</a>
@@ -570,12 +565,10 @@ export function App() {
 
 function MoveHistory({ game }: { game: Chess }) {
   const rows = moveHistory(game);
+  if (rows.length === 0) return null;
   return (
     <div className="move-history">
       <span className="move-history-label">moves</span>
-      {rows.length === 0 ? (
-        <span className="empty-history">game ready</span>
-      ) : (
         <ol aria-label="Move history">
           {rows.map((row) => (
             <li key={row.move}>
@@ -585,7 +578,6 @@ function MoveHistory({ game }: { game: Chess }) {
             </li>
           ))}
         </ol>
-      )}
     </div>
   );
 }
@@ -607,7 +599,7 @@ function downloadPgn(game: Chess): void {
 export function siteViewFromHash(hash: string): SiteView {
   if (hash === "#setup" || hash === "#guide" || hash === "#guide-content" || hash === "#guide-hardware") return "setup";
   if (hash === "#integration" || hash === "#guide-browser") return "integration";
-  if (hash === "#recorded") return "recorded";
+  if (hash === "#recorded") return "setup";
   if (hash === "#results") return "results";
   if (hash.startsWith("#guide-")) return "how";
   if (hash === "#how-it-works") return "how";

@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import "./reliability.test";
 import { Chess, DEFAULT_POSITION } from "chess.js";
 import { createElement } from "react";
@@ -140,7 +142,30 @@ function publicCopyTests(): void {
   assert.match(setup, /Connect board/);
   assert.match(integration, /same website/);
   assert.match(integration, /model upload/i);
-  assert.match(how, /The connected chip chooses its own move/);
+  assert.match(how, /principal_variation_search/);
+  assert.match(how, /undo_move/);
+  assert.match(how, /refresh_nnue_perspective/);
+  assert.match(setup, /esp32-p4-browser-game.jpg/);
+  assert.match(how, /esp32-p4-test-setup.jpg/);
+  const stepNumbers = [...setup.matchAll(/<h2>(\d+)\./g)].map(match => Number(match[1]));
+  assert.ok(stepNumbers.length > 0);
+  assert.deepEqual(stepNumbers, stepNumbers.map((_, index) => index + 1));
+  const root = resolve(import.meta.dirname, "../..");
+  for (const markup of [setup, integration, how, renderToStaticMarkup(createElement(Guide, {view:"results"}))]) {
+    assert.doesNotMatch(markup, /href="[^"]*\.md(?:[?#][^"]*)?"/);
+    for (const match of markup.matchAll(/href="https:\/\/github.com\/ishanrk\/esp32p4-nnue\/blob\/main\/([^"]+)"/g)) {
+      assert.ok(existsSync(resolve(root, match[1])), `source link exists: ${match[1]}`);
+    }
+  }
+  // Published callback and loop excerpts must continue to match the compiled example.
+  const hostSource = readFileSync(resolve(root, "examples/host_device.c"), "utf8").replace(/\s+/g, " ");
+  const decodeText = (text: string) => text.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;/g, "'");
+  for (const block of integration.matchAll(/<pre[^>]*><code>([\s\S]*?)<\/code><\/pre>/g)) {
+    const code = decodeText(block[1]);
+    if (code.startsWith("static board_protocol_error_t set_position") || code.startsWith("board_protocol_backend_t backend")) {
+      assert.ok(hostSource.includes(code.replace(/\s+/g, " ")), "guide excerpt matches executable host example");
+    }
+  }
 }
 
 protocolTests();

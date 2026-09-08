@@ -1441,6 +1441,20 @@ tbody th {
 .guide-page table { width: 100%; border-collapse: collapse; font-size: .9rem; }
 .guide-page td, .guide-page th { padding: .65rem; text-align: left; border-bottom: 1px solid #658087; }
 .guide-page code { color: inherit; }
+.guide-page a { color: var(--gold); text-decoration: underline; text-underline-offset: .2em; }
+.guide-page a:hover { color: var(--paper); }
+.guide-page h3 { margin: 1.8rem 0 .6rem; font-size: 1.25rem; color: var(--paper); }
+.guide-page p, .guide-page li { line-height: 1.7; }
+.guide-page li { margin-bottom: .6rem; }
+.guide-page td { overflow-wrap: anywhere; }
+.setup-connector { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .9fr); gap: 1.5rem; align-items: start; }
+.guide-page .setup-playing { max-width: 660px; margin: 1.8rem auto; }
+.guide-notes { margin-top: 2rem; border-top: 1px solid #658087; padding-top: 1rem; }
+.guide-notes summary { cursor: pointer; min-height: 44px; color: var(--gold); }
+.reading-links { display: flex; flex-wrap: wrap; gap: .6rem 1.3rem; margin: 1.5rem 0; }
+.reading-links a { min-height: 44px; display: inline-flex; align-items: center; }
+.guide-section[id] { scroll-margin-top: 110px; }
+@media (max-width: 650px) { .setup-connector { grid-template-columns: minmax(0, 1fr); gap: .5rem; } }
 @media (min-width: 1000px) and (min-height: 650px) {
   .play-area { grid-template-columns: minmax(0, min(580px, calc(100dvh - 310px))) minmax(280px, 1fr); }
 }
