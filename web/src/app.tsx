@@ -112,7 +112,7 @@ export function App() {
   useEffect(() => {
     document.title = siteView === "play"
       ? "Play | ESP microcontroller chess engine"
-      : `${siteView === "setup" ? "Set up a board" : siteView === "integration" ? "Connect your own engine" : siteView === "results" ? "Results" : "How it works"} | ESP microcontroller chess engine`;
+      : `${siteView === "setup" ? "Set up a board" : siteView === "integration" ? "Connect your own engine" : siteView === "results" ? "Results" : "Engine guide"} | ESP microcontroller chess engine`;
     window.scrollTo(0, 0);
   }, [siteView]);
 
@@ -360,7 +360,7 @@ export function App() {
             <a aria-current={siteView === "play" ? "page" : undefined} href="#play">Play</a>
             <a aria-current={siteView === "setup" ? "page" : undefined} href="#setup">Set up a board</a>
             <a aria-current={siteView === "integration" ? "page" : undefined} href="#integration">Connect your own engine</a>
-            <a aria-current={siteView === "how" ? "page" : undefined} href="#how-it-works">How it works</a>
+            <a aria-current={siteView === "how" ? "page" : undefined} href="#how-it-works">Engine guide</a>
             <a href="https://github.com/ishanrk/esp32p4-nnue">Source</a>
           </div>
         </nav>
@@ -444,13 +444,9 @@ export function App() {
             </div>
 
             <aside className="game-controls" aria-label="Game controls">
-              <div className="connection-instructions">
-                <ol aria-label="Connect and play">
-                  <li>Connect your ESP board, flashed with compatible chess firmware, to your laptop using a USB data cable.</li>
-                  <li>Click <strong>Connect board</strong>, select your board’s port, and you can play.</li>
-                </ol>
-                <p>Use desktop Chrome or Edge.</p>
-              </div>
+              <header className="controls-heading">
+                <strong>Board connection</strong>
+              </header>
 
               <div className="connection-row">
                 <button

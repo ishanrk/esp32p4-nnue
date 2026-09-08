@@ -34,12 +34,12 @@ try {
     });
     assert.doesNotMatch(prose,/[-–—/]/,`public prose in ${route}`);
     assert.doesNotMatch(prose,/Physical engine|Game ready|The chip chooses each move/i);
-    assert.doesNotMatch(await page.locator("main h1, main h2, main h3").allTextContents().then(texts => texts.join("\n")), /(?:^|\n)Why\b|\bis not\b/i);
+    assert.doesNotMatch(await page.locator("main h1, main h2, main h3, nav a").allTextContents().then(texts => texts.join("\n")), /(?:^|\n)(?:How|Why|What|Where|When|Who)\b|\?|\bis not\b/i);
     assert.doesNotMatch(await page.locator("main figcaption").allTextContents().then(texts => texts.join("\n")), /Photograph by Ishan Kumthekar/i);
     if (route === "play") {
       assert.equal(await page.locator("h1").innerText(), "ESP microcontroller chess engine");
-      assert.equal(await page.locator('.connection-instructions li').count(), 2);
-      assert.doesNotMatch(prose, /Board connection/);
+      assert.equal(await page.locator('.controls-heading').innerText(), "Board connection");
+      assert.equal(await page.locator('.controls-heading small, .controls-heading p, .connection-instructions').count(), 0);
     }
     assert.equal(await page.locator('main a[href*=".md"]').count(),0,`no raw Markdown destinations in ${route}`);
     const contrastFailures = await page.evaluate(() => {

@@ -51,7 +51,7 @@ export function IntegrationGuide() {
       <Code>{"board_protocol_backend_t backend = {\n    .context = &device, .get_info = get_info,\n    .get_capabilities = get_capabilities, .set_position = set_position,\n    .search = search,\n};\nchess_serial_io_t io = {.read = serial_read, .write = serial_write,\n    .monotonic_ms = monotonic_ms, .yield = platform_yield};\nchess_serial_adapter_t adapter;\nif (chess_serial_adapter_init(&adapter, &backend, &io)) return 1;\nint status;\nwhile ((status = chess_serial_adapter_poll(&adapter)) == 0) {}"}</Code>
       <p>Only one task should poll this instance. Keep the adapter and context objects alive until polling stops, then release the engine’s allocations. <code>chess_serial_adapter_reset</code> is a local call that clears adapter state. Your firmware owns engine reset separately.</p>
     </Section>
-    <Section title="5. Report only what you support">
+    <Section title="5. Report supported capabilities">
       <p>Capabilities command <code>0x05</code> reports the real engine name and supported budgets. Only an unknown command response for that command selects the legacy path. Invalid text, corruption and timeouts fail the connection attempt.</p>
       <p>Model upload is separate from ordinary play. Keep target, format, size, numeric bounds and integrity checks for that operation. This website does not offer an uploader for an arbitrary engine. Neither stop nor full game history is implemented in the current extension.</p>
     </Section>
@@ -61,7 +61,7 @@ export function IntegrationGuide() {
       <p>For a separate browser page, use <Source path="examples/browser-client.ts">the complete TypeScript example</Source>. It imports the client from this repository. Registry publication is still pending. Call <code>SerialChess.connect()</code> from a button click. Its search call owns both the position and the search, keeping concurrent requests separate. Check every returned move against your game before applying it.</p>
       <p>Canceling queued work sends nothing. Canceling active work or timing out closes the connection, but the device may still be searching. Reset before reconnecting after an abandoned operation. Call <code>board.disconnect()</code> when you finish. Repeated disconnect calls are safe.</p>
     </Section>
-    <Section title="How the messages reach those functions">
+    <Section title="Protocol messages and callbacks">
       <table><thead><tr><th>Browser operation</th><th>Wire command</th><th>Local callback</th></tr></thead><tbody>
         <tr><td>Hello</td><td><code>0x01</code></td><td>The dispatcher replies with protocol version 1.</td></tr>
         <tr><td>Device information</td><td><code>0x02</code></td><td><code>get_info</code></td></tr>
