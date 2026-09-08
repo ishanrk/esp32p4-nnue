@@ -111,8 +111,8 @@ export function App() {
 
   useEffect(() => {
     document.title = siteView === "play"
-      ? "Play | ESP32 P4 NNUE"
-      : `${siteView === "setup" ? "Set up a board" : siteView === "integration" ? "Connect your own engine" : siteView === "results" ? "Results" : "How it works"} | ESP32 P4 NNUE`;
+      ? "Play | ESP microcontroller chess engine"
+      : `${siteView === "setup" ? "Set up a board" : siteView === "integration" ? "Connect your own engine" : siteView === "results" ? "Results" : "How it works"} | ESP microcontroller chess engine`;
     window.scrollTo(0, 0);
   }, [siteView]);
 
@@ -352,9 +352,9 @@ export function App() {
       </span>
       <header className="site-header">
         <nav aria-label="Main navigation" className="nav-inner">
-          <a aria-label="ESP32 P4 NNUE play" className="wordmark" href="#play">
+          <a aria-label="ESP microcontroller chess engine play" className="wordmark" href="#play">
             <span aria-hidden="true" className="wordmark-initials">P4</span>
-            <span>ESP32 P4 NNUE</span>
+            <span>ESP microcontroller chess engine</span>
           </a>
           <div className="nav-links">
             <a aria-current={siteView === "play" ? "page" : undefined} href="#play">Play</a>
@@ -371,7 +371,7 @@ export function App() {
           <span aria-hidden="true" className="view-anchor" id="play" />
           <section className="play-intro" aria-labelledby="page-title">
             <div className="play-intro-copy">
-              <h1 id="page-title">ESP32 P4 chess engine</h1>
+              <h1 id="page-title">ESP microcontroller chess engine</h1>
               <p>
                 I built this chess engine to run on an ESP32 P4. Connect your board to play, or read the guides to follow the code.
               </p>
@@ -444,12 +444,13 @@ export function App() {
             </div>
 
             <aside className="game-controls" aria-label="Game controls">
-              <header className="controls-heading">
-                <div>
-                  <strong>Board connection</strong>
-                  <small>USB data cable, compatible firmware, desktop Chrome or Edge</small>
-                </div>
-              </header>
+              <div className="connection-instructions">
+                <ol aria-label="Connect and play">
+                  <li>Connect your ESP board, flashed with compatible chess firmware, to your laptop using a USB data cable.</li>
+                  <li>Click <strong>Connect board</strong>, select your board’s port, and you can play.</li>
+                </ol>
+                <p>Use desktop Chrome or Edge.</p>
+              </div>
 
               <div className="connection-row">
                 <button
@@ -471,7 +472,7 @@ export function App() {
               <p className="journey-links"><a href="#setup">Set up your board</a><a href="#how-it-works">Read the engine guide</a><a href="#results">Results</a></p>
               {thinking && <p>{boardRef.current?.capabilities && !(boardRef.current.capabilities.features & 2)
                 ? `Requested depth ${Math.min(5, boardRef.current.capabilities.maximumDepth)}`
-                : `Requested ${Math.min(SEARCH_TIME_MS, boardRef.current?.capabilities?.maximumTimeMs ?? SEARCH_TIME_MS) / 1000} seconds. This is a search budget, not an exact completion time.`}</p>}
+                : `Requested ${Math.min(SEARCH_TIME_MS, boardRef.current?.capabilities?.maximumTimeMs ?? SEARCH_TIME_MS) / 1000} seconds of search. The reply can take a little longer.`}</p>}
               <details className="troubleshooting"><summary>Troubleshooting</summary>
                 <p>Close any serial monitor. After a timeout or abandoned search, press the board reset button before connecting again. Startup waits briefly to discard old replies and boot messages.</p>
                 <label><input type="checkbox" checked={resetConfirmed} onChange={event => setResetConfirmed(event.target.checked)} /> I reset the board before this connection</label>

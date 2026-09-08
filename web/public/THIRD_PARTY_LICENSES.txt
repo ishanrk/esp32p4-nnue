@@ -58,3 +58,10 @@ chess coordinates minimax alpha beta pruning and neural network layers
 The files include public domain CC0 and CC BY-SA 3.0 works
 Complete authors source links license links and modification status are listed
 in images/reference/SOURCES.txt and in the visible figure captions
+
+Project photographs
+
+Photographs by Ishan Kumthekar:
+images/esp32-p4-module-dev-kit.jpg
+images/esp32-p4-browser-game.jpg
+images/esp32-p4-test-setup.jpg

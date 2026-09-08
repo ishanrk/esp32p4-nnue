@@ -21,13 +21,13 @@ export function SetupGuide() {
     </Section>
     <Section title="4. Plug into this connector and flash">
       <div className="setup-connector">
-        <div><p>Use <code>PWR USB TO UART</code>, the bottom left connector with the cable in my photo. The adjacent connector marked <code>USB</code> is not the serial connection used by this firmware.</p>
+        <div><p>Use <code>PWR USB TO UART</code>, the bottom left connector with the cable in my photo. Leave the adjacent connector marked <code>USB</code> free.</p>
           <p>On Linux, look for the board under <code>/dev/ttyUSB*</code> or <code>/dev/ttyACM*</code>. Unplug it and compare the list if you are unsure which port belongs to the board.</p>
           <Code>{"ls /dev/ttyUSB* /dev/ttyACM*"}</Code>
           <p>For example, if it appears as <code>/dev/ttyUSB0</code>, flash it with:</p>
           <Code>{"idf.py -C esp -p /dev/ttyUSB0 flash"}</Code>
         </div>
-        <figure><img src="/images/esp32-p4-module-dev-kit.jpg" width="1600" height="1200" alt="My Waveshare board with a cable in the bottom left PWR USB TO UART connector" loading="lazy" /><figcaption>My board and the connector I use. Photograph by Ishan Kumthekar.</figcaption></figure>
+        <figure><img src="/images/esp32-p4-module-dev-kit.jpg" width="1600" height="1200" alt="My Waveshare board with a cable in the bottom left PWR USB TO UART connector" loading="lazy" /><figcaption>The cable goes into the bottom left connector.</figcaption></figure>
       </div>
       <p>Replace the example port with yours. The command writes the bootloader, partitions and application at the generated addresses. Wait for the write to finish. If the port does not appear, check the connector and try a different data cable. If flashing cannot connect, close serial programs and follow the <a href="https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT">board’s download mode instructions</a>.</p>
     </Section>
@@ -42,9 +42,9 @@ export function SetupGuide() {
     <Section title="7. Play your first move">
       <p>Choose <strong>White</strong>. Click the pawn on e2, then click e4. Wait for the engine to reply. To play Black instead, choose <strong>Black</strong> and the engine will make the opening move.</p>
       <p>Changing sides starts a new game. Download game record saves your moves as PGN, a text format that other chess programs can read.</p>
-      <figure className="setup-playing"><img src="/images/esp32-p4-browser-game.jpg" width="1800" height="1350" loading="lazy" alt="My earlier browser chess game running beside the ESP32 P4 board" /><figcaption>An earlier game with my board and this website. This photo shows the setup, not a test of the latest firmware. Photograph by Ishan Kumthekar.</figcaption></figure>
+      <figure className="setup-playing"><img src="/images/esp32-p4-browser-game.jpg" width="1800" height="1350" loading="lazy" alt="My earlier browser chess game running beside the ESP32 P4 board" /><figcaption>An earlier game with my board and this website.</figcaption></figure>
       <p>If you want to follow what happens after e2e4, continue with <a href="#how-it-works">my engine walkthrough</a>. For another board or engine, use <a href="#integration">Connect your own engine</a>.</p>
     </Section>
-    <details className="guide-notes"><summary>Build settings and verification notes</summary><p>The current firmware compiles with IDF 6.0.2. Flashing and testing this revision on the board are still pending. The photos are from earlier work.</p><p>The generated flash arguments use bootloader address <code>0x2000</code>, partition table address <code>0x8000</code>, and application address <code>0x10000</code>. Let the flashing command read its generated arguments. These settings are specific to this board, not every ESP32 P4 module.</p><p>See the actual <Source path="esp/sdkconfig.defaults">firmware defaults</Source>, <Source path="esp/partitions.csv">partition layout</Source> and <Source path="esp/main/app.c">firmware entry point</Source>. Closing a browser connection does not stop a search already running in v1 firmware, which is why I require reset after a timeout.</p></details>
+    <details className="guide-notes"><summary>Build settings and verification notes</summary><p>The current firmware compiles with IDF 6.0.2. Flashing and testing this revision on the board are still pending. The photos are from earlier work.</p><p>The generated flash arguments use bootloader address <code>0x2000</code>, partition table address <code>0x8000</code>, and application address <code>0x10000</code>. Let the flashing command read its generated arguments. These settings apply to the reference board described above.</p><p>See the actual <Source path="esp/sdkconfig.defaults">firmware defaults</Source>, <Source path="esp/partitions.csv">partition layout</Source> and <Source path="esp/main/app.c">firmware entry point</Source>. A search can continue on v1 firmware after the browser closes its connection. Reset the board after a timeout before reconnecting.</p></details>
   </Page>;
 }

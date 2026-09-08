@@ -1168,7 +1168,7 @@ tbody th {
     column-gap: 1.5rem;
   }
 
-  .controls-heading,
+  .connection-instructions,
   .game-status,
   .move-history,
   .device-line {
@@ -1441,6 +1441,10 @@ tbody th {
 .guide-page table { width: 100%; border-collapse: collapse; font-size: .9rem; }
 .guide-page td, .guide-page th { padding: .65rem; text-align: left; border-bottom: 1px solid #658087; }
 .guide-page code { color: inherit; }
+.connection-instructions { font-size: .9rem; line-height: 1.55; }
+.connection-instructions ol { margin: 0 0 .75rem; padding-left: 1.4rem; }
+.connection-instructions li + li { margin-top: .65rem; }
+.connection-instructions p { margin: .5rem 0 1rem; font-size: .8rem; }
 .guide-page a { color: var(--gold); text-decoration: underline; text-underline-offset: .2em; }
 .guide-page a:hover { color: var(--paper); }
 .guide-page h3 { margin: 1.8rem 0 .6rem; font-size: 1.25rem; color: var(--paper); }
