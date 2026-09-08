@@ -40,6 +40,16 @@ try {
       assert.equal(await page.locator("h1").innerText(), "ESP microcontroller chess engine");
       assert.equal(await page.locator('.controls-heading').innerText(), "Board connection");
       assert.equal(await page.locator('.controls-heading small, .controls-heading p, .connection-instructions').count(), 0);
+      const help = page.locator('.connection-help');
+      assert.equal(await help.getAttribute('open'), null);
+      assert.equal(await help.locator('ol').isVisible(), false);
+      await help.locator('summary').focus();
+      await page.keyboard.press('Enter');
+      assert.equal(await help.locator('ol').isVisible(), true);
+      assert.equal(await help.locator('li').count(), 2);
+      assert.equal(await help.locator('a').getAttribute('href'), '#setup');
+      await page.keyboard.press('Enter');
+      assert.equal(await help.locator('ol').isVisible(), false);
     }
     assert.equal(await page.locator('main a[href*=".md"]').count(),0,`no raw Markdown destinations in ${route}`);
     const contrastFailures = await page.evaluate(() => {

@@ -1426,6 +1426,11 @@ tbody th {
 .nav-links a { letter-spacing: 0; text-transform: none; }
 .play-intro .eyebrow { color: var(--gold); margin-bottom: .3rem; }
 .journey-links { display: flex; flex-wrap: wrap; gap: .5rem 1rem; font-size: .85rem; }
+.connection-help { font-size: .8rem; line-height: 1.6; grid-column: 1 / -1; }
+.connection-help summary { display: list-item; min-height: 44px; padding: .6rem 0; cursor: pointer; }
+.connection-help ol { margin: 0 0 .75rem; padding-left: 1.3rem; }
+.connection-help li + li { margin-top: .5rem; }
+.connection-help p { margin: 0 0 1rem; }
 .troubleshooting { margin: .75rem 0; font-size: .8rem; }
 .troubleshooting summary { min-height: 44px; cursor: pointer; }
 .troubleshooting input { width: 20px; height: 20px; vertical-align: middle; }

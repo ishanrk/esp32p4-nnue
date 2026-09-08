@@ -465,6 +465,14 @@ export function App() {
                   <p className="support-note">Use Chrome or Edge on a secure page to connect a board</p>
                 )}
               </div>
+              <details className="connection-help">
+                <summary>Connection help</summary>
+                <ol>
+                  <li>Connect your ESP board, flashed with compatible chess firmware, to your laptop using a USB data cable.</li>
+                  <li>Open this page in desktop Chrome or Edge. Click Connect board, select your board’s port, and you can play.</li>
+                </ol>
+                <p>For firmware and flashing instructions, follow <a href="#setup">Set up a board</a>. Close any serial monitor before connecting.</p>
+              </details>
               <p className="journey-links"><a href="#setup">Set up your board</a><a href="#how-it-works">Read the engine guide</a><a href="#results">Results</a></p>
               {thinking && <p>{boardRef.current?.capabilities && !(boardRef.current.capabilities.features & 2)
                 ? `Requested depth ${Math.min(5, boardRef.current.capabilities.maximumDepth)}`
