@@ -44,7 +44,7 @@ const PROMOTIONS: Array<{ value: PieceSymbol; label: string }> = [
 
 type ConnectionState = "disconnected" | "connecting" | "connected" | "disconnecting";
 type PromotionChoice = { from: Square; to: Square };
-export type SiteView = "play" | "setup" | "integration" | "how" | "results";
+export type SiteView = "play" | "setup" | "integration" | "how";
 
 const Guide = lazy(async () => import("./guide").then((module) => ({ default: module.Guide })));
 
@@ -112,7 +112,7 @@ export function App() {
   useEffect(() => {
     document.title = siteView === "play"
       ? "Play | ESP microcontroller chess engine"
-      : `${siteView === "setup" ? "Set up a board" : siteView === "integration" ? "Connect your own engine" : siteView === "results" ? "Results" : "Engine guide"} | ESP microcontroller chess engine`;
+      : `${siteView === "setup" ? "Set up a board" : siteView === "integration" ? "Connect your own engine" : "Engine guide"} | ESP microcontroller chess engine`;
     window.scrollTo(0, 0);
   }, [siteView]);
 
@@ -473,7 +473,7 @@ export function App() {
                 </ol>
                 <p>For firmware and flashing instructions, follow <a href="#setup">Set up a board</a>. Close any serial monitor before connecting.</p>
               </details>
-              <p className="journey-links"><a href="#setup">Set up your board</a><a href="#how-it-works">Read the engine guide</a><a href="#results">Results</a></p>
+              <p className="journey-links"><a href="#setup">Set up your board</a><a href="#how-it-works">Read the engine guide</a></p>
               {thinking && <p>{boardRef.current?.capabilities && !(boardRef.current.capabilities.features & 2)
                 ? `Requested depth ${Math.min(5, boardRef.current.capabilities.maximumDepth)}`
                 : `Requested ${Math.min(SEARCH_TIME_MS, boardRef.current?.capabilities?.maximumTimeMs ?? SEARCH_TIME_MS) / 1000} seconds of search. The reply can take a little longer.`}</p>}
@@ -605,7 +605,6 @@ export function siteViewFromHash(hash: string): SiteView {
   if (hash === "#setup" || hash === "#guide" || hash === "#guide-content" || hash === "#guide-hardware") return "setup";
   if (hash === "#integration" || hash === "#guide-browser") return "integration";
   if (hash === "#recorded") return "setup";
-  if (hash === "#results") return "results";
   if (hash.startsWith("#guide-")) return "how";
   if (hash === "#how-it-works") return "how";
   return "play";

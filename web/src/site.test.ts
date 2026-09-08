@@ -151,7 +151,8 @@ function publicCopyTests(): void {
   assert.ok(stepNumbers.length > 0);
   assert.deepEqual(stepNumbers, stepNumbers.map((_, index) => index + 1));
   const root = resolve(import.meta.dirname, "../..");
-  for (const markup of [setup, integration, how, renderToStaticMarkup(createElement(Guide, {view:"results"}))]) {
+  for (const markup of [setup, integration, how]) {
+    assert.doesNotMatch(markup, /href="#results"|Results and evidence/);
     assert.doesNotMatch(markup, /href="[^"]*\.md(?:[?#][^"]*)?"/);
     for (const match of markup.matchAll(/href="https:\/\/github.com\/ishanrk\/esp32p4-nnue\/blob\/main\/([^"]+)"/g)) {
       assert.ok(existsSync(resolve(root, match[1])), `source link exists: ${match[1]}`);

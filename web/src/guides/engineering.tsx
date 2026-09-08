@@ -65,7 +65,7 @@ export function HowItWorks() {
     <Section title="Training results">
       <p>The model learns from positions paired with evaluation labels. The historical test mean absolute error was about 4530 centipawns. That measures the distance between predictions and labels. The training loss uses transformed scores. Playing strength needs separate game comparisons.</p>
       <p>In a later sample of 20000 test positions, labels with magnitude 30000 contributed about 95.5 percent of the total absolute error. Error for labels below that magnitude was about 243 centipawns. Those large labels include encoded mates and extreme scores. Because the stored data lost the original mate flags, I cannot call the smaller figure a measured nonmate error.</p>
-      <p>The data was split by seeded positions. Positions from related games can cross those split boundaries, and equivalent feature inputs were found across splits. I keep the error measurements separate from claims about generalization and playing strength. <a href="#results">Results and evidence</a> explains the measurement context.</p>
+      <p>The data was split by seeded positions. Positions from related games can cross those split boundaries, and equivalent feature inputs were found across splits. I keep the error measurements separate from claims about generalization and playing strength.</p>
     </Section>
     <Section title="Model ownership and recovery">
       <p>The embedded model belongs to the firmware image. An uploaded model is mapped from flash, so the evaluator borrows those bytes until it is switched away. Before erasing uploaded storage, firmware binds the embedded fallback and releases the old mapping. It validates the new bytes and writes validity metadata last.</p>
@@ -83,26 +83,5 @@ export function HowItWorks() {
       <p>To connect a different engine, continue with <a href="#integration">the firmware callback guide</a>. To try this one on my reference board, follow <a href="#setup">the numbered setup steps</a>.</p>
     </Section>
     <p>Resources I refer to here include <a href="https://github.com/maksimKorzh/bbc">Code Monkey King</a>, <a href="https://www.chessprogramming.org/">Chess Programming Wiki</a> and <a href="https://github.com/official-stockfish/nnue-pytorch">the Stockfish neural network trainer</a>. Their work has its own authorship and licenses. <a href="/THIRD_PARTY_LICENSES.txt">Asset sources and license notices</a> are preserved. The project’s own code license still needs an owner decision before I can offer a general reuse license.</p>
-  </Page>;
-}
-export function Results() {
-  return <Page title="Results and evidence">
-    <Section title="Test environments">
-      <table><thead><tr><th>Evidence</th><th>What it establishes</th></tr></thead><tbody>
-        <tr><td>Host engine and protocol tests</td><td>Real search and byte exchanges on this computer. Not USB hardware.</td></tr>
-        <tr><td>ESP IDF 6.0.2 compilation</td><td>The reference firmware compiles. Flashing and physical runtime are deferred.</td></tr>
-        <tr><td>Browser simulated serial tests</td><td>Client behavior under controlled replies and failures. Not cable reliability.</td></tr>
-        <tr><td>Historical photographs</td><td>Earlier reference setup. Not measurements of this change.</td></tr>
-      </tbody></table>
-    </Section>
-    <Section title="Historical performance">
-      <p>The reference manifest reports about 25.4 million integer evaluations per second on an Intel Core i7 13700H. ESP32 P4 throughput measurements remain pending. Historical fixed depth matches compare earlier engines. Current strength at equal thinking time needs a new comparison. Physical profile selection remains provisional.</p>
-    </Section>
-    <Section title="Training metrics">
-      <p>The historical test mean absolute error is 4529.96 centipawns. A centipawn is one hundredth of a pawn. Training selected checkpoints using a transformed loss. A new seeded sample of 20000 test positions measured about 4570 centipawns overall and 243 for labels below magnitude 30000. Labels at magnitude 30000 contributed about 95.5 percent of absolute error in that sample.</p>
-      <p>Those large labels include encoded mates and extreme scores. The original mate flags are missing from the shards, so the smaller figure describes only that score range. A reliable nonmate metric needs those flags. Playing strength needs game comparisons.</p>
-      <p>The imported data uses seeded position splits. Samples contained matching feature inputs across splits. Feature grouping identifies equivalent network inputs. Missing game provenance limits how thoroughly related positions can be separated.</p>
-      <p>The <Source path="models/reference.json">model manifest</Source> preserves the historical numbers. <Source path="esp/measure.py">The board measurement harness</Source> records search time separately from client round trip time. Hardware measurements still need to be run on the board.</p>
-    </Section>
   </Page>;
 }

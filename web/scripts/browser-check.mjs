@@ -27,6 +27,8 @@ try {
     await page.locator("h1").waitFor();
     await page.evaluate(() => document.fonts.ready);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true,route);
+    assert.equal(await page.locator('a[href="#results"]').count(), 0);
+    if (route === "results") assert.equal(await page.locator('h1').innerText(), "ESP microcontroller chess engine");
     const prose = await page.locator("main").evaluate(main => {
       const clone = main.cloneNode(true);
       clone.querySelectorAll("pre,code").forEach(node => node.remove());
