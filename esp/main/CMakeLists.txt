@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "app.c" "model_storage.c" "../protocol.c"
+    SRCS "app.c" "model_storage.c" "../protocol.c" "../serial_adapter.c"
     INCLUDE_DIRS "../../src" ".." "."
     REQUIRES core esp_app_format esp_driver_uart esp_partition
 )

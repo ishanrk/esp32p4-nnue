@@ -125,12 +125,12 @@ class UciEngine:
         self._send("isready")
         self._read_until("readyok")
 
-    def best_move(self, board: chess.Board, depth: int) -> chess.Move:
+    def best_move(self, board: chess.Board, depth: int, time_ms: int | None = None) -> chess.Move:
         root = board.root().fen(en_passant="fen")
         moves = " ".join(move.uci() for move in board.move_stack)
         self._send(f"position fen {root}" + (f" moves {moves}" if moves else ""))
         start = time.monotonic()
-        self._send(f"go depth {depth}")
+        self._send(f"go movetime {time_ms}" if time_ms is not None else f"go depth {depth}")
         lines = self._read_until("bestmove")
         fields = lines[-1].split()
         if len(fields) < 2 or fields[1] == "0000":
@@ -176,6 +176,7 @@ def play_game(
     depth: int,
     max_plies: int,
     record: dict[str, Any] | None = None,
+    time_ms: int | None = None,
 ) -> tuple[chess.Color | None, str, int]:
     board = (
         chess.Board(opening)
@@ -187,7 +188,7 @@ def play_game(
     played = 0
     while not board.is_game_over(claim_draw=True) and played < max_plies:
         engine = white if board.turn == chess.WHITE else black
-        board.push(engine.best_move(board, depth))
+        board.push(engine.best_move(board, depth, time_ms))
         played += 1
     outcome = board.outcome(claim_draw=True)
     if record is not None:
@@ -228,9 +229,12 @@ def run_match(
     opening_count: int,
     estimate_elo: bool,
     openings: list[dict[str, str]] | None = None,
+    time_ms: int | None = None,
 ) -> dict[str, Any]:
     if depth <= 0 or max_plies <= 0:
         raise ValueError("depth and max plies must be positive")
+    if time_ms is not None and not 1 <= time_ms <= 5000:
+        raise ValueError("time budget must be from 1 through 5000 milliseconds")
     opening_suite = (
         openings
         if openings is not None
@@ -260,7 +264,7 @@ def run_match(
                     black = engine_b if engine_a_white else engine_a
                     record: dict[str, Any] = {}
                     winner, termination, plies = play_game(
-                        white, black, opening, depth, max_plies, record
+                        white, black, opening, depth, max_plies, record, time_ms
                     )
                     if winner is None:
                         score = 0.5
@@ -292,11 +296,12 @@ def run_match(
         "evidence": {"execution": "host", "source": source_metadata(),
                      "engine_a": engine_metadata(engine_a_path), "engine_b": engine_metadata(engine_b_path),
                      "model_a": model_metadata(model_a_path), "model_b": model_metadata(model_b_path),
-                     "tt_bytes": 1048576, "rating_scope": "fixed depth engine comparison only",
+                     "tt_bytes": 1048576, "rating_scope": "equal requested wall time comparison" if time_ms is not None else "fixed depth engine comparison only",
                      "searches_a": engine_a.searches, "searches_b": engine_b.searches},
         "configuration": {
             "color_reversal": True,
-            "depth": depth,
+            "depth": depth if time_ms is None else None,
+            "time_ms": time_ms,
             "engine_a": str(Path(engine_a_path).resolve()),
             "engine_b": str(Path(engine_b_path).resolve()),
             "max_plies": max_plies,
@@ -323,13 +328,15 @@ def run_match(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="run a fixed depth color reversed local nnue match"
+        description="run a color reversed local match with depth or time limits"
     )
     parser.add_argument("engine_a")
     parser.add_argument("model_a")
     parser.add_argument("engine_b")
     parser.add_argument("model_b")
-    parser.add_argument("--depth", type=int, default=2)
+    budget = parser.add_mutually_exclusive_group()
+    budget.add_argument("--depth", type=int, default=2)
+    budget.add_argument("--time-ms", type=int)
     parser.add_argument("--max-plies", type=int, default=120)
     parser.add_argument("--openings")
     parser.add_argument("--opening-count", type=int)
@@ -352,6 +359,7 @@ def main() -> None:
             opening_count=opening_count,
             estimate_elo=args.estimate_elo,
             openings=openings,
+            time_ms=args.time_ms,
         )
     except (OSError, RuntimeError, ValueError) as error:
         parser.error(str(error))

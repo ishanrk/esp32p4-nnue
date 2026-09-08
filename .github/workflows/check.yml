@@ -8,15 +8,26 @@ jobs:
         include:
           - build: Release
             sanitize: "OFF"
+            profile: "4x128"
           - build: Debug
             sanitize: "ON"
+            profile: "4x128"
+          - build: Release
+            sanitize: "OFF"
+            profile: "8x64"
+          - build: Release
+            sanitize: "OFF"
+            profile: "8x96"
+          - build: Release
+            sanitize: "OFF"
+            profile: "16x48"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: python -m pip install chess numpy
-      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build }} -DP4_SAN=${{ matrix.sanitize }}
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build }} -DP4_SAN=${{ matrix.sanitize }} -DP4_NNUE_PROFILE=${{ matrix.profile }}
       - run: cmake --build build --parallel 2
       - run: ctest --test-dir build --output-on-failure
   web:
@@ -31,4 +42,14 @@ jobs:
       - run: npm ci
         working-directory: web
       - run: npm run check && npm test && npm run build
+        working-directory: web
+      - run: node web/scripts/build-client.mjs && npm pack ./sdk --pack-destination ./build
+      - run: node web/scripts/check-package.mjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --target p4hostdevice --parallel 2
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - run: node scripts/browser-check.mjs
         working-directory: web

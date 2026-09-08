@@ -9,6 +9,10 @@ import sys
 import termios
 import time
 import tty
+import re
+import subprocess
+import threading
+import fcntl
 
 
 MAGIC = b"P4"
@@ -22,6 +26,7 @@ COMMAND_HELLO = 0x01
 COMMAND_DEVICE_INFO = 0x02
 COMMAND_FIRMWARE_INFO = 0x03
 COMMAND_MODEL_INFO = 0x04
+COMMAND_CAPABILITIES = 0x05
 COMMAND_MODEL_BEGIN = 0x10
 COMMAND_MODEL_CHUNK = 0x11
 COMMAND_MODEL_COMMIT = 0x12
@@ -58,11 +63,18 @@ ERRORS = {
     10: "storage failure",
     11: "invalid fen",
     12: "position required",
+    13: "engine unavailable or search allocation failed",
 }
 
 
 class ProtocolError(RuntimeError):
     pass
+
+
+class BoardCommandError(ProtocolError):
+    def __init__(self, command, code):
+        self.command, self.code = command, code
+        super().__init__(f"command 0x{command:02x}: {ERRORS.get(code, 'unknown error')}")
 
 
 def encode_frame(command, payload=b"", version=PROTOCOL_VERSION):
@@ -119,19 +131,32 @@ class SerialTransport:
         self.timeout = timeout
         self.fd = None
         self.decoder = FrameDecoder()
+        self.lock = threading.Lock()
 
     def __enter__(self):
         speed_name = f"B{self.baud}"
         if not hasattr(termios, speed_name):
             raise ValueError(f"unsupported baud rate {self.baud}")
-        self.fd = os.open(self.path, os.O_RDWR | os.O_NOCTTY)
-        tty.setraw(self.fd)
-        attributes = termios.tcgetattr(self.fd)
-        speed = getattr(termios, speed_name)
-        attributes[4] = speed
-        attributes[5] = speed
-        termios.tcsetattr(self.fd, termios.TCSANOW, attributes)
-        termios.tcflush(self.fd, termios.TCIOFLUSH)
+        self.fd = os.open(self.path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+        try:
+            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            tty.setraw(self.fd)
+            attributes = termios.tcgetattr(self.fd)
+            speed = getattr(termios, speed_name)
+            attributes[4] = speed
+            attributes[5] = speed
+            termios.tcsetattr(self.fd, termios.TCSANOW, attributes)
+            # Reset before reopening an abandoned session. A drain is not Stop.
+            until = time.monotonic() + 5.5
+            while time.monotonic() < until:
+                if select.select([self.fd], [], [], max(0, until-time.monotonic()))[0]:
+                    try:
+                        if not os.read(self.fd, 4096): raise EOFError("serial device closed during startup")
+                    except BlockingIOError: pass
+            self.decoder = FrameDecoder()
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
         return self
 
     def __exit__(self, exception_type, exception, traceback):
@@ -140,11 +165,31 @@ class SerialTransport:
             self.fd = None
 
     def request(self, command, payload=b"", timeout=None):
+        with self.lock:
+            try:
+                return self._request(command, payload, timeout)
+            except BoardCommandError:
+                raise
+            except (TimeoutError, EOFError, OSError, ProtocolError):
+                self.__exit__(None, None, None)
+                raise
+
+    def _request(self, command, payload=b"", timeout=None):
+        if self.fd is None:
+            raise EOFError("connection is closed; reset before reconnecting")
         frame = encode_frame(command, payload)
         written = 0
-        while written < len(frame):
-            written += os.write(self.fd, frame[written:])
         deadline = time.monotonic() + (self.timeout if timeout is None else timeout)
+        output = getattr(self, "write_fd", self.fd)
+        while written < len(frame):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([], [output], [], remaining)[1]:
+                raise TimeoutError("request write timed out")
+            try: count = os.write(output, frame[written:])
+            except BlockingIOError: continue
+            if count == 0:
+                raise EOFError("connection made no write progress")
+            written += count
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -152,11 +197,17 @@ class SerialTransport:
             readable, _, _ = select.select([self.fd], [], [], remaining)
             if not readable:
                 raise TimeoutError("board response timed out")
-            data = os.read(self.fd, 4096)
+            try: data = os.read(self.fd, 4096)
+            except BlockingIOError: continue
             if not data:
                 raise EOFError("serial device closed")
-            for response_command, response_payload in self.decoder.feed(data):
+            frames = self.decoder.feed(data)
+            if len(frames) > 1:
+                raise ProtocolError("unsolicited combined responses; reset before reconnecting")
+            for response_command, response_payload in frames:
                 if response_command == COMMAND_ERROR:
+                    if len(response_payload) != 2 or response_payload[0] != command:
+                        raise ProtocolError("error response did not match the request")
                     self._raise_board_error(response_payload)
                 expected = command | 0x80
                 if response_command != expected:
@@ -170,8 +221,53 @@ class SerialTransport:
         if len(payload) != 2:
             raise ProtocolError("malformed board error")
         command, error = payload
-        message = ERRORS.get(error, f"unknown error {error}")
-        raise ProtocolError(f"command 0x{command:02x}: {message}")
+        raise BoardCommandError(command, error)
+
+
+class HostTransport(SerialTransport):
+    """Interactive child pipes. No serial device and no hardware claim."""
+    def __init__(self, command, timeout=10):
+        super().__init__(None, None, timeout)
+        self.command = command
+        self.process = None
+
+    def __enter__(self):
+        self.process = subprocess.Popen(self.command, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.fd = self.process.stdout.fileno()
+        self.write_fd = self.process.stdin.fileno()
+        os.set_blocking(self.write_fd, False)
+        return self
+
+    def __exit__(self, *args):
+        self.fd = None
+        if self.process is not None:
+            self.process.stdin.close()
+            try:
+                self.process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                self.process.terminate()
+                self.process.wait(timeout=2)
+            self.process.stdout.close()
+            self.process = None
+
+
+def ascii_text(data):
+    if any(byte < 32 or byte > 126 for byte in data):
+        raise ProtocolError("text must use printable ASCII")
+    return data.decode("ascii")
+
+
+def read_telemetry(board):
+    try:
+        payload = board.request(6)
+    except BoardCommandError as error:
+        if (error.command, error.code) == (6, 4): return None
+        raise
+    require_size("telemetry", payload, 22)
+    if payload[0] != 1: raise ProtocolError("unsupported telemetry schema")
+    names = ("internal_free_bytes", "internal_minimum_free_bytes", "psram_free_bytes", "psram_minimum_free_bytes", "task_minimum_free_stack_bytes")
+    values = struct.unpack_from("<5I", payload, 2)
+    return {name: values[i] if payload[1] & (1 << i) else None for i,name in enumerate(names)}
 
 
 def require_size(name, payload, size):
@@ -184,7 +280,7 @@ def decode_device_info(payload):
         raise ProtocolError("malformed device info response")
     values = struct.unpack_from("<BBBHHHIIIIB", payload)
     version_size = values[-1]
-    if len(payload) != 26 + version_size:
+    if version_size > 31 or len(payload) != 26 + version_size:
         raise ProtocolError("malformed device version string")
     return {
         "protocol": values[0],
@@ -198,7 +294,7 @@ def decode_device_info(payload):
         "active_model_bytes": values[7],
         "active_model_crc32": values[8],
         "transposition_table_bytes": values[9],
-        "firmware": payload[26:].decode("ascii", "replace"),
+        "firmware": ascii_text(payload[26:]),
     }
 
 
@@ -216,17 +312,42 @@ def decode_model_info(payload):
     }
 
 
+def decode_capabilities(payload):
+    if len(payload) < 11:
+        raise ProtocolError("malformed capability response")
+    extension, features, maximum_depth, maximum_time, engine_size, firmware_size = (
+        struct.unpack_from("<BHHIBB", payload)
+    )
+    if extension != 1 or not 1 <= engine_size <= 31 or not 1 <= firmware_size <= 31 or \
+            len(payload) != 11 + engine_size + firmware_size:
+        raise ProtocolError("malformed capability response")
+    if (features & 1 and maximum_depth == 0) or (features & 2 and maximum_time == 0):
+        raise ProtocolError("supported search mode has no valid budget")
+    start = 11
+    return {
+        "extension": extension,
+        "features": features,
+        "maximum_depth": maximum_depth,
+        "maximum_time_ms": maximum_time,
+        "engine": ascii_text(payload[start:start + engine_size]),
+        "firmware_identity": ascii_text(payload[start + engine_size:]),
+    }
+
+
 def decode_search_result(payload):
     require_size("search", payload, 29)
     move_size = payload[0]
     if move_size > 5:
         raise ProtocolError("malformed search move")
+    move = ascii_text(payload[1:1 + move_size])
+    if not re.fullmatch(r"0000|[a-h][1-8][a-h][1-8][qrbn]?", move):
+        raise ProtocolError("invalid move encoding")
     score, depth = struct.unpack_from("<iH", payload, 6)
     nodes = struct.unpack_from("<Q", payload, 12)[0]
     elapsed_ms = struct.unpack_from("<I", payload, 20)[0]
     model_crc32 = struct.unpack_from("<I", payload, 25)[0]
     return {
-        "move": payload[1:1 + move_size].decode("ascii", "strict"),
+        "move": move,
         "score": score,
         "depth": depth,
         "nodes": nodes,
@@ -258,7 +379,13 @@ def show_info(board):
 
 def upload_model(board, path):
     with open(path, "rb") as model_file:
-        model = model_file.read()
+        model = model_file.read(328481)
+    validate_reference_model(model)
+    device = decode_device_info(board.request(COMMAND_DEVICE_INFO))
+    if (device["protocol"], device["target"], device["model_format"],
+            device["king_buckets"], device["hidden_width"]) != (1, "esp32p4", 3, 4, 128) or \
+            device["maximum_model_bytes"] < len(model):
+        raise ValueError("reference uploader requires the ESP32 P4 format 3 profile and sufficient storage")
     checksum = binascii.crc32(model) & 0xFFFFFFFF
     board.request(COMMAND_MODEL_BEGIN, struct.pack("<II", len(model), checksum))
     for offset in range(0, len(model), MODEL_CHUNK_BYTES):
@@ -266,6 +393,15 @@ def upload_model(board, path):
         board.request(COMMAND_MODEL_CHUNK, struct.pack("<I", offset) + chunk)
     board.request(COMMAND_MODEL_COMMIT)
     print(f"uploaded {len(model)} bytes crc32 {checksum:08x}")
+
+
+def validate_reference_model(model):
+    """Exact reference upload profile. Ordinary play has no such restriction."""
+    expected = (b"P4NNUE1\0", 3, 4, 640, 128, 127, 64, 64, 2, 328480)
+    if len(model) != 328480 or struct.unpack_from("<8s8HI", model) != expected:
+        raise ValueError("invalid reference model header or byte size")
+    if any(not -28928 <= bias <= 28957 for bias in struct.unpack_from("<128h", model, 32)):
+        raise ValueError("unsafe reference model accumulator bias")
 
 
 def set_position(board, fen):

@@ -11,8 +11,10 @@ import type { SearchResult } from "./protocol";
 export type SideChoice = "white" | "black" | "random";
 
 export type SearchTransport = {
-  setPosition(fen: string): Promise<void>;
-  searchTime(moveTimeMs: number): Promise<SearchResult>;
+  search(
+    request: { fen: string },
+    options: { moveTimeMs: number; signal?: AbortSignal },
+  ): Promise<SearchResult>;
 };
 
 export type GameResult = {
@@ -69,8 +71,7 @@ export async function requestChipSearch(
   moveTimeMs: number,
 ): Promise<SearchResult | null> {
   if (game.isGameOver()) return null;
-  await transport.setPosition(game.fen());
-  return transport.searchTime(moveTimeMs);
+  return transport.search({ fen: game.fen() }, { moveTimeMs });
 }
 
 export function describeGameResult(
@@ -105,6 +106,17 @@ export function moveHistory(game: Chess): Array<{
     });
   }
   return rows;
+}
+
+/** Build a portable record from the moves and the chess.js game result. */
+export function gamePgn(game: Chess): string {
+  const result = game.isCheckmate()
+    ? game.turn() === "w" ? "0-1" : "1-0"
+    : game.isGameOver() ? "1/2-1/2" : "*";
+  const exported = new Chess();
+  exported.loadPgn(game.pgn());
+  exported.header("Event", "Connected chip game", "Result", result);
+  return exported.pgn();
 }
 
 function tryMove(

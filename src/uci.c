@@ -49,6 +49,12 @@ static void *run_search(void *argument) {
 	uci_search_t *search = argument;
 	search_result_t result = search_position(search->position, search->table,
 		search->limits, print_search_info, NULL);
+	if (result.failed) {
+		puts("info string search allocation failed");
+		puts("bestmove 0000");
+		fflush(stdout);
+		return NULL;
+	}
 	while (search->infinite && !poll_search(search)) {
 		struct timespec delay = {.tv_nsec = 1000000};
 		nanosleep(&delay, NULL);

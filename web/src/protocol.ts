@@ -1,9 +1,8 @@
+import { ChessClientError } from "./errors";
 export const PROTOCOL_VERSION = 1;
 const PROTOCOL_MAX_PAYLOAD = 1024;
 const PROTOCOL_MAX_FEN = 127;
 const PROTOCOL_MAX_FIRMWARE_VERSION = 31;
-const PROTOCOL_MAX_DEPTH = 12;
-const PROTOCOL_MAX_TIME_MS = 5_000;
 
 const MAGIC_FIRST = 0x50;
 const MAGIC_SECOND = 0x34;
@@ -15,6 +14,7 @@ export const COMMAND = {
   deviceInfo: 0x02,
   firmwareInfo: 0x03,
   modelInfo: 0x04,
+  capabilities: 0x05,
   modelBegin: 0x10,
   modelChunk: 0x11,
   modelCommit: 0x12,
@@ -22,6 +22,14 @@ export const COMMAND = {
   go: 0x21,
   bench: 0x22,
   error: 0xff,
+} as const;
+
+export const CAPABILITY = {
+  searchDepth: 1 << 0,
+  searchTime: 1 << 1,
+  modelUpload: 1 << 2,
+  history: 1 << 3,
+  stop: 1 << 4,
 } as const;
 
 export const GO_BUDGET = {
@@ -54,6 +62,15 @@ export type DeviceInfo = {
   firmwareVersion: string;
 };
 
+export type DeviceCapabilities = {
+  extensionVersion: number;
+  features: number;
+  maximumDepth: number;
+  maximumTimeMs: number;
+  engineName: string;
+  firmwareIdentity: string;
+};
+
 export type SearchResult = {
   move: string;
   score: number;
@@ -78,11 +95,12 @@ const ERROR_MESSAGES: Readonly<Record<number, string>> = {
   10: "storage failure",
   11: "invalid fen",
   12: "position required",
+  13: "The engine could not start a search. Reset the board and check available memory.",
 };
 
-export class ProtocolError extends Error {
+export class ProtocolError extends ChessClientError {
   constructor(message: string) {
-    super(message);
+    super("PROTOCOL", message);
     this.name = "ProtocolError";
   }
 }
@@ -148,8 +166,8 @@ export class FrameDecoder {
       const header = dataView(this.buffer);
       const payloadSize = header.getUint16(4, true);
       if (payloadSize > PROTOCOL_MAX_PAYLOAD) {
-        this.buffer = this.buffer.slice(1);
-        continue;
+        this.reset();
+        throw new ProtocolError("response exceeds the maximum frame length");
       }
 
       const frameSize = HEADER_SIZE + payloadSize + CRC_SIZE;
@@ -228,7 +246,7 @@ export function decodeDeviceInfo(payload: Uint8Array): DeviceInfo {
     activeModelBytes: view.getUint32(13, true),
     activeModelCrc32: view.getUint32(17, true),
     transpositionTableBytes: view.getUint32(21, true),
-    firmwareVersion: decodeAscii(payload.subarray(26), false),
+    firmwareVersion: decodeAscii(payload.subarray(26), true),
   };
 }
 
@@ -236,15 +254,46 @@ export function decodeSearchResult(payload: Uint8Array): SearchResult {
   requirePayloadSize("search", payload, 29);
   const moveSize = payload[0];
   if (moveSize > 5) throw new ProtocolError("malformed search move");
+  const move = decodeAscii(payload.subarray(1, 1 + moveSize), true);
+  if (!/^(0000|[a-h][1-8][a-h][1-8][qrbn]?)$/.test(move)) {
+    throw new ProtocolError("response does not contain a UCI move or terminal marker");
+  }
   const view = dataView(payload);
   return {
-    move: decodeAscii(payload.subarray(1, 1 + moveSize), true),
+    move,
     score: view.getInt32(6, true),
     depth: view.getUint16(10, true),
     nodes: view.getBigUint64(12, true),
     elapsedMs: view.getUint32(20, true),
     modelState: payload[24],
     modelCrc32: view.getUint32(25, true),
+  };
+}
+
+/** Decode optional extension one. A legacy board reports unknown command. */
+export function decodeCapabilities(payload: Uint8Array): DeviceCapabilities {
+  if (payload.byteLength < 11) {
+    throw new ProtocolError("malformed capability response");
+  }
+  const view = dataView(payload);
+  const engineSize = payload[9];
+  const firmwareSize = payload[10];
+  if (payload[0] !== 1 || engineSize === 0 || firmwareSize === 0 || engineSize > 31 || firmwareSize > 31 ||
+      payload.byteLength !== 11 + engineSize + firmwareSize) {
+    throw new ProtocolError("malformed capability response");
+  }
+  const features = view.getUint16(1, true);
+  if (((features & CAPABILITY.searchDepth) && view.getUint16(3, true) === 0) ||
+      ((features & CAPABILITY.searchTime) && view.getUint32(5, true) === 0)) {
+    throw new ProtocolError("a supported search mode needs a positive maximum budget");
+  }
+  return {
+    extensionVersion: payload[0],
+    features: view.getUint16(1, true),
+    maximumDepth: view.getUint16(3, true),
+    maximumTimeMs: view.getUint32(5, true),
+    engineName: decodeAscii(payload.subarray(11, 11 + engineSize), true),
+    firmwareIdentity: decodeAscii(payload.subarray(11 + engineSize), true),
   };
 }
 
@@ -260,14 +309,12 @@ export function encodePositionPayload(fen: string): Uint8Array {
 export function encodeGoPayload(
   budgetType: (typeof GO_BUDGET)[keyof typeof GO_BUDGET],
   budget: number,
+  maximum = budgetType === GO_BUDGET.depth ? 12 : 5_000,
 ): Uint8Array {
   if (budgetType !== GO_BUDGET.depth && budgetType !== GO_BUDGET.timeMs) {
     throw new RangeError("unknown search budget type");
   }
-  const maximum = budgetType === GO_BUDGET.depth
-    ? PROTOCOL_MAX_DEPTH
-    : PROTOCOL_MAX_TIME_MS;
-  if (!Number.isInteger(budget) || budget < 1 || budget > maximum) {
+  if (!Number.isInteger(budget) || budget < 1 || budget > maximum || budget > 0xffffffff) {
     throw new RangeError("search budget is outside the protocol range");
   }
   const payload = new Uint8Array(5);
@@ -316,7 +363,7 @@ function encodeAscii(text: string, name: string): Uint8Array {
   const encoded = new Uint8Array(text.length);
   for (let index = 0; index < text.length; index += 1) {
     const code = text.charCodeAt(index);
-    if (code > 0x7f) throw new RangeError(`${name} must contain only ascii`);
+    if (code < 0x20 || code > 0x7e) throw new RangeError(`${name} must contain printable ASCII`);
     encoded[index] = code;
   }
   return encoded;
@@ -325,7 +372,7 @@ function encodeAscii(text: string, name: string): Uint8Array {
 function decodeAscii(data: Uint8Array, strict: boolean): string {
   let decoded = "";
   for (const byte of data) {
-    if (byte > 0x7f) {
+    if (byte < 0x20 || byte > 0x7e) {
       if (strict) throw new ProtocolError("malformed ascii response");
       decoded += "\ufffd";
     } else {

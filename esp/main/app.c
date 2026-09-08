@@ -1,9 +1,11 @@
 #include "ch.h"
 #include "model_storage.h"
 #include "protocol.h"
+#include "serial_adapter.h"
 
 #include "esp_app_desc.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "driver/uart.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -27,6 +29,20 @@ enum {
 };
 
 static const char *firmware_log_tag = "firmware";
+
+static void get_telemetry(void *argument, board_telemetry_t *out) {
+    (void)argument;
+    out->available = 0x13;
+    out->internal_free = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    out->internal_minimum = (uint32_t)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    /* IDF reports this high water mark in bytes, unlike upstream FreeRTOS. */
+    out->stack_free_minimum = (uint32_t)uxTaskGetStackHighWaterMark(NULL);
+    if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) {
+        out->available |= 0x0c;
+        out->psram_free = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+        out->psram_minimum = (uint32_t)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM);
+    }
+}
 
 typedef struct {
     model_storage_t model_storage;
@@ -54,6 +70,21 @@ static void get_device_info(void *argument, board_device_info_t *info) {
     info->transposition_table_bytes = FIRMWARE_TT_BYTES;
     snprintf(info->firmware_version, sizeof(info->firmware_version), "%s",
              description->version);
+}
+
+static void get_device_capabilities(void *argument,
+                                    board_device_capabilities_t *capabilities) {
+    (void)argument;
+    memset(capabilities, 0, sizeof(*capabilities));
+    capabilities->features = BOARD_CAPABILITY_SEARCH_DEPTH |
+                             BOARD_CAPABILITY_SEARCH_TIME |
+                             BOARD_CAPABILITY_MODEL_UPLOAD;
+    capabilities->maximum_depth = BOARD_PROTOCOL_MAX_DEPTH;
+    capabilities->maximum_time_ms = BOARD_PROTOCOL_MAX_TIME_MS;
+    snprintf(capabilities->engine_name, sizeof(capabilities->engine_name),
+             "P4 NNUE reference");
+    snprintf(capabilities->firmware_identity,
+             sizeof(capabilities->firmware_identity), "ESP32 P4 firmware");
 }
 
 static board_protocol_error_t begin_model_upload(void *argument,
@@ -135,6 +166,7 @@ static board_protocol_error_t search_protocol_position(
     }
     search_result_t search = search_position(
         &context->position, &context->table, limits, NULL, NULL);
+    if (search.failed) return BOARD_ERROR_ENGINE_UNAVAILABLE;
     copy_search_result(context, &search, result);
     return BOARD_ERROR_NONE;
 }
@@ -154,14 +186,15 @@ static board_protocol_error_t run_protocol_benchmark(
     clear_transposition_table(&context->table);
     context->position = saved_position;
     context->position_valid = saved_position_valid;
-    return BOARD_ERROR_NONE;
+    return search.failed ? BOARD_ERROR_ENGINE_UNAVAILABLE : BOARD_ERROR_NONE;
 }
 
-static void write_protocol_bytes(const uint8_t *data,
-                                 size_t size,
-                                 void *argument) {
+static int write_protocol_bytes(void *argument, const uint8_t *data,
+                                size_t size, size_t *written) {
     uart_port_t port = *(const uart_port_t *)argument;
-    (void)uart_write_bytes(port, data, size);
+    int count = uart_write_bytes(port, data, size);
+    *written = count > 0 ? (size_t)count : 0;
+    return count < 0 ? -1 : 0;
 }
 
 static bool initialize_uart_transport(uart_port_t *port) {
@@ -174,29 +207,23 @@ static bool initialize_uart_transport(uart_port_t *port) {
     return false;
 }
 
-static int read_uart_chunk(uart_port_t port,
-                           uint8_t data[UART_RECEIVE_CHUNK_BYTES]) {
-    int received = uart_read_bytes(port, data, 1, portMAX_DELAY);
-    if (received != 1) return -1;
-
-    size_t buffered = 0;
-    if (uart_get_buffered_data_len(port, &buffered) != ESP_OK) return -1;
-    if (buffered > UART_RECEIVE_CHUNK_BYTES - 1) {
-        buffered = UART_RECEIVE_CHUNK_BYTES - 1;
-    }
-    if (!buffered) return received;
-
-    int additional = uart_read_bytes(
-        port, data + received, (uint32_t)buffered, 0);
-    if (additional < 0) return -1;
-    return received + additional;
+static int read_uart_chunk(void *argument, uint8_t *data, size_t capacity, size_t *count) {
+    uart_port_t port = *(const uart_port_t *)argument;
+    int received = uart_read_bytes(port, data, (uint32_t)capacity, 1);
+    *count = received > 0 ? (size_t)received : 0;
+    return received < 0 ? -1 : 0;
 }
+
+static uint64_t serial_clock(void *argument) { (void)argument; return current_time_ms(); }
+static void serial_yield(void *argument) { (void)argument; vTaskDelay(1); }
 
 static bool run_protocol_loop(firmware_context_t *context,
                               uart_port_t *port) {
     board_protocol_backend_t backend = {
         .context = context,
         .get_info = get_device_info,
+        .get_capabilities = get_device_capabilities,
+        .get_telemetry = get_telemetry,
         .model_begin = begin_model_upload,
         .model_chunk = write_model_chunk,
         .model_commit = commit_model_upload,
@@ -204,14 +231,13 @@ static bool run_protocol_loop(firmware_context_t *context,
         .search = search_protocol_position,
         .benchmark = run_protocol_benchmark,
     };
-    board_protocol_t protocol;
-    board_protocol_init(&protocol, &backend);
-    uint8_t input[UART_RECEIVE_CHUNK_BYTES];
+    chess_serial_adapter_t adapter;
+    chess_serial_io_t io = {.context = port, .read = read_uart_chunk,
+        .write = write_protocol_bytes, .monotonic_ms = serial_clock,
+        .yield = serial_yield};
+    if (chess_serial_adapter_init(&adapter, &backend, &io)) return false;
     for (;;) {
-        int received = read_uart_chunk(*port, input);
-        if (received < 0) return false;
-        board_protocol_feed(&protocol, input, (size_t)received,
-                            write_protocol_bytes, port);
+        if (chess_serial_adapter_poll(&adapter)) return false;
     }
 }
 

@@ -1,0 +1,15 @@
+{
+  "board_revision": null,
+  "firmware_compiler": null,
+  "esp_idf_version": "6.0.2",
+  "cpu_clock_mhz": null,
+  "build_flags": null,
+  "model_placement": "embedded flash or mapped upload",
+  "table_placement": null,
+  "internal_heap_free_bytes": null,
+  "internal_heap_minimum_free_bytes": null,
+  "psram_free_bytes": null,
+  "main_task_stack_high_water_bytes": null,
+  "watchdog_observations": null,
+  "note": "Fill from actual instrumentation. Null means unmeasured, not zero. Never include personal serial identifiers."
+}

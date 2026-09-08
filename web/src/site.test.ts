@@ -1,449 +1,150 @@
 import assert from "node:assert/strict";
-
+import "./reliability.test";
 import { Chess, DEFAULT_POSITION } from "chess.js";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-
-import { guideAnchorFromHash, siteViewFromHash } from "./app";
+import { Guide } from "./guide";
 import { SerialBoard } from "./device";
-import { Guide, GUIDE_RESOURCES, GUIDE_STEPS } from "./guide";
+import { applyHumanMove, applyUciMove, gamePgn, requestChipSearch, type SearchTransport } from "./game";
 import {
-  applyHumanMove,
-  applyUciMove,
-  describeGameResult,
-  orderedSquares,
-  requestChipSearch,
-  resolveSide,
-  type SearchTransport,
-} from "./game";
-import {
-  COMMAND,
-  FrameDecoder,
-  ProtocolError,
-  crc32,
-  decodeBoardError,
-  decodeDeviceInfo,
-  decodeHello,
-  decodeSearchResult,
-  encodeFrame,
-  encodeGoPayload,
-  encodePositionPayload,
+  COMMAND, FrameDecoder, ProtocolError, crc32, decodeCapabilities,
+  decodeSearchResult, encodeFrame, encodeGoPayload, encodePositionPayload,
   type SearchResult,
 } from "./protocol";
 
-const HELLO_REQUEST = "5034010100004ed23a98";
-const HELLO_RESPONSE = "50340181010001525562d8";
-const POSITION_ACK = "503401a0000019e58040";
-const POSITION_START_REQUEST =
-  "503401203800726e62716b626e722f70707070707070702f382f382f382f382f50505050505050502f524e42514b424e522077204b516b71202d20302031af9fa394";
-const GO_DEPTH_FIVE = "50340121050001050000000094289c";
-const GO_RESPONSE =
-  "503401a11d00046532653400e8ffffff0700d2040000000000001200000001efcdab895be9c951";
-const POSITION_REQUIRED_ERROR = "503401ff0200210cc924da9f";
-const DEVICE_INFO_RESPONSE =
-  "503401821f000101010300040080002003050020030500dca5de280000040005312e312e301d9195dd";
-
 function hex(value: string): Uint8Array {
-  assert.equal(value.length % 2, 0);
-  return Uint8Array.from(
-    value.match(/../g)?.map((byte) => Number.parseInt(byte, 16)) ?? [],
-  );
+  return Uint8Array.from(value.match(/../g)?.map((item) => Number.parseInt(item, 16)) ?? []);
 }
 
-function hexString(value: Uint8Array): string {
-  return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function concat(...values: Uint8Array[]): Uint8Array {
-  const output = new Uint8Array(values.reduce((size, value) => size + value.length, 0));
-  let offset = 0;
-  for (const value of values) {
-    output.set(value, offset);
-    offset += value.length;
-  }
-  return output;
+function result(move: string): SearchResult {
+  return { move, score: 14, depth: 5, nodes: 11241n, elapsedMs: 312, modelState: 1, modelCrc32: 0x28dea5dc };
 }
 
 function protocolTests(): void {
   assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
-  assert.equal(hexString(encodeFrame(COMMAND.hello)), HELLO_REQUEST);
-  assert.equal(hexString(encodeFrame(COMMAND.go, encodeGoPayload(1, 5))), GO_DEPTH_FIVE);
-  assert.equal(
-    hexString(encodeFrame(COMMAND.position, encodePositionPayload(DEFAULT_POSITION))),
-    POSITION_START_REQUEST,
-  );
-
-  const response = hex(HELLO_RESPONSE);
-  const decoder = new FrameDecoder();
-  assert.deepEqual(decoder.feed(response.slice(0, 4)), []);
-  const frames = decoder.feed(concat(response.slice(4), hex(POSITION_ACK)));
-  assert.equal(frames.length, 2);
-  assert.equal(frames[0].command, COMMAND.hello | 0x80);
-  assert.equal(decodeHello(frames[0].payload), 1);
-  assert.equal(frames[1].command, COMMAND.position | 0x80);
-  assert.equal(frames[1].payload.length, 0);
-
-  const bootDecoder = new FrameDecoder();
-  const bootText = new TextEncoder().encode("ESP32-P4 boot\n");
-  assert.deepEqual(bootDecoder.feed(concat(bootText, response.slice(0, 4))), []);
-  const bootFrames = bootDecoder.feed(
-    concat(response.slice(4), hex(POSITION_ACK)),
-  );
-  assert.equal(bootFrames.length, 2);
-
-  const broken = response.slice();
-  broken[broken.length - 1] ^= 1;
-  assert.throws(() => new FrameDecoder().feed(broken), ProtocolError);
-  assert.throws(
-    () => new FrameDecoder().feed(encodeFrame(COMMAND.hello, new Uint8Array(), 2)),
-    /unsupported response version/,
-  );
-
-  const splitMagic = new FrameDecoder();
-  assert.deepEqual(splitMagic.feed(Uint8Array.of(0x50)), []);
-  assert.equal(splitMagic.feed(response.slice(1))[0].command, COMMAND.hello | 0x80);
-
-  const oversizedCandidate = Uint8Array.of(0x50, 0x34, 1, 1, 1, 4);
-  const recovered = new FrameDecoder().feed(concat(oversizedCandidate, response));
-  assert.equal(recovered.length, 1);
-  assert.equal(recovered[0].command, COMMAND.hello | 0x80);
-
-  const errorFrame = new FrameDecoder().feed(hex(POSITION_REQUIRED_ERROR))[0];
-  const boardError = decodeBoardError(errorFrame.payload);
-  assert.deepEqual(boardError, {
-    command: COMMAND.go,
-    code: 12,
-    message: "position required",
-  });
-
-  const infoFrame = new FrameDecoder().feed(hex(DEVICE_INFO_RESPONSE))[0];
-  const info = decodeDeviceInfo(infoFrame.payload);
-  assert.equal(info.protocolVersion, 1);
-  assert.equal(info.target, 1);
-  assert.equal(info.modelState, 1);
-  assert.equal(info.modelFormat, 3);
-  assert.equal(info.kingBuckets, 4);
-  assert.equal(info.hiddenWidth, 128);
-  assert.equal(info.activeModelBytes, 328480);
-  assert.equal(info.activeModelCrc32, 0x28dea5dc);
-  assert.equal(info.firmwareVersion, "1.1.0");
-
-  const resultFrame = new FrameDecoder().feed(hex(GO_RESPONSE))[0];
-  const result = decodeSearchResult(resultFrame.payload);
-  assert.equal(result.move, "e2e4");
-  assert.equal(result.score, -24);
-  assert.equal(result.depth, 7);
-  assert.equal(result.nodes, 1234n);
-  assert.equal(result.elapsedMs, 18);
-
-  const startFen = DEFAULT_POSITION;
-  assert.equal(new TextDecoder().decode(encodePositionPayload(startFen)), startFen);
-}
-
-function guideTests(): void {
-  assert.equal(GUIDE_STEPS.length, 15);
-  assert.equal(new Set(GUIDE_STEPS.map((step) => step.id)).size, GUIDE_STEPS.length);
-  assert.deepEqual(
-    GUIDE_STEPS.map((step) => step.number),
-    Array.from({ length: 15 }, (_, index) => String(index + 1).padStart(2, "0")),
-  );
-  for (const step of GUIDE_STEPS) {
-    assert.doesNotMatch(step.title, /\?/);
-  }
-  assert.ok(GUIDE_RESOURCES.includes("https://www.chessprogramming.org/"));
-  assert.ok(GUIDE_RESOURCES.includes("https://github.com/maksimKorzh/bbc"));
-  assert.ok(GUIDE_RESOURCES.includes("https://github.com/official-stockfish/nnue-pytorch"));
-  assert.ok(GUIDE_RESOURCES.includes("https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT"));
-  assert.ok(GUIDE_RESOURCES.includes("https://wicg.github.io/serial/"));
-  assert.ok(GUIDE_RESOURCES.includes("https://developer.chrome.com/docs/capabilities/serial"));
-
-  assert.equal(siteViewFromHash("#play"), "play");
-  assert.equal(siteViewFromHash("#play-content"), "play");
-  assert.equal(siteViewFromHash("#guide"), "guide");
-  assert.equal(siteViewFromHash("#guide-content"), "guide");
-  assert.equal(siteViewFromHash("#guide-hardware"), "guide");
-  assert.equal(siteViewFromHash("#guidelines"), "play");
-  assert.equal(siteViewFromHash("#guide-missing"), "play");
-  assert.equal(guideAnchorFromHash("#guide"), null);
-  assert.equal(guideAnchorFromHash("#guide-hardware"), "guide-hardware");
-  assert.equal(guideAnchorFromHash("#guide-content"), "guide-content");
-
-  const guideMarkup = renderToStaticMarkup(createElement(Guide));
-  assert.match(guideMarkup, /id="guide-content"/);
-  assert.match(
-    guideMarkup,
-    /A Small Guide on How to Build Your Own Neural Networks Under Hardware Constraints/,
-  );
-  assert.match(guideMarkup, /Chess Programming Wiki/);
-  assert.match(guideMarkup, /Code Monkey King/);
-  assert.match(guideMarkup, /images\/reference\/alpha-beta-tree\.svg/);
-  assert.match(guideMarkup, /images\/reference\/neural-network-layers\.svg/);
-  assert.match(guideMarkup, /images\/esp32-p4-browser-game\.jpg/);
-  assert.match(guideMarkup, /ITS ACTUALLY PLAYING CHESS\./);
-  assert.match(guideMarkup, /Measure your hardware/);
-  assert.match(guideMarkup, /Two resources I used heavily/);
-  assert.match(guideMarkup, /nnue\.ishankumthekar\.com/);
-  assert.ok((guideMarkup.match(/class="code-study"/g) ?? []).length >= 15);
-  assert.match(guideMarkup, /typedef uint64_t bitboard_t/);
-  assert.match(guideMarkup, /principal_variation_search/);
-  assert.match(guideMarkup, /quiescence_search/);
-  assert.match(guideMarkup, /class NnueNetwork/);
-  assert.match(guideMarkup, /build_model_blob/);
-  assert.match(guideMarkup, /FrameDecoder/);
-  assert.doesNotMatch(guideMarkup, /↗|video-slot|guide-end/);
-  const guideProse = guideMarkup
-    .replace(/<pre[\s\S]*?<\/pre>/g, "")
-    .replace(/<[^>]+>/g, " ");
-  assert.doesNotMatch(guideProse, /[-–—]/);
-  assert.doesNotMatch(guideProse, /\bbuckets?\b/i);
-  assert.doesNotMatch(guideProse, /\bboundar(?:y|ies)\b/i);
-  assert.doesNotMatch(guideMarkup, /GitHub Pages/);
-  const firstPersonReferences = guideProse.match(/\b(?:I|my|mine)\b/gi) ?? [];
-  assert.ok(firstPersonReferences.length >= 8);
-  assert.ok(firstPersonReferences.length <= 16);
-  const firstStep = guideMarkup.slice(
-    guideMarkup.indexOf('id="guide-budget"'),
-    guideMarkup.indexOf('id="guide-core"'),
-  );
-  assert.match(firstStep, /https:\/\/www\.chessprogramming\.org\//);
-  assert.match(firstStep, /https:\/\/github\.com\/maksimKorzh\/bbc/);
-  assert.doesNotMatch(guideMarkup, /primary-references|reference-callouts|does not copy BBC/);
-  for (const step of GUIDE_STEPS) {
-    assert.match(guideMarkup, new RegExp(`id="${step.id}"`));
-  }
+  assert.equal(encodeFrame(COMMAND.hello).length, 10);
+  assert.equal(encodePositionPayload(DEFAULT_POSITION).byteLength, 56);
+  assert.equal(encodeGoPayload(2, 2000)[0], 2);
+  assert.throws(() => encodeGoPayload(2, 5001), RangeError);
+  const corrupt = encodeFrame(COMMAND.hello | 0x80, Uint8Array.of(1));
+  corrupt[corrupt.length - 1] ^= 1;
+  assert.throws(() => new FrameDecoder().feed(corrupt), ProtocolError);
+  const capabilities = decodeCapabilities(Uint8Array.of(
+    1, 3, 0, 12, 0, 0x88, 0x13, 0, 0, 6, 4,
+    ...new TextEncoder().encode("Custom"), ...new TextEncoder().encode("Host"),
+  ));
+  assert.equal(capabilities.engineName, "Custom");
+  assert.equal(capabilities.maximumTimeMs, 5000);
 }
 
 class FakeTransport implements SearchTransport {
-  positions: string[] = [];
-  times: number[] = [];
-
-  constructor(private readonly result: SearchResult) {}
-
-  async setPosition(fen: string): Promise<void> {
-    this.positions.push(fen);
-  }
-
-  async searchTime(moveTimeMs: number): Promise<SearchResult> {
-    this.times.push(moveTimeMs);
-    return this.result;
+  readonly positions: string[] = [];
+  async search(request: { fen: string }, options: { moveTimeMs: number }): Promise<SearchResult> {
+    this.positions.push(request.fen);
+    assert.equal(options.moveTimeMs, 2000);
+    return result("e7e5");
   }
 }
 
-function searchResult(move: string): SearchResult {
-  return {
-    move,
-    score: 14,
-    depth: 5,
-    nodes: 11241n,
-    elapsedMs: 312,
-    modelState: 1,
-    modelCrc32: 0x28dea5dc,
-  };
+async function gameTests(): Promise<void> {
+  const game = new Chess();
+  assert.equal(applyHumanMove(game, "w", "e2", "e4")?.san, "e4");
+  const transport = new FakeTransport();
+  const reply = await requestChipSearch(transport, game, 2000);
+  assert.equal(reply?.move, "e7e5");
+  assert.equal(applyUciMove(game, reply?.move ?? "")?.san, "e5");
+  assert.match(gamePgn(game), /\[Result "\*"\]/);
+  assert.equal(transport.positions.length, 1);
+  assert.equal(applyUciMove(game, "a1a8"), null);
 }
 
-async function chessTests(): Promise<void> {
-  const startingGame = new Chess();
-  assert.equal(startingGame.fen(), DEFAULT_POSITION);
-  assert.equal(resolveSide("white"), "w");
-  assert.equal(resolveSide("black"), "b");
-  assert.equal(resolveSide("random", () => 0.2), "w");
-  assert.equal(resolveSide("random", () => 0.8), "b");
-
-  const blackSquares = orderedSquares("b");
-  assert.equal(blackSquares[0], "h1");
-  assert.equal(blackSquares.at(-1), "a8");
-
-  const legalGame = new Chess();
-  assert.equal(applyHumanMove(legalGame, "w", "e2", "e4")?.san, "e4");
-  const illegalGame = new Chess();
-  assert.equal(applyHumanMove(illegalGame, "w", "e2", "e5"), null);
-  assert.equal(illegalGame.fen(), DEFAULT_POSITION);
-
-  const promotion = new Chess("7k/P7/8/8/8/8/8/7K w - - 0 1");
-  assert.equal(
-    applyHumanMove(promotion, "w", "a7", "a8", "n")?.promotion,
-    "n",
-  );
-  assert.equal(promotion.get("a8")?.type, "n");
-
-}
-
-async function integrationTests(): Promise<void> {
-  const chipGame = new Chess();
-  applyHumanMove(chipGame, "w", "e2", "e4");
-  assert.equal(applyUciMove(chipGame, "e7e5")?.san, "e5");
-
-  const invalidChipGame = new Chess();
-  applyHumanMove(invalidChipGame, "w", "e2", "e4");
-  const beforeInvalid = invalidChipGame.fen();
-  assert.equal(applyUciMove(invalidChipGame, "e7e4"), null);
-  assert.equal(invalidChipGame.fen(), beforeInvalid);
-
-  const fakeGame = new Chess();
-  applyHumanMove(fakeGame, "w", "d2", "d4");
-  const expectedFen = fakeGame.fen();
-  const fake = new FakeTransport(searchResult("d7d5"));
-  const result = await requestChipSearch(fake, fakeGame, 2000);
-  assert.equal(result?.move, "d7d5");
-  assert.equal(applyUciMove(fakeGame, result?.move ?? "")?.san, "d5");
-  assert.deepEqual(fake.positions, [expectedFen]);
-  assert.deepEqual(fake.times, [2000]);
-
-  const rejectedGame = new Chess();
-  applyHumanMove(rejectedGame, "w", "e2", "e4");
-  const rejectedFen = rejectedGame.fen();
-  const rejected = await requestChipSearch(
-    new FakeTransport(searchResult("a1a8")),
-    rejectedGame,
-    5,
-  );
-  assert.equal(rejected?.move, "a1a8");
-  assert.equal(applyUciMove(rejectedGame, rejected?.move ?? ""), null);
-  assert.equal(rejectedGame.fen(), rejectedFen);
-
-  const mate = new Chess();
-  for (const move of ["f3", "e5", "g4", "Qh4#"]) mate.move(move);
-  assert.equal(mate.isCheckmate(), true);
-  assert.deepEqual(describeGameResult(mate, "w"), {
-    heading: "checkmate",
-    detail: "chip wins",
-  });
-  assert.equal(applyHumanMove(mate, "w", "a2", "a3"), null);
-
-  const stalemate = new Chess("7k/5Q2/7K/8/8/8/8/8 b - - 0 1");
-  assert.deepEqual(describeGameResult(stalemate, "w"), {
-    heading: "stalemate",
-    detail: "draw",
-  });
-}
-
-class FakeSerialPort extends EventTarget {
-  readonly writes: number[] = [];
+class FakePort extends EventTarget {
+  readonly commands: number[] = [];
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<Uint8Array>;
-  openedWith: Record<string, unknown> | null = null;
   closed = false;
   private controller!: ReadableStreamDefaultController<Uint8Array>;
 
-  constructor() {
+  constructor(private readonly legacy = false) {
     super();
-    this.readable = new ReadableStream({
-      start: (controller) => {
-        this.controller = controller;
-      },
-    });
-    this.writable = new WritableStream({
-      write: (frame) => {
-        const command = frame[3];
-        this.writes.push(command);
-        if (command === COMMAND.go) {
-          const request = new FrameDecoder().feed(frame)[0];
-          assert.equal(request.payload[0], 2);
-          assert.equal(new DataView(request.payload.buffer, request.payload.byteOffset).getUint32(1, true), 2000);
-          const payload = new FrameDecoder().feed(hex(GO_RESPONSE))[0].payload.slice();
-          new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
-            .setUint32(25, 0x28dea5dc, true);
-          this.controller.enqueue(encodeFrame(COMMAND.go | 0x80, payload));
-          return;
-        }
-        const response = {
-          [COMMAND.hello]: HELLO_RESPONSE,
-          [COMMAND.deviceInfo]: DEVICE_INFO_RESPONSE,
-          [COMMAND.position]: POSITION_ACK,
-        }[command];
-        if (!response) throw new Error(`unexpected fake command ${command}`);
-        this.controller.enqueue(hex(response));
-      },
-    });
+    this.readable = new ReadableStream({ start: (controller) => { this.controller = controller; } });
+    this.writable = new WritableStream({ write: (bytes: Uint8Array) => this.respond(bytes) });
   }
 
-  async open(options: Record<string, unknown>): Promise<void> {
-    this.openedWith = options;
+  async open(): Promise<void> {}
+  async close(): Promise<void> { this.closed = true; }
+
+  private respond(bytes: Uint8Array): void {
+    const frame = new FrameDecoder().feed(bytes)[0];
+    this.commands.push(frame.command);
+    if (frame.command === COMMAND.hello) return this.enqueue(COMMAND.hello | 0x80, Uint8Array.of(1));
+    if (frame.command === COMMAND.deviceInfo) {
+      const info = new Uint8Array(29);
+      info[0] = 1; info[25] = 3; info.set(new TextEncoder().encode("1.2"), 26);
+      return this.enqueue(COMMAND.deviceInfo | 0x80, info);
+    }
+    if (frame.command === COMMAND.capabilities) {
+      if (this.legacy) return this.enqueue(COMMAND.error, Uint8Array.of(COMMAND.capabilities, 4));
+      return this.enqueue(COMMAND.capabilities | 0x80, Uint8Array.of(
+        1, 3, 0, 12, 0, 0x88, 0x13, 0, 0, 6, 4,
+        ...new TextEncoder().encode("Custom"), ...new TextEncoder().encode("Host"),
+      ));
+    }
+    if (frame.command === COMMAND.position) return this.enqueue(COMMAND.position | 0x80, new Uint8Array());
+    if (frame.command === COMMAND.go) {
+      const payload = new Uint8Array(29);
+      payload[0] = 4; payload.set(new TextEncoder().encode("e7e5"), 1);
+      new DataView(payload.buffer).setUint32(25, 0, true);
+      return this.enqueue(COMMAND.go | 0x80, payload);
+    }
+    throw new Error("unexpected command");
   }
 
-  async close(): Promise<void> {
-    this.closed = true;
+  private enqueue(command: number, payload: Uint8Array): void {
+    this.controller.enqueue(encodeFrame(command, payload));
   }
 }
 
-async function serialTransportTest(): Promise<void> {
-  let portRequests = 0;
-  const ports: FakeSerialPort[] = [];
-  const serial = Object.assign(new EventTarget(), {
-    requestPort: async () => {
-      portRequests += 1;
-      const port = new FakeSerialPort();
-      ports.push(port);
-      return port;
-    },
-  });
-  const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
-  Object.defineProperty(globalThis, "navigator", {
-    configurable: true,
-    value: { serial },
-  });
-
+async function serialTests(): Promise<void> {
+  const port = new FakePort();
+  const serial = Object.assign(new EventTarget(), { requestPort: async () => port });
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { serial } });
   try {
-    const cancelledBoard = new SerialBoard();
-    const cancelledConnect = assert.rejects(
-      cancelledBoard.connect(),
-      /connection was cancelled/,
-    );
-    await cancelledBoard.disconnect();
-    await cancelledConnect;
-    assert.equal(portRequests, 0);
-
-    const board = new SerialBoard();
-    const info = await board.connect();
-    const port = ports[0];
-    assert.equal(board.connected, true);
-    assert.deepEqual(port.openedWith, {
-      baudRate: 115200,
-      dataBits: 8,
-      stopBits: 1,
-      parity: "none",
-      flowControl: "none",
-    });
-    assert.equal(info.target, 1);
-    await board.setPosition(DEFAULT_POSITION);
-    const result = await board.searchTime(2000);
-    assert.equal(result.move, "e2e4");
-    assert.deepEqual(port.writes, [
-      COMMAND.hello,
-      COMMAND.deviceInfo,
-      COMMAND.position,
-      COMMAND.go,
-    ]);
+    const board = new SerialBoard(undefined, {settleMs: 0});
+    await board.connect();
+    assert.equal(board.capabilities?.engineName, "Custom");
+    const response = await board.search({ fen: DEFAULT_POSITION }, { moveTimeMs: 2000 });
+    assert.equal(response.move, "e7e5");
+    assert.deepEqual(port.commands, [COMMAND.hello, COMMAND.deviceInfo, COMMAND.capabilities, COMMAND.position, COMMAND.go]);
     await board.disconnect();
-    assert.equal(board.connected, false);
     assert.equal(port.closed, true);
-    assert.equal(portRequests, 1);
 
-    let resolveDisconnect!: (error?: Error) => void;
-    const disconnected = new Promise<Error | undefined>((resolve) => {
-      resolveDisconnect = resolve;
-    });
-    const unpluggedBoard = new SerialBoard(resolveDisconnect);
-    await unpluggedBoard.connect();
-    const unpluggedPort = ports[1];
-    unpluggedPort.dispatchEvent(new Event("disconnect"));
-    assert.match((await disconnected)?.message ?? "", /disconnected/i);
-    assert.equal(unpluggedBoard.connected, false);
-    assert.equal(unpluggedPort.closed, true);
-    assert.equal(portRequests, 2);
+    const legacyPort = new FakePort(true);
+    Object.assign(serial, { requestPort: async () => legacyPort });
+    const legacyBoard = new SerialBoard(undefined, {settleMs: 0});
+    await legacyBoard.connect();
+    assert.equal(legacyBoard.capabilities, null);
+    await legacyBoard.disconnect();
   } finally {
-    if (navigatorDescriptor) {
-      Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
-    } else {
-      Reflect.deleteProperty(globalThis, "navigator");
-    }
+    if (descriptor) Object.defineProperty(globalThis, "navigator", descriptor);
+    else Reflect.deleteProperty(globalThis, "navigator");
   }
+}
+
+function publicCopyTests(): void {
+  const setup = renderToStaticMarkup(createElement(Guide, { view: "setup" }));
+  const integration = renderToStaticMarkup(createElement(Guide, { view: "integration" }));
+  const how = renderToStaticMarkup(createElement(Guide, { view: "how" }));
+  assert.match(setup, /Set up a board/);
+  assert.match(setup, /Connect board/);
+  assert.match(integration, /same website/);
+  assert.match(integration, /model upload/i);
+  assert.match(how, /The connected chip chooses its own move/);
 }
 
 protocolTests();
-guideTests();
-await chessTests();
-await integrationTests();
-await serialTransportTest();
-
-console.log("passed protocol guide chess and serial browser tests");
+await gameTests();
+await serialTests();
+publicCopyTests();
+console.log("passed protocol, client, game, and public copy tests");

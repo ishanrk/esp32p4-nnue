@@ -1,0 +1,184 @@
+{
+  "execution": "host diagnostic sample",
+  "seed": 7,
+  "limit_per_split": 20000,
+  "checkpoint_sha256": "9da8c6497071f8f197645f2eb99ec402e8b1e2c0ac9600f67abf4dd86f58d536",
+  "dataset_manifest_sha256": "fd99c09476c7a453382c2acee78ed4bc46833aee460b6a31ee6e39814a6c2256",
+  "model_selection_performed": false,
+  "splits": {
+    "train": {
+      "all": {
+        "count": 19914,
+        "mae_cp": 4402.606874184417,
+        "sign_agreement": 0.7203977101536607
+      },
+      "abs_label_below_30000": {
+        "count": 17078,
+        "mae_cp": 238.69968406062927,
+        "sign_agreement": 0.6846820470781122
+      },
+      "abs_label_at_30000": {
+        "count": 2836,
+        "mae_cp": 29477.08042599473,
+        "sign_agreement": 0.935472496473907
+      },
+      "abs_label_below_100": {
+        "count": 10041,
+        "mae_cp": 65.20582267324141,
+        "sign_agreement": 0.5628921422169106
+      },
+      "abs_label_100_to_999": {
+        "count": 6639,
+        "mae_cp": 239.64739151237276,
+        "sign_agreement": 0.853743033589396
+      },
+      "abs_label_1000_to_9999": {
+        "count": 368,
+        "mae_cp": 3401.739659988362,
+        "sign_agreement": 0.9375
+      },
+      "abs_label_10000_to_29999": {
+        "count": 30,
+        "mae_cp": 19297.410393301645,
+        "sign_agreement": 0.9333333333333333
+      },
+      "nonking_pieces_at_most_10": {
+        "count": 4363,
+        "mae_cp": 12653.187080685791,
+        "sign_agreement": 0.7279394911757965
+      },
+      "nonking_pieces_11_to_20": {
+        "count": 5908,
+        "mae_cp": 4323.811700021809,
+        "sign_agreement": 0.7088693297224103
+      },
+      "nonking_pieces_above_20": {
+        "count": 9643,
+        "mae_cp": 717.8863979827365,
+        "sign_agreement": 0.7240485326143317
+      },
+      "duplicate_feature_inputs_in_sample": 2,
+      "absolute_error_fraction_from_30000_labels": 0.9535034806830793
+    },
+    "validation": {
+      "all": {
+        "count": 13786,
+        "mae_cp": 4614.355396398427,
+        "sign_agreement": 0.7217466995502684
+      },
+      "abs_label_below_30000": {
+        "count": 11726,
+        "mae_cp": 247.66157116171,
+        "sign_agreement": 0.6842913184376599
+      },
+      "abs_label_at_30000": {
+        "count": 2060,
+        "mae_cp": 29470.594131702186,
+        "sign_agreement": 0.9349514563106797
+      },
+      "abs_label_below_100": {
+        "count": 6816,
+        "mae_cp": 66.23916309487792,
+        "sign_agreement": 0.5605927230046949
+      },
+      "abs_label_100_to_999": {
+        "count": 4636,
+        "mae_cp": 241.9444578573095,
+        "sign_agreement": 0.8524590163934426
+      },
+      "abs_label_1000_to_9999": {
+        "count": 247,
+        "mae_cp": 3264.0388830813317,
+        "sign_agreement": 0.9190283400809717
+      },
+      "abs_label_10000_to_29999": {
+        "count": 27,
+        "mae_cp": 19434.12359407213,
+        "sign_agreement": 0.8888888888888888
+      },
+      "nonking_pieces_at_most_10": {
+        "count": 3088,
+        "mae_cp": 12891.294069333166,
+        "sign_agreement": 0.7334844559585493
+      },
+      "nonking_pieces_11_to_20": {
+        "count": 4141,
+        "mae_cp": 4424.914361125891,
+        "sign_agreement": 0.7123883120019319
+      },
+      "nonking_pieces_above_20": {
+        "count": 6557,
+        "mae_cp": 835.9946681753207,
+        "sign_agreement": 0.7221290224187891
+      },
+      "duplicate_feature_inputs_in_sample": 2,
+      "absolute_error_fraction_from_30000_labels": 0.9543480641074589
+    },
+    "test": {
+      "all": {
+        "count": 20000,
+        "mae_cp": 4569.665967627853,
+        "sign_agreement": 0.7141
+      },
+      "abs_label_below_30000": {
+        "count": 17039,
+        "mae_cp": 243.1146908782445,
+        "sign_agreement": 0.6763307705851282
+      },
+      "abs_label_at_30000": {
+        "count": 2961,
+        "mae_cp": 29466.69643184149,
+        "sign_agreement": 0.9314420803782506
+      },
+      "abs_label_below_100": {
+        "count": 9924,
+        "mae_cp": 65.36795149268474,
+        "sign_agreement": 0.5503829101168883
+      },
+      "abs_label_100_to_999": {
+        "count": 6722,
+        "mae_cp": 248.18389943125914,
+        "sign_agreement": 0.8469205593573341
+      },
+      "abs_label_1000_to_9999": {
+        "count": 357,
+        "mae_cp": 3130.153108150685,
+        "sign_agreement": 0.9355742296918768
+      },
+      "abs_label_10000_to_29999": {
+        "count": 36,
+        "mae_cp": 19665.63432428572,
+        "sign_agreement": 0.9722222222222222
+      },
+      "nonking_pieces_at_most_10": {
+        "count": 4458,
+        "mae_cp": 12928.465423810076,
+        "sign_agreement": 0.7319425751458053
+      },
+      "nonking_pieces_11_to_20": {
+        "count": 6005,
+        "mae_cp": 4486.323327382776,
+        "sign_agreement": 0.701082431307244
+      },
+      "nonking_pieces_above_20": {
+        "count": 9537,
+        "mae_cp": 714.8840214195424,
+        "sign_agreement": 0.7139561707035755
+      },
+      "duplicate_feature_inputs_in_sample": 4,
+      "absolute_error_fraction_from_30000_labels": 0.9546746824907995
+    }
+  },
+  "sample_feature_overlaps": {
+    "train_with_validation": 4,
+    "train_with_test": 4,
+    "validation_with_test": 4
+  },
+  "limitations": [
+    "Labels at 30000 combine encoded mates and clipped extreme scores. Original mate flags were not retained in these shards.",
+    "Feature equivalence is not exact FEN or game identity. Castling and move counters are absent from the network input.",
+    "Piece count is a phase proxy, not a recorded game phase.",
+    "No overlap in a sample cannot establish absence of leakage in the full dataset.",
+    "This diagnostic revisits existing evaluation data. It is not a fresh untouched test or strength estimate."
+  ]
+}

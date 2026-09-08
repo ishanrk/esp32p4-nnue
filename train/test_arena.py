@@ -11,6 +11,11 @@ from arena import OPENINGS, UciEngine, elo_summary, load_openings, opening_board
 
 
 class ArenaTest(unittest.TestCase):
+    def test_time_limit_rejected_before_starting_engine(self) -> None:
+        with self.assertRaisesRegex(ValueError, "time budget"):
+            run_match("missing", None, "missing", None, depth=1, max_plies=1,
+                      opening_count=1, estimate_elo=False, time_ms=0)
+
     def test_stalled_child_is_bounded_and_closed(self) -> None:
         popen = subprocess.Popen
         children = []

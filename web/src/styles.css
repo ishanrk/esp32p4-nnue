@@ -219,25 +219,23 @@ summary:focus-visible,
 
 .play-page {
   flex: 1;
-  padding: clamp(2rem, 5vw, 5rem) 1rem clamp(3rem, 6vw, 6rem);
+  padding: 1.25rem 1rem 3rem;
 }
 
 .play-intro {
   width: min(100%, 1080px);
-  margin: 0 auto clamp(2.5rem, 5vw, 4.5rem);
-  padding: clamp(2.5rem, 7vw, 5.5rem) clamp(1.5rem, 7vw, 6rem);
+  margin: 0 auto 1.25rem;
+  padding: 0;
   position: relative;
-  color: var(--ink);
-  background: var(--paper);
-  border: 1px solid var(--gold);
-  outline: 1px solid var(--gold);
-  outline-offset: -9px;
-  text-align: center;
+  color: var(--paper);
+  background: transparent;
+  border: 0;
+  text-align: left;
 }
 
 .play-intro-copy {
-  max-width: 870px;
-  margin: 0 auto;
+  max-width: 1080px;
+  margin: 0;
 }
 
 .eyebrow {
@@ -250,30 +248,44 @@ summary:focus-visible,
 }
 
 .play-intro h1 {
-  margin-bottom: 1.5rem;
-  color: var(--teal-900);
-  font-size: clamp(2.2rem, 4.7vw, 4.15rem);
+  margin-bottom: 0.25rem;
+  color: var(--paper);
+  font-size: clamp(1.8rem, 3vw, 2.7rem);
   letter-spacing: -0.035em;
 }
 
 .play-intro-copy > p:last-child {
   max-width: 760px;
-  margin: 0 auto;
-  color: var(--muted);
+  margin: 0;
+  color: var(--paper);
   font-size: clamp(0.98rem, 1.8vw, 1.15rem);
 }
 
+.play-links {
+  margin-top: 1.5rem !important;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.play-links a:not(.action-button) {
+  color: var(--teal-900);
+  font-weight: 700;
+}
+
 .play-area {
-  width: min(100%, var(--page-width));
+  width: min(100%, 1080px);
   margin: 0 auto;
-  padding: clamp(1rem, 3vw, 2.25rem);
+  padding: 1.25rem;
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.75fr);
-  gap: clamp(1.5rem, 4vw, 3.5rem);
+  grid-template-columns: minmax(0, 580px) minmax(280px, 1fr);
+  gap: 2rem;
   align-items: start;
   color: var(--ink);
   background: var(--paper);
-  border: 6px double var(--gold-deep);
+  border: 0;
 }
 
 .board-column {
@@ -716,7 +728,49 @@ summary:focus-visible,
   margin: clamp(2rem, 5vw, 5rem) auto;
   color: var(--ink);
   background: var(--paper);
-  border: 6px double var(--gold-deep);
+  border: 1px solid var(--gold-deep);
+}
+
+.guide-intro {
+  max-width: 800px;
+  padding: clamp(2.5rem, 7vw, 5rem) clamp(1.25rem, 6vw, 5rem) 1rem;
+}
+
+.guide-intro h1 {
+  color: var(--teal-900);
+  font-size: clamp(2.2rem, 5vw, 4rem);
+}
+
+.guide-intro > p:last-child,
+.guide-section > p,
+.guide-section li {
+  max-width: 72ch;
+}
+
+.guide-section h2 {
+  color: var(--teal-900);
+  font-size: clamp(1.7rem, 3vw, 2.6rem);
+}
+
+.guide-section ol {
+  max-width: 70ch;
+  padding-left: 1.4rem;
+}
+
+.guide-figure {
+  margin: 2rem 0 0;
+}
+
+.guide-figure img {
+  width: min(100%, 760px);
+  height: auto;
+}
+
+.guide-figure figcaption {
+  max-width: 72ch;
+  margin-top: 0.75rem;
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .guide-hero {
@@ -1364,4 +1418,41 @@ tbody th {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Task pages use a reading column rather than the former nested code panels. */
+.nav-inner { flex-wrap: wrap; gap: .5rem 1.5rem; padding: .5rem 0; }
+.nav-links { flex-wrap: wrap; gap: .3rem 1.2rem; }
+.nav-links a { letter-spacing: 0; text-transform: none; }
+.play-intro .eyebrow { color: var(--gold); margin-bottom: .3rem; }
+.journey-links { display: flex; flex-wrap: wrap; gap: .5rem 1rem; font-size: .85rem; }
+.troubleshooting { margin: .75rem 0; font-size: .8rem; }
+.troubleshooting summary { min-height: 44px; cursor: pointer; }
+.troubleshooting input { width: 20px; height: 20px; vertical-align: middle; }
+.guide-page { width: min(100% - 2rem, 850px); margin: 2rem auto 4rem; padding: 0; color: var(--paper); background: transparent; border: 0; }
+.guide-intro { padding: 0; margin: 0 0 1.25rem; text-align: left; border: 0; background: transparent; }
+.guide-intro h1 { font-size: clamp(2rem, 4vw, 3rem); color: var(--paper); }
+.guide-section { display: block; margin: 2.5rem 0; padding: 0; border: 0; background: transparent; }
+.guide-section h2 { color: var(--gold); font-size: 1.8rem; }
+.guide-page figure { margin: 1.25rem 0; }
+.guide-page img { width: 100%; height: auto; }
+.guide-page figcaption { color: var(--paper-deep); margin-top: .5rem; font-size: .85rem; }
+.guide-page pre { background: #0b252c; color: #f1e5cc; border: 0; padding: 1rem; overflow-x: auto; max-width: 100%; white-space: pre; }
+.guide-page table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.guide-page td, .guide-page th { padding: .65rem; text-align: left; border-bottom: 1px solid #658087; }
+.guide-page code { color: inherit; }
+@media (min-width: 1000px) and (min-height: 650px) {
+  .play-area { grid-template-columns: minmax(0, min(580px, calc(100dvh - 310px))) minmax(280px, 1fr); }
+}
+@media (max-width: 760px) {
+  .site-header { position: static; }
+  .nav-inner { gap: .3rem; }
+  .nav-links { gap: .2rem .8rem; }
+  .nav-links a { font-size: .8rem; }
+  .play-intro { padding: 0; margin-bottom: 1rem; }
+  .play-area { grid-template-columns: minmax(0, 1fr); padding: .7rem; gap: 1rem; }
+  .game-controls { grid-row: 1; }
+  .move-history { max-height: 8rem; overflow: auto; }
+  .guide-page { margin-top: 1.5rem; }
+  .guide-page pre { margin-left: 0; margin-right: 0; }
 }

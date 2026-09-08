@@ -189,6 +189,7 @@ typedef struct {
     int depth;
     uint64_t nodes;
     uint64_t elapsed_ms;
+    bool failed;
 } search_result_t;
 
 typedef void (*search_info_fn)(const search_result_t *result, void *context);

@@ -108,6 +108,18 @@ static void get_info(void *context, board_device_info_t *info) {
     *info = device->info;
 }
 
+static void get_capabilities(void *context,
+                             board_device_capabilities_t *capabilities) {
+    (void)context;
+    memset(capabilities, 0, sizeof(*capabilities));
+    capabilities->features = BOARD_CAPABILITY_SEARCH_DEPTH |
+                             BOARD_CAPABILITY_SEARCH_TIME;
+    capabilities->maximum_depth = 12;
+    capabilities->maximum_time_ms = 5000;
+    memcpy(capabilities->engine_name, "test engine", 12);
+    memcpy(capabilities->firmware_identity, "host fixture", 13);
+}
+
 static board_protocol_error_t model_begin(void *context,
                                           uint32_t model_bytes,
                                           uint32_t model_crc32) {
@@ -189,6 +201,7 @@ static board_protocol_backend_t make_backend(mock_device_t *device) {
     board_protocol_backend_t backend = {
         .context = device,
         .get_info = get_info,
+        .get_capabilities = get_capabilities,
         .model_begin = model_begin,
         .model_chunk = model_chunk,
         .model_commit = model_commit,
@@ -293,6 +306,21 @@ static void test_info(board_protocol_t *protocol, output_t *output) {
     expect_true("device tt", read_u32_le(payload + 21) == 262144);
     expect_true("firmware text", payload[25] == 8 &&
                 !memcmp(payload + 26, "test-1.0", 8));
+}
+
+static void test_capabilities(board_protocol_t *protocol, output_t *output) {
+    clear_output(output);
+    send_request(protocol, output, BOARD_COMMAND_CAPABILITIES, NULL, 0);
+    const uint8_t *payload = expect_response(
+        "capabilities", output, 0,
+        BOARD_COMMAND_CAPABILITIES | 0x80u, 34);
+    if (!payload) return;
+    expect_true("capability version", payload[0] == 1);
+    expect_true("capability search", read_u16_le(payload + 1) == 3);
+    expect_true("capability depth", read_u16_le(payload + 3) == 12);
+    expect_true("capability time", read_u32_le(payload + 5) == 5000);
+    expect_true("capability engine", payload[9] == 11 &&
+                !memcmp(payload + 11, "test engine", 11));
 }
 
 static void begin_upload(board_protocol_t *protocol,
@@ -443,6 +471,29 @@ static void test_position_and_search(board_protocol_t *protocol,
                     BOARD_COMMAND_BENCH | 0x80u, 29);
 }
 
+static void telemetry(void *context, board_telemetry_t *out) {
+    (void)context;
+    out->available = 0x13;
+    out->internal_free = 1234;
+    out->internal_minimum = 1000;
+    out->stack_free_minimum = 800;
+}
+
+static void test_telemetry(board_protocol_t *protocol, output_t *output) {
+    clear_output(output);
+    send_request(protocol, output, BOARD_COMMAND_TELEMETRY, NULL, 0);
+    expect_true("legacy telemetry unknown", output->data[3] == BOARD_COMMAND_ERROR && output->data[7] == BOARD_ERROR_UNKNOWN_COMMAND);
+    protocol->backend.get_telemetry = telemetry;
+    clear_output(output);
+    send_request(protocol, output, BOARD_COMMAND_TELEMETRY, NULL, 0);
+    const uint8_t *payload = expect_response("telemetry", output, 0, BOARD_COMMAND_TELEMETRY | 0x80u, 22);
+    if (payload) {
+        expect_true("telemetry schema and availability", payload[0] == 1 && payload[1] == 0x13);
+        expect_true("telemetry counters", read_u32_le(payload+2) == 1234 && read_u32_le(payload+18) == 800);
+        expect_true("unavailable telemetry bytes", read_u32_le(payload+10) == 0);
+    }
+}
+
 int main(void) {
     mock_device_t device;
     memset(&device, 0, sizeof(device));
@@ -464,8 +515,10 @@ int main(void) {
 
     test_frames(&protocol, &output);
     test_info(&protocol, &output);
+    test_capabilities(&protocol, &output);
     test_model_upload(&protocol, &output);
     test_position_and_search(&protocol, &output);
+    test_telemetry(&protocol, &output);
 
     if (failures) {
         fprintf(stderr, "%d protocol tests failed\n", failures);

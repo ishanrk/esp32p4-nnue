@@ -1,0 +1,12 @@
+{
+  "name": "@ishanrk/serial-chess",
+  "version": "0.1.0-rc.1",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "description": "Local release candidate for the serial chess browser client",
+  "exports": { ".": { "types": "./dist/client.d.ts", "import": "./dist/serial-chess.js" } },
+  "files": ["dist", "README.md", "LICENSE_STATUS.md", "THIRD_PARTY_LICENSES.txt"],
+  "dependencies": { "chess.js": "1.4.0" },
+  "engines": { "node": ">=22" }
+}

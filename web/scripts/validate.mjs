@@ -86,40 +86,14 @@ for (const file of vectorSources) {
   }
 }
 
-const guideSource = readFileSync(resolve(root, "src/guide.tsx"), "utf8");
-if (!guideSource.includes("A Small Guide on How to Build Your Own Neural Networks Under Hardware Constraints")) {
-  throw new Error("requested guide title is missing");
+for (const name of ["PROTOCOL", "INTEGRATION", "BROWSER_CLIENT", "QUICKSTART", "MEASUREMENTS", "LICENSE_STATUS"]) {
+  if (!existsSync(resolve(dist, `docs/${name}.md`))) throw new Error(`missing public reference ${name}`);
 }
-if (!guideSource.includes("Chess Programming Wiki") || !guideSource.includes("Code Monkey King")) {
-  throw new Error("primary guide references are missing");
-}
-for (const codeReference of [
-  "typedef uint64_t bitboard_t",
-  "principal_variation_search",
-  "quiescence_search",
-  "class NnueNetwork",
-  "build_model_blob",
-  "app_main",
-  "FrameDecoder",
-]) {
-  if (!guideSource.includes(codeReference)) {
-    throw new Error(`guide code study missing ${codeReference}`);
-  }
-}
-if (!guideSource.includes("/images/esp32-p4-browser-game.jpg")) {
-  throw new Error("completed browser game photo is missing");
+if (output.some(file => /(?:^|\/)(?:\.private|study)(?:\/|$)|START_HERE|CHECKLIST/.test(file))) {
+  throw new Error("private study material found in public build");
 }
 
 const appSource = readFileSync(resolve(root, "src/app.tsx"), "utf8");
-if (!appSource.includes("Playing Your Own Chess Neural Network Hosted on a Microcontroller")) {
-  throw new Error("requested play title is missing");
-}
-if (!appSource.includes("Waveshare") || !appSource.includes("ESP32 P4NRW32")) {
-  throw new Error("play page hardware subtitle is missing");
-}
-if (!appSource.includes("uses NNUE inference")) {
-  throw new Error("play page NNUE explanation is missing");
-}
 for (const removedDecoration of [
   "hero-chess-mark",
   "hero-piece",

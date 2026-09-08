@@ -238,6 +238,33 @@ static void emit_model_info(const board_protocol_t *protocol,
                write, write_context);
 }
 
+static void emit_capabilities(const board_protocol_t *protocol,
+                              uint8_t command,
+                              board_protocol_write_fn write,
+                              void *write_context) {
+    board_device_capabilities_t capabilities;
+    memset(&capabilities, 0, sizeof(capabilities));
+    protocol->backend.get_capabilities(protocol->backend.context, &capabilities);
+    capabilities.engine_name[BOARD_PROTOCOL_MAX_IDENTITY] = '\0';
+    capabilities.firmware_identity[BOARD_PROTOCOL_MAX_IDENTITY] = '\0';
+    size_t engine_size = bounded_string_length(
+        capabilities.engine_name, BOARD_PROTOCOL_MAX_IDENTITY);
+    size_t firmware_size = bounded_string_length(
+        capabilities.firmware_identity, BOARD_PROTOCOL_MAX_IDENTITY);
+    uint8_t payload[11 + 2 * BOARD_PROTOCOL_MAX_IDENTITY];
+    payload[0] = 1;
+    write_u16_le(payload + 1, capabilities.features);
+    write_u16_le(payload + 3, capabilities.maximum_depth);
+    write_u32_le(payload + 5, capabilities.maximum_time_ms);
+    payload[9] = (uint8_t)engine_size;
+    payload[10] = (uint8_t)firmware_size;
+    memcpy(payload + 11, capabilities.engine_name, engine_size);
+    memcpy(payload + 11 + engine_size, capabilities.firmware_identity,
+           firmware_size);
+    emit_frame((uint8_t)(command | 0x80u), payload,
+               11 + engine_size + firmware_size, write, write_context);
+}
+
 static void emit_search_result(const board_search_result_t *result,
                                uint8_t command,
                                board_protocol_write_fn write,
@@ -287,6 +314,32 @@ static void handle_frame(board_protocol_t *protocol,
             if (payload_size) break;
             emit_model_info(protocol, command, write, write_context);
             return;
+        case BOARD_COMMAND_CAPABILITIES:
+            if (payload_size) break;
+            if (!protocol->backend.get_capabilities) {
+                emit_error(command, BOARD_ERROR_UNKNOWN_COMMAND,
+                           write, write_context);
+                return;
+            }
+            emit_capabilities(protocol, command, write, write_context);
+            return;
+        case BOARD_COMMAND_TELEMETRY: {
+            if (payload_size) break;
+            if (!protocol->backend.get_telemetry) {
+                emit_error(command, BOARD_ERROR_UNKNOWN_COMMAND, write, write_context);
+                return;
+            }
+            board_telemetry_t telemetry = {0};
+            protocol->backend.get_telemetry(protocol->backend.context, &telemetry);
+            uint8_t response[22] = {1, telemetry.available};
+            write_u32_le(response + 2, telemetry.internal_free);
+            write_u32_le(response + 6, telemetry.internal_minimum);
+            write_u32_le(response + 10, telemetry.psram_free);
+            write_u32_le(response + 14, telemetry.psram_minimum);
+            write_u32_le(response + 18, telemetry.stack_free_minimum);
+            emit_frame((uint8_t)(command | 0x80u), response, sizeof(response), write, write_context);
+            return;
+        }
         case BOARD_COMMAND_MODEL_BEGIN:
             if (payload_size != 8 || !protocol->backend.model_begin) break;
             error = protocol->backend.model_begin(
@@ -312,6 +365,12 @@ static void handle_frame(board_protocol_t *protocol,
         case BOARD_COMMAND_POSITION: {
             if (!payload_size || payload_size > BOARD_PROTOCOL_MAX_FEN ||
                 !protocol->backend.set_position) break;
+            for (size_t i = 0; i < payload_size; ++i) {
+                if (payload[i] < 0x20 || payload[i] > 0x7e) {
+                    emit_error(command, BOARD_ERROR_POSITION_INVALID, write, write_context);
+                    return;
+                }
+            }
             char fen[BOARD_PROTOCOL_MAX_FEN + 1];
             memcpy(fen, payload, payload_size);
             fen[payload_size] = '\0';
@@ -325,11 +384,20 @@ static void handle_frame(board_protocol_t *protocol,
             if (payload_size != 5 || !protocol->backend.search) break;
             uint8_t budget_type = payload[0];
             uint32_t budget = read_u32_le(payload + 1);
+            board_device_capabilities_t capabilities = {
+                .features = BOARD_CAPABILITY_SEARCH_DEPTH | BOARD_CAPABILITY_SEARCH_TIME,
+                .maximum_depth = BOARD_PROTOCOL_MAX_DEPTH,
+                .maximum_time_ms = BOARD_PROTOCOL_MAX_TIME_MS,
+            };
+            if (protocol->backend.get_capabilities) {
+                memset(&capabilities, 0, sizeof(capabilities));
+                protocol->backend.get_capabilities(protocol->backend.context, &capabilities);
+            }
             if (!budget ||
                 (budget_type == BOARD_GO_DEPTH &&
-                 budget > BOARD_PROTOCOL_MAX_DEPTH) ||
+                 (!(capabilities.features & BOARD_CAPABILITY_SEARCH_DEPTH) || budget > capabilities.maximum_depth)) ||
                 (budget_type == BOARD_GO_TIME_MS &&
-                 budget > BOARD_PROTOCOL_MAX_TIME_MS) ||
+                 (!(capabilities.features & BOARD_CAPABILITY_SEARCH_TIME) || budget > capabilities.maximum_time_ms)) ||
                 (budget_type != BOARD_GO_DEPTH &&
                  budget_type != BOARD_GO_TIME_MS)) break;
             board_search_result_t result;

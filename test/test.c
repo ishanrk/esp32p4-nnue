@@ -1585,7 +1585,7 @@ static void test_search_structure_sizes(void) {
                2256 + 4 * NNUE_HIDDEN_SIZE);
     expect_u64("undo size", sizeof(undo_t), 24);
     expect_u64("table entry size", sizeof(tt_entry_t), 16);
-    expect_u64("search result size", sizeof(search_result_t), 544);
+    expect_u64("search result size", sizeof(search_result_t), 552);
 }
 
 

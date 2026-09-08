@@ -17,6 +17,7 @@ enum {
         BOARD_PROTOCOL_CRC_SIZE,
     BOARD_PROTOCOL_MAX_FEN = 127,
     BOARD_PROTOCOL_MAX_FIRMWARE_VERSION = 31,
+    BOARD_PROTOCOL_MAX_IDENTITY = 31,
     BOARD_PROTOCOL_MODEL_CHUNK_BYTES = BOARD_PROTOCOL_MAX_PAYLOAD - 4,
     BOARD_PROTOCOL_MAX_DEPTH = 12,
     BOARD_PROTOCOL_MAX_TIME_MS = 5000
@@ -27,6 +28,8 @@ enum {
     BOARD_COMMAND_DEVICE_INFO = 0x02,
     BOARD_COMMAND_FIRMWARE_INFO = 0x03,
     BOARD_COMMAND_MODEL_INFO = 0x04,
+    BOARD_COMMAND_CAPABILITIES = 0x05,
+    BOARD_COMMAND_TELEMETRY = 0x06,
     BOARD_COMMAND_MODEL_BEGIN = 0x10,
     BOARD_COMMAND_MODEL_CHUNK = 0x11,
     BOARD_COMMAND_MODEL_COMMIT = 0x12,
@@ -49,7 +52,8 @@ enum {
     BOARD_ERROR_MODEL_INVALID,
     BOARD_ERROR_STORAGE,
     BOARD_ERROR_POSITION_INVALID,
-    BOARD_ERROR_POSITION_REQUIRED
+    BOARD_ERROR_POSITION_REQUIRED,
+    BOARD_ERROR_ENGINE_UNAVAILABLE
 };
 
 enum {
@@ -81,6 +85,22 @@ typedef struct {
     char firmware_version[BOARD_PROTOCOL_MAX_FIRMWARE_VERSION + 1];
 } board_device_info_t;
 
+enum {
+    BOARD_CAPABILITY_SEARCH_DEPTH = 1u << 0,
+    BOARD_CAPABILITY_SEARCH_TIME = 1u << 1,
+    BOARD_CAPABILITY_MODEL_UPLOAD = 1u << 2,
+    BOARD_CAPABILITY_HISTORY = 1u << 3,
+    BOARD_CAPABILITY_STOP = 1u << 4
+};
+
+typedef struct {
+    uint16_t features;
+    uint16_t maximum_depth;
+    uint32_t maximum_time_ms;
+    char engine_name[BOARD_PROTOCOL_MAX_IDENTITY + 1];
+    char firmware_identity[BOARD_PROTOCOL_MAX_IDENTITY + 1];
+} board_device_capabilities_t;
+
 typedef struct {
     char best_move[6];
     int32_t score;
@@ -90,6 +110,11 @@ typedef struct {
     uint8_t model_state;
     uint32_t model_crc32;
 } board_search_result_t;
+
+typedef struct {
+    uint8_t available; /* bits 0 through 4 correspond to values below */
+    uint32_t internal_free, internal_minimum, psram_free, psram_minimum, stack_free_minimum;
+} board_telemetry_t;
 
 typedef uint8_t board_protocol_error_t;
 
@@ -104,6 +129,9 @@ typedef struct {
 typedef struct {
     void *context;
     void (*get_info)(void *context, board_device_info_t *info);
+    void (*get_capabilities)(void *context,
+                             board_device_capabilities_t *capabilities);
+    void (*get_telemetry)(void *context, board_telemetry_t *telemetry);
     board_protocol_error_t (*model_begin)(void *context,
                                           uint32_t model_bytes,
                                           uint32_t model_crc32);

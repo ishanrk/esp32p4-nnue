@@ -89,8 +89,25 @@ add_executable(p4bench src/profile_bench.c)
 target_link_libraries(p4bench PRIVATE p4core)
 target_compile_options(p4bench PRIVATE ${P4_WARNINGS})
 
+add_executable(p4hostdevice examples/host_device.c esp/protocol.c esp/serial_adapter.c)
+target_include_directories(p4hostdevice PRIVATE esp)
+target_link_libraries(p4hostdevice PRIVATE p4core)
+target_compile_options(p4hostdevice PRIVATE ${P4_WARNINGS})
+add_executable(p4trace examples/inference_trace.c)
+target_include_directories(p4trace PRIVATE esp)
+target_link_libraries(p4trace PRIVATE p4core)
+target_compile_options(p4trace PRIVATE ${P4_WARNINGS})
+
 include(CTest)
 if(BUILD_TESTING)
+    # Assertions in executable tests must run in Release builds too.
+    add_compile_options(-UNDEBUG)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_executable(p4allocationtest test/allocator_fail_test.c)
+        target_link_libraries(p4allocationtest PRIVATE p4core)
+        target_link_options(p4allocationtest PRIVATE -Wl,--wrap=calloc)
+        add_test(NAME p4allocation COMMAND p4allocationtest)
+    endif()
     add_executable(p4test test/test.c)
     target_link_libraries(p4test PRIVATE p4core)
     target_compile_options(p4test PRIVATE ${P4_WARNINGS})
@@ -105,21 +122,40 @@ if(BUILD_TESTING)
     target_link_libraries(p4protocoltest PRIVATE p4diagnostics)
     target_compile_options(p4protocoltest PRIVATE ${P4_WARNINGS})
     add_test(NAME p4protocol COMMAND p4protocoltest)
+    add_executable(p4vectors test/vector_test.c esp/protocol.c)
+    target_include_directories(p4vectors PRIVATE esp)
+    target_link_libraries(p4vectors PRIVATE p4diagnostics)
+    target_compile_options(p4vectors PRIVATE ${P4_WARNINGS})
+    add_test(NAME p4vectors COMMAND p4vectors ${CMAKE_CURRENT_SOURCE_DIR}/test/protocol_vectors.tsv)
+    add_executable(p4serialadapter test/serial_adapter_test.c esp/serial_adapter.c esp/protocol.c)
+    target_include_directories(p4serialadapter PRIVATE esp)
+    target_link_libraries(p4serialadapter PRIVATE p4diagnostics)
+    target_compile_options(p4serialadapter PRIVATE ${P4_WARNINGS})
+    add_test(NAME p4serialadapter COMMAND p4serialadapter)
 
+	# Storage is the reference firmware partition, not a generic host profile.
+	if(P4_NNUE_PROFILE STREQUAL "4x128")
 	add_executable(p4storagetest test/model_storage_test.c esp/main/model_storage.c esp/protocol.c)
 	target_include_directories(p4storagetest PRIVATE test/stubs esp esp/main)
 	target_link_libraries(p4storagetest PRIVATE p4core)
 	target_compile_options(p4storagetest PRIVATE ${P4_WARNINGS})
 	add_test(NAME p4storage COMMAND p4storagetest)
+	endif()
 
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
 		if(P4_NNUE_PROFILE STREQUAL "4x128")
+			add_test(NAME p4trace COMMAND p4trace ${CMAKE_CURRENT_SOURCE_DIR}/models/reference.nnue)
 			add_test(NAME p4uci COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_uci.py $<TARGET_FILE:p4nnue>)
 		endif()
         add_test(
             NAME p4boardclient
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_board_client.py
+        )
+        add_test(
+            NAME p4hostdevice
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_host_device.py
+                $<TARGET_FILE:p4hostdevice>
         )
         add_test(
             NAME p4features
@@ -154,6 +190,7 @@ if(BUILD_TESTING)
                 ERROR_QUIET
             )
             if(P4_TORCH_DEPS EQUAL 0)
+                add_test(NAME p4erroranalysis COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/train/test_error_analysis.py)
                 add_test(
                     NAME p4training
                     COMMAND ${Python3_EXECUTABLE}

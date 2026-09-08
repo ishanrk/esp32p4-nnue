@@ -8,6 +8,9 @@ static esp_partition_t partition = {MODEL_STORAGE_PARTITION_BYTES};
 static _Alignas(int16_t) uint8_t flash[MODEL_STORAGE_PARTITION_BYTES];
 static bool fail_erase;
 static bool fail_write;
+static size_t fail_offset = SIZE_MAX;
+static bool fail_map;
+static bool corrupt_at_activation;
 static unsigned mappings;
 
 
@@ -25,8 +28,9 @@ int esp_partition_read(const esp_partition_t *part, size_t offset, void *data, s
 
 
 int esp_partition_write(const esp_partition_t *part, size_t offset, const void *data, size_t size) {
-	if (fail_write || offset > part->size || size > part->size - offset) return ESP_FAIL;
+	if (fail_write || offset == fail_offset || offset > part->size || size > part->size - offset) return ESP_FAIL;
 	memcpy(flash + offset, data, size);
+	if (offset == 0 && corrupt_at_activation) flash[MODEL_STORAGE_METADATA_BYTES] ^= 1;
 	return ESP_OK;
 }
 
@@ -40,7 +44,7 @@ int esp_partition_erase_range(const esp_partition_t *part, size_t offset, size_t
 
 int esp_partition_mmap(const esp_partition_t *part, size_t offset, size_t size, int type, const void **data, esp_partition_mmap_handle_t *handle) {
 	(void)type;
-	if (offset > part->size || size > part->size - offset) return ESP_FAIL;
+	if (fail_map || offset > part->size || size > part->size - offset) return ESP_FAIL;
 	*data = flash + offset;
 	*handle = ++mappings;
 	return ESP_OK;
@@ -121,6 +125,30 @@ int main(void) {
 	model_storage_deinit(&storage);
 	check(model_storage_init(&storage, fallback, NNUE_FILE_SIZE), "restart after failed commit");
 	check(storage.active_state == BOARD_MODEL_EMBEDDED, "restart fallback");
+	fail_write = false;
+	check(!model_storage_begin(&storage, NNUE_FILE_SIZE, board_protocol_crc32(uploaded, NNUE_FILE_SIZE)), "chunk fault begin");
+	fail_offset = MODEL_STORAGE_METADATA_BYTES;
+	check(model_storage_chunk(&storage, 0, uploaded, 100) == BOARD_ERROR_STORAGE, "chunk write fault");
+	check(!storage.upload.active && storage.active_state == BOARD_MODEL_EMBEDDED, "chunk fault fallback");
+	fail_offset = SIZE_MAX;
+	prepare_upload(&storage, uploaded);
+	fail_map = true;
+	check(model_storage_commit(&storage) == BOARD_ERROR_STORAGE, "commit mapping fault");
+	fail_map = false;
+	check(!mappings && storage.active_state == BOARD_MODEL_EMBEDDED, "mapping fault fallback");
+	prepare_upload(&storage, uploaded);
+	fail_offset = 0;
+	check(model_storage_commit(&storage) == BOARD_ERROR_STORAGE, "validity marker fault");
+	fail_offset = SIZE_MAX;
+	check(!mappings && storage.active_state == BOARD_MODEL_EMBEDDED, "marker fault fallback");
+	prepare_upload(&storage, uploaded);
+	corrupt_at_activation = true;
+	check(model_storage_commit(&storage) == BOARD_ERROR_STORAGE, "activation rejects mutated mapped model");
+	corrupt_at_activation = false;
+	check(!mappings && storage.active_state == BOARD_MODEL_EMBEDDED, "activation fault fallback");
+	model_storage_deinit(&storage);
+	check(model_storage_init(&storage, fallback, NNUE_FILE_SIZE), "restart after activation fault");
+	check(storage.active_state == BOARD_MODEL_EMBEDDED, "corrupt committed model rejected at boot");
 	unload_nnue();
 	model_storage_deinit(&storage);
 	free_transposition_table(&table);

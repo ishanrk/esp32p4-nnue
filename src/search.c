@@ -378,7 +378,7 @@ search_result_t search_position(position_t *position,
     synchronize_evaluator(position, table);
     memset(&result, 0, sizeof(result));
     search_context_t *context = calloc(1, sizeof(*context));
-    if (!context) return result;
+    if (!context) { result.failed = true; return result; }
     context->table = table;
     uint64_t start_ms = current_time_ms();
     context->start_ms = start_ms;

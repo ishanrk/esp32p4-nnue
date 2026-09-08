@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useRef,
   useState,
@@ -14,11 +16,11 @@ import {
 
 import { Chessboard } from "./board";
 import { SerialBoard, isWebSerialSupported } from "./device";
-import { Guide, GUIDE_STEPS } from "./guide";
 import {
   applyHumanMove,
   applyUciMove,
   describeGameResult,
+  gamePgn,
   legalMovesFrom,
   moveHistory,
   requestChipSearch,
@@ -42,18 +44,15 @@ const PROMOTIONS: Array<{ value: PieceSymbol; label: string }> = [
 
 type ConnectionState = "disconnected" | "connecting" | "connected" | "disconnecting";
 type PromotionChoice = { from: Square; to: Square };
-export type SiteView = "play" | "guide";
+export type SiteView = "play" | "setup" | "integration" | "how" | "recorded" | "results";
 
-const GUIDE_HASHES = new Set([
-  "#guide",
-  "#guide-content",
-  ...GUIDE_STEPS.map((step) => `#${step.id}`),
-]);
+const Guide = lazy(async () => import("./guide").then((module) => ({ default: module.Guide })));
 
 export function App() {
   const gameRef = useRef(new Chess());
   const boardRef = useRef<SerialBoard | null>(null);
   const gameToken = useRef(0);
+  const activeSearch = useRef<string | null>(null);
   const promotionReturnFocus = useRef<Square | null>(null);
   const [, renderGame] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>("disconnected");
@@ -64,12 +63,24 @@ export function App() {
   const [lastMove, setLastMove] = useState<Pick<Move, "from" | "to"> | null>(null);
   const [promotion, setPromotion] = useState<PromotionChoice | null>(null);
   const [thinking, setThinking] = useState(false);
+  const [thinkingElapsedMs, setThinkingElapsedMs] = useState(0);
   const [blocked, setBlocked] = useState(false);
+  const [resetConfirmed, setResetConfirmed] = useState(false);
   const [activity, setActivity] = useState("board not connected");
+  const errorFocusPending = useRef(false);
+  const statusRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (errorFocusPending.current && statusRef.current) {
+      errorFocusPending.current = false;
+      statusRef.current.focus();
+    }
+  }, [activity]);
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [siteHash, setSiteHash] = useState(() => window.location.hash);
   const siteView = siteViewFromHash(siteHash);
   const serialSupported = isWebSerialSupported();
+  const serialReady = serialSupported && window.isSecureContext;
   const game = gameRef.current;
   const legalTargets = new Set(
     selected ? legalMovesFrom(game, selected).map((move) => move.to) : [],
@@ -84,7 +95,9 @@ export function App() {
   useEffect(() => {
     return () => {
       gameToken.current += 1;
-      void boardRef.current?.disconnect();
+      const board = boardRef.current;
+      boardRef.current = null;
+      void board?.disconnect().catch(() => undefined);
     };
   }, []);
 
@@ -97,36 +110,23 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const guideAnchor = guideAnchorFromHash(siteHash);
-    document.title = siteView === "guide"
-      ? "Guide | ESP32 P4 NNUE"
-      : "Play | ESP32 P4 NNUE";
-    if (!guideAnchor) {
-      window.scrollTo(0, 0);
+    document.title = siteView === "play"
+      ? "Play | ESP32 P4 NNUE"
+      : `${siteView === "setup" ? "Set up a board" : siteView === "integration" ? "Connect your own engine" : siteView === "recorded" ? "Recorded game" : siteView === "results" ? "Results" : "How it works"} | ESP32 P4 NNUE`;
+    window.scrollTo(0, 0);
+  }, [siteHash, siteView]);
+
+  useEffect(() => {
+    if (!thinking) {
+      setThinkingElapsedMs(0);
       return;
     }
-
-    let cancelled = false;
-    let frame = 0;
-    const scrollToGuideAnchor = (): void => {
-      if (!cancelled) document.getElementById(guideAnchor)?.scrollIntoView();
-    };
-    const scrollAfterStyles = (attempt: number): void => {
-      const stylesReady = getComputedStyle(document.documentElement).scrollPaddingTop !== "auto";
-      if (stylesReady || attempt === 10) {
-        scrollToGuideAnchor();
-        return;
-      }
-      frame = requestAnimationFrame(() => scrollAfterStyles(attempt + 1));
-    };
-
-    frame = requestAnimationFrame(() => scrollAfterStyles(0));
-    void document.fonts.ready.then(scrollToGuideAnchor);
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(frame);
-    };
-  }, [siteHash, siteView]);
+    const started = performance.now();
+    const timer = window.setInterval(() => {
+      setThinkingElapsedMs(Math.round(performance.now() - started));
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [thinking]);
 
   useEffect(() => {
     if (promotion || thinking || !promotionReturnFocus.current) return;
@@ -144,6 +144,7 @@ export function App() {
 
   function handleUnexpectedDisconnect(board: SerialBoard, error?: Error): void {
     if (boardRef.current !== board) return;
+    errorFocusPending.current = Boolean(error);
     gameToken.current += 1;
     boardRef.current = null;
     setConnection("disconnected");
@@ -155,11 +156,12 @@ export function App() {
   }
 
   async function connectBoard(): Promise<void> {
-    if (!serialSupported || connection !== "disconnected") return;
+    if (!serialReady || connection !== "disconnected" || boardRef.current) return;
     setConnection("connecting");
     setActivity("connecting");
     setBlocked(false);
-    const board = new SerialBoard((error) => handleUnexpectedDisconnect(board, error));
+    const board = new SerialBoard((error) => handleUnexpectedDisconnect(board, error), { resetConfirmed });
+    setResetConfirmed(false);
     boardRef.current = board;
     try {
       const info = await board.connect();
@@ -168,11 +170,13 @@ export function App() {
       setConnection("connected");
       startGame(board);
     } catch (error) {
-      if (boardRef.current === board) boardRef.current = null;
+      if (boardRef.current !== board) return;
+      boardRef.current = null;
+      errorFocusPending.current = true;
       setConnection("disconnected");
       setDeviceInfo(null);
       setActivity(errorMessage(error, "could not connect board"));
-      await board.disconnect();
+      await board.disconnect().catch(() => undefined);
     }
   }
 
@@ -187,16 +191,22 @@ export function App() {
     setSelected(null);
     setPromotion(null);
     setActivity("disconnecting");
-    await board.disconnect();
-    setConnection("disconnected");
-    setActivity("board disconnected");
+    try {
+      await board.disconnect();
+      setActivity("board disconnected");
+    } catch (error) {
+      errorFocusPending.current = true;
+      setActivity(errorMessage(error, "The serial driver could not close. Close this tab before reconnecting."));
+    } finally {
+      setConnection("disconnected");
+    }
   }
 
-  function startGame(board: SerialBoard | null = boardRef.current): void {
+  function startGame(board: SerialBoard | null = boardRef.current, choice = sideChoice): void {
     const token = gameToken.current + 1;
     gameToken.current = token;
     const nextGame = new Chess();
-    const nextHumanColor = resolveSide(sideChoice);
+    const nextHumanColor = resolveSide(choice);
     gameRef.current = nextGame;
     setHumanColor(nextHumanColor);
     setSelected(null);
@@ -217,17 +227,26 @@ export function App() {
     token: number,
   ): Promise<void> {
     if (activeGame.isGameOver()) return;
+    const session = board.sessionId;
+    const positionIdentity = activeGame.fen();
+    const job = `${session}:${token}:${positionIdentity}`;
+    if (activeSearch.current === job) return;
+    activeSearch.current = job;
     setThinking(true);
     setSelected(null);
     setActivity("chip thinking");
     try {
-      const result = await requestChipSearch(board, activeGame, SEARCH_TIME_MS);
-      if (token !== gameToken.current || board !== boardRef.current) return;
+      const caps = board.capabilities;
+      const result = caps && !(caps.features & 2)
+        ? await board.search({fen: positionIdentity}, {depth: Math.min(5, caps.maximumDepth)})
+        : await requestChipSearch(board, activeGame, Math.min(SEARCH_TIME_MS, caps?.maximumTimeMs ?? SEARCH_TIME_MS));
+      if (token !== gameToken.current || board !== boardRef.current || session !== board.sessionId || activeGame.fen() !== positionIdentity) return;
       if (!result) return;
       const move = applyUciMove(activeGame, result.move);
       if (!move) {
+        errorFocusPending.current = true;
         setBlocked(true);
-        setActivity("invalid move from board");
+        setActivity("The engine returned an illegal move. The position was not changed. Reconnect to try again.");
         return;
       }
       setLastMove({ from: move.from, to: move.to });
@@ -236,9 +255,11 @@ export function App() {
       refreshGame();
     } catch (error) {
       if (token !== gameToken.current) return;
+      errorFocusPending.current = true;
       setBlocked(true);
       setActivity(errorMessage(error, "board request failed"));
     } finally {
+      if (activeSearch.current === job) activeSearch.current = null;
       if (token === gameToken.current) setThinking(false);
     }
   }
@@ -321,12 +342,13 @@ export function App() {
     <div className="site-shell">
       <a
         className="skip-link"
-        href={siteView === "guide" ? "#guide-content" : "#play-content"}
+        href={siteView === "play" ? "#play-content" : "#guide-content"}
+        onClick={event => { event.preventDefault(); document.querySelector<HTMLElement>("main")?.focus(); }}
       >
         skip to content
       </a>
       <span aria-atomic="true" aria-live="polite" className="sr-only">
-        {siteView === "guide" ? "guide view" : "play view"}
+        {siteView === "play" ? "play view" : "guide view"}
       </span>
       <header className="site-header">
         <nav aria-label="Main navigation" className="nav-inner">
@@ -336,27 +358,23 @@ export function App() {
           </a>
           <div className="nav-links">
             <a aria-current={siteView === "play" ? "page" : undefined} href="#play">Play</a>
-            <a aria-current={siteView === "guide" ? "page" : undefined} href="#guide">Guide</a>
+            <a aria-current={siteView === "setup" ? "page" : undefined} href="#setup">Set up a board</a>
+            <a aria-current={siteView === "integration" ? "page" : undefined} href="#integration">Connect your own engine</a>
+            <a aria-current={siteView === "how" ? "page" : undefined} href="#how-it-works">How it works</a>
             <a href="https://github.com/ishanrk/esp32p4-nnue">Source</a>
           </div>
         </nav>
       </header>
 
-      {siteView === "guide" ? <Guide /> : (
+      {siteView !== "play" ? <Suspense fallback={<main className="guide-page" id="guide-content"><p>Loading guide</p></main>}><Guide view={siteView} /></Suspense> : (
         <main className="play-page" id="play-content" tabIndex={-1}>
           <span aria-hidden="true" className="view-anchor" id="play" />
           <section className="play-intro" aria-labelledby="page-title">
             <div className="play-intro-copy">
-              <p className="eyebrow">CHESS NNUE ON AN ESP32 P4</p>
-              <h1 id="page-title">
-                Playing Your Own Chess Neural Network Hosted on a Microcontroller
-              </h1>
+              <p className="eyebrow">Chess on your board</p>
+              <h1 id="page-title">Play against your chip</h1>
               <p>
-                For this demo and guide I used the Waveshare
-                ESP32 P4 Module DEV KIT with an ESP32 P4NRW32 module. It has 32 MB
-                PSRAM and 16 MB flash. The browser feeds it positions over USB serial.
-                The microcontroller searches those positions and uses NNUE inference
-                to evaluate them before sending its move back.
+                The chip chooses each move. This page displays the game.
               </p>
             </div>
           </section>
@@ -365,7 +383,7 @@ export function App() {
             <div className="board-column">
               <div className="board-meta" aria-hidden="true">
                 <span>{boardOrientation === "w" ? "White" : "Black"} board orientation</span>
-                <span>ESP32 P4 search</span>
+                <span>{boardRef.current?.capabilities?.engineName ?? "Physical engine"}</span>
               </div>
               <div className="board-frame">
                 <Chessboard
@@ -378,8 +396,8 @@ export function App() {
                   selected={selected}
                 />
                 {thinking && (
-                  <div aria-live="polite" className="thinking-label">
-                    chip thinking
+                  <div className="thinking-label" aria-hidden="true">
+                    Thinking: {(thinkingElapsedMs / 1000).toFixed(1)} seconds elapsed
                   </div>
                 )}
                 {gameResult && (
@@ -434,7 +452,7 @@ export function App() {
               <header className="controls-heading">
                 <div>
                   <strong>Board connection</strong>
-                  <small>Web Serial at 115200 baud</small>
+                  <small>USB data cable, compatible firmware, desktop Chrome or Edge</small>
                 </div>
               </header>
 
@@ -442,19 +460,28 @@ export function App() {
                 <button
                   className={`connect-button ${connection === "connected" ? "is-connected" : ""}`}
                   aria-label={connection === "connected" ? "disconnect board" : undefined}
-                  disabled={!serialSupported || connection === "connecting" || connection === "disconnecting"}
+                  disabled={!serialReady || connection === "connecting" || connection === "disconnecting"}
                   onClick={() => connection === "connected" ? void disconnectBoard() : void connectBoard()}
                   title={connection === "connected" ? "disconnect board" : undefined}
                   type="button"
                 >
                   {connection === "connecting" ? "connecting" :
                     connection === "disconnecting" ? "disconnecting" :
-                    connection === "connected" ? "board connected" : "connect board"}
+                    connection === "connected" ? "Disconnect board" : "Connect board"}
                 </button>
-                {!serialSupported && (
-                  <p className="support-note">Web Serial needs Chrome or Edge</p>
+                {!serialReady && (
+                  <p className="support-note">Use Chrome or Edge on a secure page to connect a board</p>
                 )}
               </div>
+              <p className="journey-links"><a href="#setup">Set up a board</a><a href="#recorded">Recorded game and photographs</a><a href="#results">Results</a></p>
+              {thinking && <p>{boardRef.current?.capabilities && !(boardRef.current.capabilities.features & 2)
+                ? `Requested depth ${Math.min(5, boardRef.current.capabilities.maximumDepth)}`
+                : `Requested ${Math.min(SEARCH_TIME_MS, boardRef.current?.capabilities?.maximumTimeMs ?? SEARCH_TIME_MS) / 1000} seconds. This is a search budget, not an exact completion time.`}</p>}
+              <details className="troubleshooting"><summary>Troubleshooting</summary>
+                <p>Close any serial monitor. After a timeout or abandoned search, press the board reset button before connecting again. Startup waits briefly to discard old replies and boot messages.</p>
+                <label><input type="checkbox" checked={resetConfirmed} onChange={event => setResetConfirmed(event.target.checked)} /> I reset the board before this connection</label>
+                <p>The connection uses 115200 baud, a serial transfer speed. No personal port identifiers are exported.</p>
+              </details>
 
               <fieldset
                 className="side-selector"
@@ -467,7 +494,7 @@ export function App() {
                       aria-pressed={sideChoice === option.value}
                       className="side-button"
                       key={option.value}
-                      onClick={() => setSideChoice(option.value)}
+                      onClick={() => { setSideChoice(option.value); if (connection === "connected") startGame(boardRef.current, option.value); }}
                       type="button"
                     >
                       {option.label}
@@ -481,7 +508,7 @@ export function App() {
                 )}
               </fieldset>
 
-              <div aria-atomic="true" aria-live="polite" className="game-status">
+              <div ref={statusRef} tabIndex={-1} aria-atomic="true" aria-live="polite" className="game-status">
                 <div>
                   <strong>{statusHeading}</strong>
                   {statusDetail && <span>{statusDetail}</span>}
@@ -505,12 +532,23 @@ export function App() {
                 new game
               </button>
 
+              <button
+                className="text-button"
+                disabled={game.history().length === 0}
+                onClick={() => downloadPgn(game)}
+                type="button"
+              >
+                Download game record
+              </button>
+
               <MoveHistory game={game} />
 
               {deviceInfo && (
                 <p className="device-line">
-                  <span>firmware {deviceInfo.firmwareVersion}</span>
-                  <span>{modelStateName(deviceInfo.modelState)} model</span>
+                  <span>{boardRef.current?.capabilities?.engineName || "Legacy version 1 engine"}</span>
+                  <span>Firmware: {boardRef.current?.capabilities?.firmwareIdentity} {deviceInfo.firmwareVersion}</span>
+                  <span>Ready to play</span>
+                  {deviceInfo.modelState !== 0 && <span>{modelStateName(deviceInfo.modelState)} model, checksum <code>{deviceInfo.activeModelCrc32.toString(16).padStart(8,"0")}</code></span>}
                 </p>
               )}
             </aside>
@@ -519,8 +557,9 @@ export function App() {
       )}
 
       <footer className="site-footer">
-        <span>Chess NNUE running on an ESP32 P4</span>
+        <span>Chess on a connected microcontroller</span>
         <div>
+          <a href="/THIRD_PARTY_LICENSES.txt">Asset credits and licenses</a>
           <a href="https://github.com/ishanrk/esp32p4-nnue">source</a>
           <a href="https://ishankumthekar.com">ishankumthekar.com</a>
         </div>
@@ -555,10 +594,22 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-export function siteViewFromHash(hash: string): SiteView {
-  return GUIDE_HASHES.has(hash) ? "guide" : "play";
+function downloadPgn(game: Chess): void {
+  const file = new Blob([gamePgn(game)], { type: "application/x-chess-pgn" });
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "esp32-p4-game.pgn";
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
-export function guideAnchorFromHash(hash: string): string | null {
-  return hash !== "#guide" && GUIDE_HASHES.has(hash) ? hash.slice(1) : null;
+export function siteViewFromHash(hash: string): SiteView {
+  if (hash === "#setup" || hash === "#guide" || hash === "#guide-content" || hash === "#guide-hardware") return "setup";
+  if (hash === "#integration" || hash === "#guide-browser") return "integration";
+  if (hash === "#recorded") return "recorded";
+  if (hash === "#results") return "results";
+  if (hash.startsWith("#guide-")) return "how";
+  if (hash === "#how-it-works") return "how";
+  return "play";
 }
